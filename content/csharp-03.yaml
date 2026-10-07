@@ -1,0 +1,937 @@
+id: csharp
+modules:
+  - id: cs-m3
+    title: ООП в C#
+    level: Junior
+    lessons:
+      - id: cs-03-01
+        title: Классы, поля, конструкторы
+        minutes: 25
+        xp: 30
+        theory: |
+          **Класс** — шаблон объекта: данные (поля) + поведение (методы). **Объект** — экземпляр класса, создаётся через `new`.
+
+          ```csharp
+          public class Dog
+          {
+              // поля
+              private string name;
+              private int age;
+
+              // конструктор — тот же идентификатор, что и класс, без возвращаемого типа
+              public Dog(string name, int age)
+              {
+                  this.name = name;   // this — ссылка на текущий объект
+                  this.age = age;
+              }
+
+              // перегрузка конструктора + цепочка через this(...)
+              public Dog(string name) : this(name, 1) { }
+
+              public void Bark() => Console.WriteLine($"{name}: Гав!");
+          }
+
+          var rex = new Dog("Рекс", 3);
+          Dog puppy = new("Бим");      // target-typed new (C# 9)
+          rex.Bark();
+          ```
+
+          ## Ключевые правила
+
+          - Если конструктор не написан, компилятор создаёт пустой конструктор по умолчанию. Как только вы пишете свой — конструктор без параметров исчезает.
+          - Поля получают значения по умолчанию: `0`, `false`, `null`.
+          - Класс — **ссылочный тип**: переменная хранит ссылку. `var a = rex; a` и `rex` указывают на один объект.
+
+          ```csharp
+          var d1 = new Dog("A", 1);
+          var d2 = d1;          // копируется ссылка, а не объект
+          ```
+
+          ## Primary constructor (C# 12)
+
+          ```csharp
+          public class Point(int x, int y)
+          {
+              public int X => x;
+              public int Y => y;
+              public double Len() => Math.Sqrt(x * x + y * y);
+          }
+          ```
+
+          ## Инициализатор объекта
+
+          ```csharp
+          var user = new User { Name = "Аня", Age = 20 }; // работает со свойствами с set/init
+          ```
+
+          > 💡 Один класс — один файл, имя файла совпадает с именем класса. Поля — `camelCase` (часто с `_`), публичные члены — `PascalCase`.
+        practice:
+          - type: choice
+            q: Что произойдёт, если в классе объявлен только конструктор `Dog(string name)`, а вы вызываете `new Dog()`?
+            options: ["Создастся объект с name = null", "Ошибка компиляции", "Ошибка во время выполнения", "name будет пустой строкой"]
+            answer: 1
+            explain: Конструктор по умолчанию генерируется только если вы не написали ни одного своего.
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Box { public int V; }
+              var a = new Box { V = 1 };
+              var b = a;
+              b.V = 5;
+              Console.WriteLine(a.V);
+            answer: "5"
+            explain: a и b ссылаются на один объект.
+          - type: fill
+            q: Вызовите из одного конструктора другой
+            code: |
+              public Dog(string name) : ___(name, 1) { }
+            answers: ["this"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Counter { public int Count; }
+              var c = new Counter();
+              Console.WriteLine(c.Count);
+            answer: "0"
+          - type: bug
+            q: В какой строке ошибка — значение поля не сохраняется?
+            code: |
+              class User
+              {
+                  private string name;
+                  public User(string name)
+                  {
+                      name = name;
+                  }
+              }
+            bugLine: 6
+            fix: this.name = name;
+            explain: Параметр перекрывает поле — присваивание самому себе. Нужно `this.name = name`.
+        homework:
+          task: |
+            Создайте класс `BankAccount` с полями владельца и баланса, двумя конструкторами (с начальным балансом и без — тогда 0) и методами `Deposit(decimal)`, `Withdraw(decimal)` (не даёт уйти в минус, возвращает bool) и `Print()`. Создайте 2 счёта и переведите деньги между ними.
+          hints:
+            - "Используйте `: this(owner, 0)` для второго конструктора"
+            - Для денег — тип `decimal`
+          checklist:
+            - Поля приватные
+            - Withdraw проверяет баланс
+            - Есть цепочка конструкторов
+          solution: |
+            public class BankAccount
+            {
+                private readonly string owner;
+                private decimal balance;
+
+                public BankAccount(string owner, decimal balance)
+                {
+                    this.owner = owner;
+                    this.balance = balance;
+                }
+                public BankAccount(string owner) : this(owner, 0) { }
+
+                public void Deposit(decimal amount) => balance += amount;
+
+                public bool Withdraw(decimal amount)
+                {
+                    if (amount > balance) return false;
+                    balance -= amount;
+                    return true;
+                }
+
+                public void Print() => Console.WriteLine($"{owner}: {balance:F2}");
+            }
+
+            var a = new BankAccount("Аня", 1000);
+            var b = new BankAccount("Боб");
+            if (a.Withdraw(300)) b.Deposit(300);
+            a.Print(); b.Print();
+      - id: cs-03-02
+        title: Свойства и модификаторы доступа
+        minutes: 25
+        xp: 30
+        theory: |
+          **Свойство** (property) выглядит как поле, но внутри — пара методов `get`/`set`. Это основной способ открыть данные наружу.
+
+          ```csharp
+          public class Product
+          {
+              private decimal price;
+
+              public decimal Price
+              {
+                  get => price;
+                  set
+                  {
+                      if (value < 0) throw new ArgumentException("Цена < 0");
+                      price = value;              // value — присваиваемое значение
+                  }
+              }
+
+              public string Name { get; set; } = "";       // автосвойство
+              public int Id { get; }                        // только чтение (задаётся в конструкторе)
+              public DateTime Created { get; init; }        // можно задать только при создании
+              public string Sku { get; private set; } = ""; // читать всем, менять — только классу
+              public required string Category { get; set; } // обязательно в инициализаторе (C# 11)
+              public decimal PriceWithVat => Price * 1.2m;  // вычисляемое
+          }
+
+          var p = new Product { Name = "Чай", Price = 100, Category = "Еда" };
+          ```
+
+          ## Модификаторы доступа
+
+          | Модификатор | Кто видит |
+          |---|---|
+          | `public` | все |
+          | `private` | только этот класс (по умолчанию для членов) |
+          | `protected` | класс и наследники |
+          | `internal` | вся сборка (по умолчанию для классов) |
+          | `protected internal` | сборка **или** наследники |
+          | `private protected` | наследники внутри сборки |
+
+          ## Инкапсуляция
+
+          Скрывайте состояние и давайте менять его только через методы, которые соблюдают инварианты (баланс ≥ 0, возраст в диапазоне). Публичные поля — плохая практика, используйте свойства.
+
+          `readonly` поле можно присвоить только в объявлении или конструкторе.
+
+          > 💡 `init` — идеален для неизменяемых объектов: `new Order { Id = 1 }`, а потом `order.Id = 2` уже не скомпилируется.
+        practice:
+          - type: choice
+            q: Какой модификатор у члена класса по умолчанию?
+            options: ["public", "internal", "private", "protected"]
+            answer: 2
+          - type: fill
+            q: Сделайте свойство, которое можно задать только при создании объекта
+            code: |
+              public string Name { get; ___; }
+            answers: ["init"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Rect
+              {
+                  public int W { get; set; }
+                  public int H { get; set; }
+                  public int Area => W * H;
+              }
+              var r = new Rect { W = 3, H = 4 };
+              r.W = 5;
+              Console.WriteLine(r.Area);
+            answer: "20"
+          - type: choice
+            q: "Свойство `public int Count { get; private set; }` можно изменить…"
+            options: ["Откуда угодно", "Только внутри этого класса", "Только в наследниках", "Нельзя изменить вообще"]
+            answer: 1
+          - type: bug
+            q: Какая строка вызовет бесконечную рекурсию (StackOverflow)?
+            code: |
+              class Person
+              {
+                  private int age;
+                  public int Age
+                  {
+                      get => Age;
+                      set => age = value;
+                  }
+              }
+            bugLine: 6
+            fix: get => age;
+            explain: Геттер обращается к самому свойству, а не к полю.
+        homework:
+          task: |
+            Создайте класс `Temperature` с приватным полем в градусах Цельсия и свойствами `Celsius` (с проверкой: не ниже -273.15), `Fahrenheit` (get и set с пересчётом) и `Kelvin` (только чтение). Добавьте `required string City { get; init; }`.
+          checklist:
+            - При неверном значении — ArgumentOutOfRangeException
+            - Fahrenheit = C * 9 / 5 + 32
+            - Kelvin только для чтения
+          solution: |
+            public class Temperature
+            {
+                private double celsius;
+                public required string City { get; init; }
+
+                public double Celsius
+                {
+                    get => celsius;
+                    set
+                    {
+                        if (value < -273.15) throw new ArgumentOutOfRangeException(nameof(value));
+                        celsius = value;
+                    }
+                }
+                public double Fahrenheit
+                {
+                    get => celsius * 9 / 5 + 32;
+                    set => Celsius = (value - 32) * 5 / 9;
+                }
+                public double Kelvin => celsius + 273.15;
+            }
+
+            var t = new Temperature { City = "Москва", Celsius = 20 };
+            Console.WriteLine($"{t.City}: {t.Fahrenheit}F, {t.Kelvin}K");
+      - id: cs-03-03
+        title: Наследование и virtual/override
+        minutes: 30
+        xp: 35
+        theory: |
+          Наследование позволяет создать класс на основе другого: `class Dog : Animal`. В C# **одиночное наследование классов** (один базовый класс), но много интерфейсов.
+
+          ```csharp
+          public class Animal
+          {
+              public string Name { get; }
+              public Animal(string name) => Name = name;
+
+              public virtual string Speak() => "...";        // можно переопределить
+              public override string ToString() => $"{GetType().Name} {Name}";
+          }
+
+          public class Dog : Animal
+          {
+              public Dog(string name) : base(name) { }        // вызов конструктора базы
+
+              public override string Speak() => "Гав";
+          }
+
+          public class Puppy : Dog
+          {
+              public Puppy(string name) : base(name) { }
+              public override string Speak() => base.Speak() + "-тяв"; // вызов версии родителя
+          }
+
+          Animal a = new Puppy("Бим");
+          Console.WriteLine(a.Speak());   // Гав-тяв — вызывается версия реального типа
+          ```
+
+          ## Полиморфизм
+
+          Переменная базового типа может хранить наследника, а `virtual`-метод вызовется по **фактическому** типу объекта (позднее связывание).
+
+          ```csharp
+          List<Animal> zoo = [new Dog("Рекс"), new Animal("?")];
+          foreach (var x in zoo) Console.WriteLine(x.Speak());
+          ```
+
+          ## new vs override
+
+          `new` **скрывает** метод: какой вызовется — зависит от типа переменной, а не объекта. Почти всегда это ошибка — используйте `override`.
+
+          ```csharp
+          class A { public void Hi() => Console.WriteLine("A"); }
+          class B : A { public new void Hi() => Console.WriteLine("B"); }
+          A x = new B(); x.Hi();   // A
+          ```
+
+          ## sealed, is, as
+
+          - `sealed class` — от него нельзя наследоваться; `sealed override` — запрет дальнейшего переопределения.
+          - `obj is Dog d` — проверка и приведение; `obj as Dog` — вернёт `null`, если не тот тип.
+          - Все классы наследуют `System.Object` (`ToString`, `Equals`, `GetHashCode`).
+
+          > ⚠️ Не вызывайте virtual-методы из конструктора: наследник ещё не инициализирован.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A { public virtual string F() => "A"; }
+              class B : A { public override string F() => "B"; }
+              A obj = new B();
+              Console.WriteLine(obj.F());
+            answer: B
+          - type: output
+            q: Что выведет код (метод скрыт через new)?
+            code: |
+              class A { public string F() => "A"; }
+              class B : A { public new string F() => "B"; }
+              A obj = new B();
+              Console.WriteLine(obj.F());
+            answer: A
+          - type: fill
+            q: Вызовите конструктор базового класса
+            code: |
+              public Cat(string name) : ___(name) { }
+            answers: ["base"]
+          - type: choice
+            q: Сколько базовых классов может быть у класса в C#?
+            options: ["Сколько угодно", "Один", "Два", "Ни одного"]
+            answer: 1
+          - type: bug
+            q: Код не компилируется из-за override. Какую строку нужно исправить?
+            code: |
+              class Shape
+              {
+                  public double Area() => 0;
+              }
+              class Circle : Shape
+              {
+                  public double R;
+                  public override double Area() => Math.PI * R * R;
+              }
+            bugLine: 3
+            fix: public virtual double Area() => 0;
+            explain: Переопределять можно только virtual/abstract-методы. Нужно добавить virtual в базовом классе.
+        homework:
+          task: |
+            Сделайте иерархию сотрудников: `Employee` (Name, BaseSalary, virtual `CalcSalary()`), `Manager` (+ бонус 20%), `Developer` (+ 1000 за каждый закрытый таск), `Intern` (sealed, 50% от базы). Сохраните всех в `List<Employee>` и выведите зарплаты и общий фонд.
+          checklist:
+            - Используется override, а не new
+            - Конструкторы вызывают base(...)
+            - Общий фонд считается полиморфно
+          solution: |
+            public class Employee(string name, decimal baseSalary)
+            {
+                public string Name { get; } = name;
+                public decimal BaseSalary { get; } = baseSalary;
+                public virtual decimal CalcSalary() => BaseSalary;
+            }
+            public class Manager(string n, decimal s) : Employee(n, s)
+            {
+                public override decimal CalcSalary() => BaseSalary * 1.2m;
+            }
+            public class Developer(string n, decimal s, int tasks) : Employee(n, s)
+            {
+                public override decimal CalcSalary() => BaseSalary + tasks * 1000;
+            }
+            public sealed class Intern(string n, decimal s) : Employee(n, s)
+            {
+                public override decimal CalcSalary() => BaseSalary * 0.5m;
+            }
+
+            List<Employee> staff = [new Manager("Аня", 100000), new Developer("Боб", 90000, 7), new Intern("Вика", 60000)];
+            decimal total = 0;
+            foreach (var e in staff)
+            {
+                Console.WriteLine($"{e.Name}: {e.CalcSalary()}");
+                total += e.CalcSalary();
+            }
+            Console.WriteLine($"Фонд: {total}");
+      - id: cs-03-04
+        title: Абстрактные классы и интерфейсы
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Абстрактный класс
+
+          Нельзя создать через `new`. Может содержать и реализацию, и абстрактные члены, которые **обязан** реализовать наследник.
+
+          ```csharp
+          public abstract class Shape
+          {
+              public abstract double Area();                 // без тела
+              public void Print() => Console.WriteLine($"{GetType().Name}: {Area():F2}");
+          }
+          public class Circle(double r) : Shape
+          {
+              public override double Area() => Math.PI * r * r;
+          }
+          ```
+
+          ## Интерфейс
+
+          Контракт: набор членов без состояния (полей нет). Класс может реализовать **много** интерфейсов. Имена начинаются с `I`.
+
+          ```csharp
+          public interface IPayable
+          {
+              decimal Amount { get; }
+              void Pay();
+              string Info() => $"К оплате {Amount}";   // реализация по умолчанию (C# 8)
+          }
+
+          public interface ILoggable { void Log(string msg); }
+
+          public class Invoice : IPayable, ILoggable
+          {
+              public decimal Amount { get; init; }
+              public void Pay() => Log($"Оплачено {Amount}");
+              public void Log(string msg) => Console.WriteLine(msg);
+          }
+
+          IPayable p = new Invoice { Amount = 500 };
+          p.Pay();
+          ```
+
+          ## Что выбрать?
+
+          | | abstract class | interface |
+          |---|---|---|
+          | Наследование | одно | много |
+          | Поля/состояние | да | нет |
+          | Конструктор | да | нет |
+          | Смысл | «является» (общая база) | «умеет» (возможность) |
+
+          Правило: начинайте с интерфейса. Абстрактный класс — когда у наследников реально есть общий код и состояние.
+
+          ## Явная реализация
+
+          ```csharp
+          class File : IDisposable
+          {
+              void IDisposable.Dispose() { }   // доступно только через ссылку IDisposable
+          }
+          ```
+
+          Интерфейсы — основа DI и тестирования: код зависит от `IRepository`, а в тестах подставляется фейк.
+
+          > 💡 Стандартные интерфейсы: `IComparable<T>`, `IEquatable<T>`, `IEnumerable<T>`, `IDisposable`.
+        practice:
+          - type: choice
+            q: Можно ли создать объект абстрактного класса через `new Shape()`?
+            options: ["Да", "Нет", "Только если нет абстрактных методов", "Только в наследнике"]
+            answer: 1
+          - type: choice
+            q: Что может содержать интерфейс в C#? (выберите все верные)
+            options: ["Объявления методов", "Свойства", "Поля экземпляра", "Методы с реализацией по умолчанию"]
+            answer: [0, 1, 3]
+          - type: fill
+            q: Объявите метод, который обязан реализовать наследник
+            code: |
+              public abstract class Animal
+              {
+                  public ___ string Sound();
+              }
+            answers: ["abstract"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              interface IGreet { string Hi() => "Привет"; }
+              class Bot : IGreet { }
+              IGreet g = new Bot();
+              Console.WriteLine(g.Hi());
+            answer: Привет
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              interface IShape
+              {
+                  double Area();
+              }
+              class Square : IShape
+              {
+                  public double Side;
+                  public double Perimeter() => 4 * Side;
+              }
+            bugLine: 5
+            fix: "class Square : IShape { ... public double Area() => Side * Side; }"
+            explain: Square не реализует обязательный метод Area() интерфейса IShape.
+        homework:
+          task: |
+            Система уведомлений: интерфейс `INotifier { void Send(string to, string text); }`, реализации `EmailNotifier`, `SmsNotifier` (обрезает текст до 70 символов), `CompositeNotifier` (рассылает через список других нотификаторов). Абстрактный класс `NotifierBase` с общим методом логирования.
+          checklist:
+            - Код клиента зависит только от INotifier
+            - CompositeNotifier принимает IEnumerable<INotifier>
+            - Общий код вынесен в абстрактный класс
+          solution: |
+            public interface INotifier { void Send(string to, string text); }
+
+            public abstract class NotifierBase : INotifier
+            {
+                protected void Log(string m) => Console.WriteLine($"[{DateTime.Now:T}] {m}");
+                public abstract void Send(string to, string text);
+            }
+            public class EmailNotifier : NotifierBase
+            {
+                public override void Send(string to, string text) => Log($"Email {to}: {text}");
+            }
+            public class SmsNotifier : NotifierBase
+            {
+                public override void Send(string to, string text) =>
+                    Log($"SMS {to}: {(text.Length > 70 ? text[..70] : text)}");
+            }
+            public class CompositeNotifier(IEnumerable<INotifier> list) : INotifier
+            {
+                public void Send(string to, string text)
+                {
+                    foreach (var n in list) n.Send(to, text);
+                }
+            }
+
+            INotifier n = new CompositeNotifier([new EmailNotifier(), new SmsNotifier()]);
+            n.Send("anya", "Ваш заказ отправлен");
+      - id: cs-03-05
+        title: struct, record и enum
+        minutes: 30
+        xp: 35
+        theory: |
+          ## struct — значимый тип
+
+          Хранится «по значению»: при присваивании копируется целиком. Подходит для маленьких неизменяемых данных (координаты, деньги).
+
+          ```csharp
+          public readonly struct Point(int x, int y)
+          {
+              public int X { get; } = x;
+              public int Y { get; } = y;
+          }
+          var a = new Point(1, 2);
+          var b = a;            // копия
+          ```
+
+          struct не может наследоваться (но может реализовывать интерфейсы), не бывает `null` (кроме `Point?`).
+
+          ## record — тип с семантикой значения
+
+          ```csharp
+          public record Person(string Name, int Age);   // позиционный record
+
+          var p1 = new Person("Аня", 20);
+          var p2 = new Person("Аня", 20);
+          Console.WriteLine(p1 == p2);       // True — сравнение по значениям
+          Console.WriteLine(p1);             // Person { Name = Аня, Age = 20 }
+          var p3 = p1 with { Age = 21 };     // неразрушающее копирование
+          var (name, age) = p1;              // деконструкция
+          ```
+
+          `record` = класс (ссылочный), `record struct` = структура. Свойства позиционного record — `init`, то есть неизменяемые. Отлично подходит для DTO, событий, результатов.
+
+          ## enum — перечисление
+
+          ```csharp
+          public enum OrderStatus { New, Paid, Shipped = 10, Done }
+          var s = OrderStatus.Paid;
+          Console.WriteLine((int)s);          // 1
+          Console.WriteLine(OrderStatus.Done); // Done (имя)
+          Enum.TryParse<OrderStatus>("Shipped", out var st);
+
+          [Flags]
+          public enum Perm { None = 0, Read = 1, Write = 2, Exec = 4 }
+          var p = Perm.Read | Perm.Write;
+          Console.WriteLine(p.HasFlag(Perm.Write)); // True
+          Console.WriteLine(p);                     // Read, Write
+          ```
+
+          ## Сравнение
+
+          | | class | struct | record |
+          |---|---|---|---|
+          | Тип | ссылочный | значимый | ссылочный |
+          | `==` по умолчанию | ссылки | — (нужно перегрузить) | значения |
+          | Наследование | да | нет | да (от record) |
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct P { public int X; }
+              var a = new P { X = 1 };
+              var b = a;
+              b.X = 9;
+              Console.WriteLine(a.X);
+            answer: "1"
+            explain: struct копируется при присваивании.
+          - type: output
+            q: Что выведет код?
+            code: |
+              record User(string Name);
+              Console.WriteLine(new User("A") == new User("A"));
+            answer: "True"
+          - type: output
+            q: Что выведет код?
+            code: |
+              enum Color { Red, Green = 5, Blue }
+              Console.WriteLine((int)Color.Blue);
+            answer: "6"
+          - type: fill
+            q: Создайте копию record с изменённым возрастом
+            code: |
+              var older = person ___ { Age = person.Age + 1 };
+            answers: ["with"]
+          - type: choice
+            q: Когда лучше использовать struct?
+            options: ["Для больших изменяемых объектов", "Для маленьких неизменяемых значений", "Для иерархий наследования", "Для сервисов с зависимостями"]
+            answer: 1
+        homework:
+          task: |
+            Опишите `readonly record struct Money(decimal Amount, string Currency)` с оператором `+` (исключение при разных валютах), `record Order(int Id, OrderStatus Status, Money Total)` и `enum OrderStatus`. Напишите метод, который переводит заказ в следующий статус через `with` и выводит историю.
+          checklist:
+            - Money неизменяемая
+            - Сложение разных валют — исключение
+            - Статус меняется через with, исходный заказ не меняется
+          solution: |
+            public enum OrderStatus { New, Paid, Shipped, Done }
+
+            public readonly record struct Money(decimal Amount, string Currency)
+            {
+                public static Money operator +(Money a, Money b) =>
+                    a.Currency == b.Currency
+                        ? new Money(a.Amount + b.Amount, a.Currency)
+                        : throw new InvalidOperationException("Разные валюты");
+            }
+
+            public record Order(int Id, OrderStatus Status, Money Total);
+
+            static Order Next(Order o) => o.Status == OrderStatus.Done ? o : o with { Status = o.Status + 1 };
+
+            var order = new Order(1, OrderStatus.New, new Money(100, "RUB") + new Money(50, "RUB"));
+            for (int i = 0; i < 4; i++)
+            {
+                Console.WriteLine(order);
+                order = Next(order);
+            }
+      - id: cs-03-06
+        title: Статические члены и extension-методы
+        minutes: 25
+        xp: 30
+        theory: |
+          ## static
+
+          Статический член принадлежит **классу**, а не объекту. Вызывается через имя класса.
+
+          ```csharp
+          public class User
+          {
+              private static int count;               // общий для всех объектов
+              public static int Count => count;
+              public string Name { get; }
+
+              public User(string name) { Name = name; count++; }
+
+              public static User Guest() => new("Гость");   // фабричный метод
+          }
+
+          new User("A"); new User("B");
+          Console.WriteLine(User.Count);   // 2
+          ```
+
+          Из статического метода нельзя обращаться к нестатическим членам (нет `this`).
+
+          ## static class
+
+          Только статические члены, нельзя создать экземпляр: `Math`, `Console`, `File`.
+
+          ```csharp
+          public static class Geometry
+          {
+              public const double Pi = 3.14159;            // const — неявно static
+              public static double Circle(double r) => Pi * r * r;
+          }
+          ```
+
+          Статический конструктор `static User() { ... }` вызывается один раз перед первым использованием типа.
+
+          ## Extension-методы
+
+          Позволяют «добавить» метод к существующему типу без наследования. Пишутся в static-классе, первый параметр с `this`.
+
+          ```csharp
+          public static class StringExtensions
+          {
+              public static bool IsPalindrome(this string s)
+              {
+                  var t = s.ToLower();
+                  return t.SequenceEqual(t.Reverse());
+              }
+              public static string Truncate(this string s, int max) =>
+                  s.Length <= max ? s : s[..max] + "…";
+          }
+
+          Console.WriteLine("Шалаш".IsPalindrome());   // True
+          Console.WriteLine("Длинный текст".Truncate(5));
+          ```
+
+          Весь LINQ (`Where`, `Select`) — это extension-методы для `IEnumerable<T>`.
+
+          > ⚠️ Статическое изменяемое состояние — глобальная переменная: мешает тестам и потокобезопасности. Используйте осторожно.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class C { public static int N; public C() { N++; } }
+              new C(); new C(); new C();
+              Console.WriteLine(C.N);
+            answer: "3"
+          - type: fill
+            q: Сделайте extension-метод для int
+            code: |
+              public static class IntExt
+              {
+                  public static bool IsEven(___ int x) => x % 2 == 0;
+              }
+            answers: ["this"]
+          - type: choice
+            q: Где должен быть объявлен extension-метод?
+            options: ["В любом классе", "В static-классе", "В интерфейсе", "В самом расширяемом типе"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              static class Ext { public static int Twice(this int x) => x * 2; }
+              Console.WriteLine(5.Twice().Twice());
+            answer: "20"
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              class Calc
+              {
+                  private int last;
+                  public static int Add(int a, int b)
+                  {
+                      last = a + b;
+                      return last;
+                  }
+              }
+            bugLine: 6
+            explain: Статический метод не имеет доступа к полю экземпляра `last`.
+        homework:
+          task: |
+            Создайте static-класс `CollectionExtensions` с методами: `ForEach<T>(this IEnumerable<T>, Action<T>)`, `IsNullOrEmpty<T>(this IEnumerable<T>?)`, `Chunk`-подобный `Batch<T>(int size)` возвращающий `List<List<T>>`, и `string.WordCount()`. Добавьте класс `IdGenerator` со статическим счётчиком и методом `Next()`.
+          checklist:
+            - Все extension-методы в static-классе
+            - Обрабатывается null
+            - IdGenerator выдаёт уникальные id
+          solution: |
+            public static class CollectionExtensions
+            {
+                public static void ForEach<T>(this IEnumerable<T> src, Action<T> act)
+                {
+                    foreach (var x in src) act(x);
+                }
+                public static bool IsNullOrEmpty<T>(this IEnumerable<T>? src) => src is null || !src.Any();
+
+                public static List<List<T>> Batch<T>(this IEnumerable<T> src, int size)
+                {
+                    var res = new List<List<T>>();
+                    foreach (var x in src)
+                    {
+                        if (res.Count == 0 || res[^1].Count == size) res.Add(new List<T>());
+                        res[^1].Add(x);
+                    }
+                    return res;
+                }
+                public static int WordCount(this string s) =>
+                    s.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            }
+
+            public static class IdGenerator
+            {
+                private static int last;
+                public static int Next() => ++last;
+            }
+
+            Enumerable.Range(1, 7).Batch(3).ForEach(b => Console.WriteLine(string.Join(",", b)));
+            Console.WriteLine("раз два три".WordCount());
+            Console.WriteLine(IdGenerator.Next() + " " + IdGenerator.Next());
+      - id: cs-03-07
+        title: Переопределение Equals, GetHashCode, ToString
+        minutes: 30
+        xp: 35
+        theory: |
+          Все типы наследуют от `object` три важных метода.
+
+          ## ToString
+
+          По умолчанию возвращает имя типа (`MyApp.User`). Переопределяйте для отладки и логов:
+
+          ```csharp
+          public override string ToString() => $"User({Id}, {Name})";
+          ```
+
+          ## Equals и ==
+
+          Для классов `Equals` и `==` по умолчанию сравнивают **ссылки**. Чтобы сравнивать по содержимому — переопределите `Equals` **и обязательно** `GetHashCode`.
+
+          ```csharp
+          public class Point : IEquatable<Point>
+          {
+              public int X { get; }
+              public int Y { get; }
+              public Point(int x, int y) { X = x; Y = y; }
+
+              public bool Equals(Point? other) =>
+                  other is not null && X == other.X && Y == other.Y;
+
+              public override bool Equals(object? obj) => Equals(obj as Point);
+
+              public override int GetHashCode() => HashCode.Combine(X, Y);
+
+              public static bool operator ==(Point? a, Point? b) => a?.Equals(b) ?? b is null;
+              public static bool operator !=(Point? a, Point? b) => !(a == b);
+
+              public override string ToString() => $"({X}, {Y})";
+          }
+          ```
+
+          ## Контракт GetHashCode
+
+          - Если `a.Equals(b)`, то `a.GetHashCode() == b.GetHashCode()` — **обязательно**.
+          - Обратное не обязательно (коллизии допустимы).
+          - Хеш не должен меняться, пока объект лежит в `Dictionary`/`HashSet` → используйте неизменяемые поля.
+
+          Если нарушить контракт, `HashSet.Contains` и `Dictionary` перестанут находить объекты.
+
+          ```csharp
+          var set = new HashSet<Point> { new(1, 2) };
+          Console.WriteLine(set.Contains(new Point(1, 2)));  // True только при верном GetHashCode
+          ```
+
+          ## Самый простой путь
+
+          `record` генерирует `Equals`, `GetHashCode`, `==`, `ToString` автоматически:
+
+          ```csharp
+          public record Point(int X, int Y);
+          ```
+
+          > 💡 `ReferenceEquals(a, b)` всегда сравнивает ссылки, даже если `==` перегружен.
+        practice:
+          - type: output
+            q: Что выведет код (Equals не переопределён)?
+            code: |
+              class P { public int X; }
+              var a = new P { X = 1 };
+              var b = new P { X = 1 };
+              Console.WriteLine(a.Equals(b));
+            answer: "False"
+          - type: choice
+            q: Что нужно переопределить вместе с Equals?
+            options: ["ToString", "GetHashCode", "GetType", "Finalize"]
+            answer: 1
+          - type: fill
+            q: Сгенерируйте хеш из двух полей
+            code: |
+              public override int GetHashCode() => HashCode.___(X, Y);
+            answers: ["Combine"]
+          - type: choice
+            q: "Если `a.Equals(b) == true`, то хеш-коды…"
+            options: ["Обязаны совпадать", "Обязаны различаться", "Могут быть любыми", "Равны нулю"]
+            answer: 0
+          - type: bug
+            q: Найдите строку, нарушающую контракт (объекты потеряются в HashSet)
+            code: |
+              class Tag
+              {
+                  public string Name = "";
+                  public override bool Equals(object? o) =>
+                      o is Tag t && t.Name == Name;
+                  public override int GetHashCode() =>
+                      Random.Shared.Next();
+              }
+            bugLine: 7
+            fix: Name.GetHashCode();
+            explain: Хеш должен зависеть от тех же полей, что и Equals, и быть стабильным.
+        homework:
+          task: |
+            Класс `Isbn` (строка из 13 цифр, дефисы игнорируются при сравнении: "978-5-17-1" == "97851771"). Реализуйте `IEquatable<Isbn>`, `Equals`, `GetHashCode`, `==`, `!=`, `ToString`. Проверьте работу в `HashSet<Isbn>` и `Dictionary<Isbn, string>`.
+          checklist:
+            - Нормализация (удаление дефисов) в конструкторе
+            - GetHashCode от нормализованного значения
+            - Проверка в HashSet проходит
+          solution: |
+            public sealed class Isbn : IEquatable<Isbn>
+            {
+                public string Value { get; }
+                public Isbn(string raw) => Value = raw.Replace("-", "").Trim();
+
+                public bool Equals(Isbn? other) => other is not null && Value == other.Value;
+                public override bool Equals(object? obj) => Equals(obj as Isbn);
+                public override int GetHashCode() => Value.GetHashCode();
+                public static bool operator ==(Isbn? a, Isbn? b) => a?.Equals(b) ?? b is null;
+                public static bool operator !=(Isbn? a, Isbn? b) => !(a == b);
+                public override string ToString() => $"ISBN {Value}";
+            }
+
+            var set = new HashSet<Isbn> { new("978-5-17-1") };
+            Console.WriteLine(set.Contains(new Isbn("97851771")));   // True
+            var books = new Dictionary<Isbn, string> { [new("1-2-3")] = "Книга" };
+            Console.WriteLine(books[new Isbn("123")]);

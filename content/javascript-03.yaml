@@ -1,0 +1,767 @@
+id: javascript
+modules:
+  - id: js-m3
+    title: Браузер и DOM
+    level: Junior
+    lessons:
+      - id: js-03-01
+        title: DOM — поиск и изменение элементов
+        minutes: 35
+        xp: 35
+        theory: |
+          **DOM** (Document Object Model) — дерево объектов, в которое браузер превращает HTML. Через JS можно находить узлы, менять их и создавать новые.
+
+          ```html
+          <ul id="list">
+            <li class="item">Чай</li>
+            <li class="item active">Кофе</li>
+          </ul>
+          <script src="app.js" defer></script>
+          ```
+
+          `defer` — скрипт выполнится после разбора HTML, когда элементы уже существуют.
+
+          ## Поиск
+
+          ```javascript
+          const list = document.getElementById("list");
+          const first = document.querySelector(".item");          // первый по CSS-селектору
+          const all = document.querySelectorAll("#list .item");   // NodeList всех
+          const active = list.querySelector(".active");           // поиск внутри элемента
+          all.forEach((li) => console.log(li.textContent));
+          const card = btn.closest(".card");                      // ближайший предок
+          ```
+
+          ## Содержимое и атрибуты
+
+          ```javascript
+          el.textContent = "Новый текст";             // безопасно: только текст
+          el.innerHTML = "<b>жирный</b>";            // разбирает HTML — опасно с данными пользователя (XSS)!
+          input.value = "abc";                        // значение поля формы
+          link.href = "https://example.com";
+          img.setAttribute("alt", "Фото");
+          el.dataset.id = "42";                       // data-id="42"
+          el.hidden = true;
+          ```
+
+          ## Классы и стили
+
+          ```javascript
+          el.classList.add("active");
+          el.classList.remove("hidden");
+          el.classList.toggle("open");               // добавить/убрать
+          el.classList.contains("active");           // true/false
+          el.style.backgroundColor = "tomato";       // inline-стиль (лучше менять классы)
+          ```
+
+          ## Создание и удаление
+
+          ```javascript
+          const li = document.createElement("li");
+          li.className = "item";
+          li.textContent = "Сок";
+          list.append(li);                 // в конец (prepend — в начало)
+          list.firstElementChild.before(li);
+          li.remove();
+
+          // Много элементов — одной вставкой
+          const frag = document.createDocumentFragment();
+          ["a", "b", "c"].forEach((t) => {
+            const x = document.createElement("li");
+            x.textContent = t;
+            frag.append(x);
+          });
+          list.append(frag);
+          ```
+
+          ## Навигация
+
+          `el.parentElement`, `el.children`, `el.firstElementChild`, `el.nextElementSibling`. Свойства без `Element` (`childNodes`, `nextSibling`) включают текстовые узлы-пробелы.
+
+          `querySelectorAll` возвращает **статический** список, а `getElementsByClassName` — «живую» коллекцию, которая обновляется при изменении DOM.
+        practice:
+          - type: choice
+            q: Какой метод вернёт первый элемент по CSS-селектору?
+            options: ["getElementsByClassName", "querySelector", "querySelectorAll", "getElementById"]
+            answer: 1
+          - type: fill
+            q: Переключите класс open у меню
+            code: |
+              menu.classList.___("open");
+            answers: ["toggle"]
+          - type: bug
+            q: Какая строка небезопасна, если comment пришёл от пользователя?
+            code: |
+              const div = document.createElement("div");
+              div.className = "comment";
+              div.innerHTML = comment;
+              feed.append(div);
+            bugLine: 3
+            fix: div.textContent = comment;
+            explain: innerHTML выполнит вредоносную разметку (XSS). Для текста используйте textContent.
+          - type: order
+            q: Расставьте шаги добавления нового пункта списка
+            lines:
+              - const li = document.createElement("li");
+              - li.textContent = "Новый пункт";
+              - li.classList.add("item");
+              - document.querySelector("#list").append(li);
+          - type: choice
+            q: Зачем атрибут defer у script?
+            options: ["Скрипт загрузится позже всех картинок", "Скрипт выполнится после разбора HTML", "Скрипт не будет кешироваться", "Скрипт выполнится дважды"]
+            answer: 1
+        homework:
+          task: |
+            Создайте страницу «Каталог»: в JS массив товаров `{ id, title, price, category }`. Отрисуйте карточки в `<div id="catalog">` через `createElement` (без innerHTML с данными), каждой карточке задайте `data-id`. Добавьте кнопки-фильтры по категориям: активная кнопка получает класс `active`, неподходящие карточки скрываются (`hidden`). Внизу выведите «Показано N из M».
+          checklist:
+            - Используется querySelector/All
+            - Данные вставляются через textContent
+            - Фильтр меняет классы, а не пересоздаёт страницу
+          solution: |
+            const products = [
+              { id: 1, title: "Чай", price: 300, category: "напитки" },
+              { id: 2, title: "Печенье", price: 150, category: "сладости" },
+              { id: 3, title: "Кофе", price: 500, category: "напитки" },
+            ];
+            const catalog = document.querySelector("#catalog");
+            const filters = document.querySelector("#filters");
+            const counter = document.querySelector("#counter");
+
+            function render() {
+              const frag = document.createDocumentFragment();
+              for (const p of products) {
+                const card = document.createElement("div");
+                card.className = "card";
+                card.dataset.id = p.id;
+                card.dataset.category = p.category;
+                const h = document.createElement("h3");
+                h.textContent = p.title;
+                const price = document.createElement("p");
+                price.textContent = `${p.price} ₽`;
+                card.append(h, price);
+                frag.append(card);
+              }
+              catalog.append(frag);
+            }
+            function applyFilter(cat) {
+              let shown = 0;
+              catalog.querySelectorAll(".card").forEach((c) => {
+                c.hidden = cat !== "все" && c.dataset.category !== cat;
+                if (!c.hidden) shown++;
+              });
+              counter.textContent = `Показано ${shown} из ${products.length}`;
+              filters.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.textContent === cat));
+            }
+            for (const cat of ["все", ...new Set(products.map((p) => p.category))]) {
+              const b = document.createElement("button");
+              b.textContent = cat;
+              b.addEventListener("click", () => applyFilter(cat));
+              filters.append(b);
+            }
+            render();
+            applyFilter("все");
+      - id: js-03-02
+        title: События и делегирование
+        minutes: 35
+        xp: 35
+        theory: |
+          Пользователь кликает, печатает, прокручивает — браузер генерирует **события**. На них подписываются обработчиками.
+
+          ```javascript
+          const btn = document.querySelector("#buy");
+          function onClick(event) {
+            console.log("Клик!", event.type, event.target);
+          }
+          btn.addEventListener("click", onClick);
+          btn.removeEventListener("click", onClick);   // нужна та же функция
+          btn.addEventListener("click", () => {}, { once: true });  // сработает один раз
+          ```
+
+          Популярные события: `click`, `dblclick`, `input`, `change`, `submit`, `keydown`, `focus`/`blur`, `mouseenter`, `scroll`, `DOMContentLoaded`, `load`.
+
+          ## Объект события
+
+          ```javascript
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && e.ctrlKey) save();
+          });
+          link.addEventListener("click", (e) => {
+            e.preventDefault();      // отменить действие по умолчанию (переход по ссылке)
+          });
+          ```
+
+          - `e.target` — элемент, на котором событие **произошло**.
+          - `e.currentTarget` — элемент, на котором висит **обработчик**.
+
+          ## Всплытие (bubbling)
+
+          Событие сначала происходит на целевом элементе, затем **всплывает** вверх по предкам до `document`. Перехват (capturing) идёт в обратном порядке — сверху вниз (`{ capture: true }`). `e.stopPropagation()` останавливает всплытие (используйте редко).
+
+          ## Делегирование
+
+          Вместо обработчика на каждом из 1000 элементов вешаем **один** на общего родителя и смотрим, где был клик:
+
+          ```javascript
+          document.querySelector("#todo-list").addEventListener("click", (e) => {
+            const btn = e.target.closest("button[data-action]");
+            if (!btn) return;
+            const li = btn.closest("li");
+            if (btn.dataset.action === "delete") li.remove();
+            if (btn.dataset.action === "done") li.classList.toggle("done");
+          });
+          ```
+
+          Плюсы: меньше памяти, работает для элементов, добавленных **позже**.
+
+          ## Частые события: debounce
+
+          `input` и `scroll` срабатывают десятки раз в секунду. **Debounce** выполняет функцию только после паузы:
+
+          ```javascript
+          function debounce(fn, ms) {
+            let t;
+            return (...args) => {
+              clearTimeout(t);
+              t = setTimeout(() => fn(...args), ms);
+            };
+          }
+          search.addEventListener("input", debounce((e) => find(e.target.value), 300));
+          ```
+
+          **Throttle** — не чаще раза в N мс (для scroll/resize).
+
+          ## Свои события
+
+          `el.dispatchEvent(new CustomEvent("cart:add", { detail: { id: 5 }, bubbles: true }))`.
+        practice:
+          - type: choice
+            q: Чем e.target отличается от e.currentTarget?
+            options: ["Ничем", "target — где произошло событие, currentTarget — где висит обработчик", "target — родитель", "currentTarget всегда document"]
+            answer: 1
+          - type: fill
+            q: Отмените отправку формы по умолчанию
+            code: |
+              form.addEventListener("submit", (e) => {
+                e.___();
+              });
+            answers: ["preventDefault"]
+          - type: choice
+            q: Список из 500 строк, строки добавляются динамически. Как эффективно обрабатывать клики?
+            options: ["Обработчик на каждой строке", "Один обработчик на родителе (делегирование)", "onclick в HTML", "setInterval с проверкой"]
+            answer: 1
+          - type: bug
+            q: Почему обработчик не удаляется?
+            code: |
+              btn.addEventListener("click", () => console.log("клик"));
+              btn.removeEventListener("click", () => console.log("клик"));
+            bugLine: 2
+            fix: сохранить функцию в переменную и передать её в оба вызова
+            explain: Две стрелочные функции — разные объекты; удалить можно только ту же самую ссылку.
+          - type: order
+            q: Расставьте фазы распространения события
+            lines:
+              - Погружение (capturing) от document к цели
+              - Срабатывание на целевом элементе
+              - Всплытие (bubbling) от цели к document
+        homework:
+          task: |
+            Сделайте «Оценку звёздами»: 5 звёзд (☆) в контейнере. Используйте **один** обработчик на контейнере (делегирование): при наведении подсвечиваются звёзды до текущей, при уходе мыши — возвращается выбранная оценка, клик фиксирует оценку и генерирует `CustomEvent("rate", { detail: { value } })`, на которое подписан код, выводящий «Ваша оценка: N». Добавьте управление с клавиатуры: стрелки ←/→ меняют оценку.
+          checklist:
+            - Один обработчик на контейнере
+            - Используется dataset
+            - Генерируется CustomEvent
+            - Работает клавиатура
+          solution: |
+            const box = document.querySelector("#stars");
+            const out = document.querySelector("#result");
+            let value = 0;
+            box.tabIndex = 0;
+            for (let i = 1; i <= 5; i++) {
+              const s = document.createElement("span");
+              s.dataset.value = i;
+              s.textContent = "☆";
+              box.append(s);
+            }
+            function paint(n) {
+              box.querySelectorAll("span").forEach((s) => {
+                s.textContent = Number(s.dataset.value) <= n ? "★" : "☆";
+              });
+            }
+            function setValue(n) {
+              value = Math.min(5, Math.max(1, n));
+              paint(value);
+              box.dispatchEvent(new CustomEvent("rate", { detail: { value }, bubbles: true }));
+            }
+            box.addEventListener("mouseover", (e) => {
+              const star = e.target.closest("span[data-value]");
+              if (star) paint(Number(star.dataset.value));
+            });
+            box.addEventListener("mouseleave", () => paint(value));
+            box.addEventListener("click", (e) => {
+              const star = e.target.closest("span[data-value]");
+              if (star) setValue(Number(star.dataset.value));
+            });
+            box.addEventListener("keydown", (e) => {
+              if (e.key === "ArrowRight") setValue(value + 1);
+              if (e.key === "ArrowLeft") setValue(value - 1);
+            });
+            document.addEventListener("rate", (e) => {
+              out.textContent = `Ваша оценка: ${e.detail.value}`;
+            });
+      - id: js-03-03
+        title: Формы и валидация
+        minutes: 35
+        xp: 35
+        theory: |
+          ## Чтение формы
+
+          ```html
+          <form id="signup" novalidate>
+            <input name="email" type="email" required>
+            <input name="password" type="password" minlength="8" required>
+            <select name="plan"><option value="free">Free</option><option value="pro">Pro</option></select>
+            <label><input name="agree" type="checkbox"> Согласен</label>
+            <button>Зарегистрироваться</button>
+          </form>
+          ```
+
+          ```javascript
+          const form = document.querySelector("#signup");
+          form.addEventListener("submit", (e) => {
+            e.preventDefault();                          // не перезагружать страницу
+            const data = new FormData(form);
+            const email = data.get("email");
+            const values = Object.fromEntries(data);     // { email, password, plan, agree: "on" }
+            const agree = form.elements.agree.checked;   // для чекбокса — checked
+          });
+          ```
+
+          События полей: `input` — при каждом изменении, `change` — по завершении (потеря фокуса, выбор в select), `blur` — уход с поля.
+
+          ## Встроенная валидация HTML5
+
+          Атрибуты `required`, `type="email"`, `minlength`, `maxlength`, `min`, `max`, `pattern="\d{6}"`. CSS-псевдоклассы `:invalid`, `:user-invalid`.
+
+          ```javascript
+          const email = form.elements.email;
+          email.validity.valid;        // false
+          email.validity.valueMissing; // true, если пусто при required
+          email.validity.typeMismatch; // некорректный email
+          email.setCustomValidity("Этот email уже занят");   // своя ошибка ("" — снять)
+          form.checkValidity();        // проверить все поля
+          form.reportValidity();       // показать стандартные подсказки
+          ```
+
+          `novalidate` на форме отключает стандартные «пузыри», чтобы показывать свои сообщения.
+
+          ## Своя валидация
+
+          ```javascript
+          const rules = {
+            email: (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) || "Неверный email",
+            password: (v) => v.length >= 8 || "Минимум 8 символов",
+          };
+          function validate(values) {
+            const errors = {};
+            for (const [field, check] of Object.entries(rules)) {
+              const res = check(values[field] ?? "");
+              if (res !== true) errors[field] = res;
+            }
+            return errors;
+          }
+          ```
+
+          ## UX и доступность
+
+          - Показывайте ошибку рядом с полем и после `blur`, а не на каждый символ.
+          - Связывайте текст ошибки: `aria-describedby="email-error"`, `aria-invalid="true"`.
+          - Блокируйте кнопку на время отправки, чтобы не было двойного submit.
+          - Валидация на клиенте — для удобства; **сервер обязан проверять всё заново**.
+        practice:
+          - type: fill
+            q: Соберите значения формы в объект
+            code: |
+              const values = Object.fromEntries(new ___(form));
+            answers: ["FormData"]
+          - type: choice
+            q: Как узнать, отмечен ли чекбокс?
+            options: ["checkbox.value", "checkbox.checked", "checkbox.selected", "checkbox.on"]
+            answer: 1
+          - type: choice
+            q: Какое событие срабатывает при каждом нажатии клавиши в поле?
+            options: ["change", "input", "submit", "blur"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              const rules = { age: (v) => Number(v) >= 18 || "Только 18+" };
+              const res = rules.age("16");
+              console.log(res === true ? "ok" : res);
+            answer: Только 18+
+          - type: bug
+            q: Почему страница перезагружается при отправке?
+            code: |
+              form.addEventListener("submit", (e) => {
+                const data = new FormData(form);
+                sendToServer(Object.fromEntries(data));
+              });
+            bugLine: 1
+            fix: добавить e.preventDefault() в начало обработчика
+            explain: Без preventDefault браузер выполнит стандартную отправку формы с перезагрузкой страницы.
+        homework:
+          task: |
+            Сделайте форму регистрации: имя (2–30 символов), email, пароль (≥ 8, цифра и буква), повтор пароля, возраст (14–120), чекбокс согласия. Валидируйте на `blur` и при отправке, показывайте ошибки под полями (`aria-invalid`, `aria-describedby`), кнопка неактивна, пока форма невалидна. При успешной отправке — имитация запроса (`setTimeout` 1 с), блокировка кнопки и сообщение «Готово!».
+          checklist:
+            - Ошибки отображаются у полей
+            - Пароли сравниваются
+            - Нет двойной отправки
+            - Есть атрибуты доступности
+          solution: |
+            const form = document.querySelector("#reg");
+            const rules = {
+              name: (v) => (v.length >= 2 && v.length <= 30) || "От 2 до 30 символов",
+              email: (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) || "Неверный email",
+              password: (v) => (v.length >= 8 && /\d/.test(v) && /[a-zа-я]/i.test(v)) || "Минимум 8 символов, буква и цифра",
+              confirm: (v, all) => v === all.password || "Пароли не совпадают",
+              age: (v) => (Number(v) >= 14 && Number(v) <= 120) || "Возраст 14–120",
+              agree: (v) => v === "on" || "Нужно согласие",
+            };
+            const values = () => Object.fromEntries(new FormData(form));
+            function check(name) {
+              const field = form.elements[name];
+              const res = rules[name](values()[name] ?? "", values());
+              const err = document.querySelector(`#${name}-error`);
+              const ok = res === true;
+              field.setAttribute("aria-invalid", String(!ok));
+              field.setAttribute("aria-describedby", `${name}-error`);
+              err.textContent = ok ? "" : res;
+              return ok;
+            }
+            const allValid = () => Object.keys(rules).every((n) => rules[n](values()[n] ?? "", values()) === true);
+            const btn = form.querySelector("button");
+            form.addEventListener("focusout", (e) => { if (rules[e.target.name]) check(e.target.name); });
+            form.addEventListener("input", () => { btn.disabled = !allValid(); });
+            form.addEventListener("submit", async (e) => {
+              e.preventDefault();
+              const ok = Object.keys(rules).map(check).every(Boolean);
+              if (!ok) return;
+              btn.disabled = true;
+              btn.textContent = "Отправка...";
+              await new Promise((r) => setTimeout(r, 1000));
+              form.replaceWith(Object.assign(document.createElement("p"), { textContent: "Готово!" }));
+            });
+            btn.disabled = true;
+      - id: js-03-04
+        title: localStorage и sessionStorage
+        minutes: 25
+        xp: 30
+        theory: |
+          **Web Storage** — хранилище «ключ → строка» в браузере, привязанное к **origin** (протокол + домен + порт).
+
+          | | localStorage | sessionStorage | Cookie |
+          |---|---|---|---|
+          | Срок жизни | бессрочно | до закрытия вкладки | задаётся |
+          | Объём | ~5–10 МБ | ~5 МБ | ~4 КБ |
+          | Отправляется на сервер | нет | нет | да, с каждым запросом |
+
+          ```javascript
+          localStorage.setItem("theme", "dark");
+          localStorage.getItem("theme");      // "dark"
+          localStorage.getItem("missing");    // null
+          localStorage.removeItem("theme");
+          localStorage.clear();               // всё для этого сайта
+          localStorage.length; localStorage.key(0);
+          ```
+
+          ## Только строки!
+
+          ```javascript
+          localStorage.setItem("count", 5);
+          typeof localStorage.getItem("count");    // "string" — "5"
+          localStorage.setItem("user", { a: 1 });  // сохранится "[object Object]" ❌
+          ```
+
+          Объекты сохраняем через JSON:
+
+          ```javascript
+          const storage = {
+            get(key, fallback) {
+              try {
+                const raw = localStorage.getItem(key);
+                return raw === null ? fallback : JSON.parse(raw);
+              } catch {
+                return fallback;          // повреждённые данные
+              }
+            },
+            set(key, value) {
+              localStorage.setItem(key, JSON.stringify(value));
+            },
+          };
+          storage.set("cart", [{ id: 1, qty: 2 }]);
+          const cart = storage.get("cart", []);
+          ```
+
+          ## Синхронизация вкладок
+
+          Событие `storage` срабатывает в **других** вкладках того же сайта, когда данные изменились:
+
+          ```javascript
+          window.addEventListener("storage", (e) => {
+            if (e.key === "cart") renderCart(JSON.parse(e.newValue));
+          });
+          ```
+
+          ## Ограничения и безопасность
+
+          - API **синхронный** — не храните мегабайты, это тормозит страницу. Для больших данных — **IndexedDB**.
+          - `setItem` может бросить `QuotaExceededError`, а в приватном режиме хранилище бывает недоступно — оборачивайте в try/catch.
+          - Любой JS на странице читает localStorage, поэтому при XSS-уязвимости токены оттуда украдут. Чувствительные токены лучше держать в `HttpOnly` cookie.
+          - Версионируйте схему: `{ version: 2, data }` — пригодится при изменении формата.
+        practice:
+          - type: choice
+            q: Что вернёт localStorage.getItem("x"), если ключа нет?
+            options: ["undefined", "null", "\"\"", "Ошибку"]
+            answer: 1
+          - type: bug
+            q: Где ошибка?
+            code: |
+              const settings = { theme: "dark", font: 16 };
+              localStorage.setItem("settings", settings);
+              const s = JSON.parse(localStorage.getItem("settings"));
+            bugLine: 2
+            fix: localStorage.setItem("settings", JSON.stringify(settings));
+            explain: setItem преобразует объект в строку "[object Object]" — нужен JSON.stringify.
+          - type: choice
+            q: Какое хранилище очищается при закрытии вкладки?
+            options: ["localStorage", "sessionStorage", "IndexedDB", "Cookie без срока"]
+            answer: 1
+          - type: fill
+            q: Подпишитесь на изменения хранилища из других вкладок
+            code: |
+              window.addEventListener("___", (e) => console.log(e.key));
+            answers: ["storage"]
+          - type: choice
+            q: Где безопаснее хранить токен сессии с точки зрения XSS?
+            options: ["localStorage", "sessionStorage", "HttpOnly cookie", "Глобальная переменная"]
+            answer: 2
+        homework:
+          task: |
+            Напишите модуль `persist` с функциями `load(key, fallback)`, `save(key, value)` (try/catch, JSON, версия схемы) и `watch(key, callback)` (событие storage). Примените его: переключатель светлой/тёмной темы, который запоминает выбор, и счётчик посещений страницы. Откройте сайт в двух вкладках и убедитесь, что смена темы в одной меняет её в другой.
+          checklist:
+            - Данные хранятся в JSON
+            - Ошибки разбора не роняют страницу
+            - Вкладки синхронизируются
+          solution: |
+            const VERSION = 1;
+            const persist = {
+              load(key, fallback) {
+                try {
+                  const raw = localStorage.getItem(key);
+                  if (raw === null) return fallback;
+                  const { v, data } = JSON.parse(raw);
+                  return v === VERSION ? data : fallback;
+                } catch {
+                  return fallback;
+                }
+              },
+              save(key, value) {
+                try {
+                  localStorage.setItem(key, JSON.stringify({ v: VERSION, data: value }));
+                } catch (e) {
+                  console.warn("Не удалось сохранить", e);
+                }
+              },
+              watch(key, cb) {
+                window.addEventListener("storage", (e) => {
+                  if (e.key === key) cb(e.newValue ? JSON.parse(e.newValue).data : null);
+                });
+              },
+            };
+
+            const applyTheme = (t) => document.documentElement.classList.toggle("dark", t === "dark");
+            let theme = persist.load("theme", "light");
+            applyTheme(theme);
+            document.querySelector("#theme").addEventListener("click", () => {
+              theme = theme === "dark" ? "light" : "dark";
+              persist.save("theme", theme);
+              applyTheme(theme);
+            });
+            persist.watch("theme", (t) => { theme = t; applyTheme(t); });
+
+            const visits = persist.load("visits", 0) + 1;
+            persist.save("visits", visits);
+            document.querySelector("#visits").textContent = `Вы здесь ${visits}-й раз`;
+      - id: js-03-05
+        title: "Практикум: To-Do приложение"
+        minutes: 60
+        xp: 80
+        theory: |
+          Соберём всё из модуля в одно приложение **To-Do** без фреймворков. Главная идея — **состояние отдельно от DOM**: данные в массиве, а функция `render()` рисует интерфейс по данным.
+
+          ```
+          действие пользователя → изменить state → save() → render()
+          ```
+
+          ## Состояние
+
+          ```javascript
+          let state = load() ?? { todos: [], filter: "all" };
+          // todo: { id: crypto.randomUUID(), text: "Купить хлеб", done: false, createdAt: Date.now() }
+
+          function update(fn) {
+            state = fn(state);                // чистая функция: старое → новое
+            localStorage.setItem("todos-v1", JSON.stringify(state));
+            render();
+          }
+          ```
+
+          ## Действия
+
+          ```javascript
+          const actions = {
+            add: (text) => update((s) => ({ ...s, todos: [...s.todos, { id: crypto.randomUUID(), text, done: false }] })),
+            toggle: (id) => update((s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) })),
+            remove: (id) => update((s) => ({ ...s, todos: s.todos.filter((t) => t.id !== id) })),
+            clearDone: () => update((s) => ({ ...s, todos: s.todos.filter((t) => !t.done) })),
+            setFilter: (filter) => update((s) => ({ ...s, filter })),
+          };
+          ```
+
+          ## Отрисовка
+
+          ```javascript
+          const visible = (s) => s.todos.filter((t) =>
+            s.filter === "active" ? !t.done : s.filter === "done" ? t.done : true);
+
+          function render() {
+            list.replaceChildren(...visible(state).map((t) => {
+              const li = document.createElement("li");
+              li.dataset.id = t.id;
+              li.classList.toggle("done", t.done);
+              li.innerHTML = `<input type="checkbox" data-action="toggle"><span></span><button data-action="remove">✕</button>`;
+              li.querySelector("span").textContent = t.text;   // текст — безопасно
+              li.querySelector("input").checked = t.done;
+              return li;
+            }));
+            const left = state.todos.filter((t) => !t.done).length;
+            counter.textContent = `Осталось: ${left}`;
+          }
+          ```
+
+          ## События — через делегирование
+
+          ```javascript
+          list.addEventListener("click", (e) => {
+            const action = e.target.dataset.action;
+            const id = e.target.closest("li")?.dataset.id;
+            if (action && id) actions[action](id);
+          });
+          form.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (text) actions.add(text);
+            form.reset();
+          });
+          ```
+
+          Такая архитектура (state → render, действия как чистые функции) — это ровно то, что потом делают React и Redux, только автоматически.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const s = { todos: [{ id: 1, done: false }, { id: 2, done: true }] };
+              const s2 = { ...s, todos: s.todos.map((t) => (t.id === 1 ? { ...t, done: true } : t)) };
+              console.log(s.todos[0].done, s2.todos[0].done, s.todos[1] === s2.todos[1]);
+            answer: false true true
+          - type: output
+            q: Что выведет код?
+            code: |
+              const todos = [{ done: true }, { done: false }, { done: false }];
+              const filter = "active";
+              const vis = todos.filter((t) => (filter === "active" ? !t.done : filter === "done" ? t.done : true));
+              console.log(vis.length);
+            answer: "2"
+          - type: choice
+            q: Почему текст задачи вставляется через textContent, а не в шаблон innerHTML?
+            options: ["Так быстрее", "Защита от XSS: пользовательский текст не интерпретируется как HTML", "innerHTML не поддерживает кириллицу", "Без разницы"]
+            answer: 1
+          - type: order
+            q: Расставьте шаги обработки действия пользователя
+            lines:
+              - Пользователь кликает по кнопке
+              - Делегированный обработчик определяет действие и id
+              - Создаётся новое состояние
+              - Состояние сохраняется в localStorage
+              - render() перерисовывает список
+          - type: fill
+            q: Удалите задачу по id, не мутируя массив
+            code: |
+              const next = todos.___((t) => t.id !== id);
+            answers: ["filter"]
+        homework:
+          task: |
+            Реализуйте To-Do полностью: добавление, отметка, удаление, редактирование двойным кликом (Enter — сохранить, Esc — отменить), фильтры «Все / Активные / Готовые» с подсветкой, «Очистить выполненные», счётчик, сохранение в localStorage, синхронизация вкладок. Дополнительно: перетаскивание для сортировки (HTML Drag and Drop) и срок выполнения с подсветкой просроченных задач.
+          checklist:
+            - Состояние отделено от DOM
+            - Все обработчики через делегирование
+            - Данные переживают перезагрузку
+            - Нет XSS при вводе <script>
+          solution: |
+            const KEY = "todos-v1";
+            const $ = (s) => document.querySelector(s);
+            const list = $("#list"), form = $("#new"), input = $("#text"), counter = $("#counter");
+            let state = JSON.parse(localStorage.getItem(KEY) || "null") ?? { todos: [], filter: "all" };
+
+            function update(fn) { state = fn(state); localStorage.setItem(KEY, JSON.stringify(state)); render(); }
+            const mapTodo = (id, f) => (s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? f(t) : t)) });
+            const actions = {
+              add: (text) => update((s) => ({ ...s, todos: [...s.todos, { id: crypto.randomUUID(), text, done: false }] })),
+              toggle: (id) => update(mapTodo(id, (t) => ({ ...t, done: !t.done }))),
+              edit: (id, text) => update(mapTodo(id, (t) => ({ ...t, text }))),
+              remove: (id) => update((s) => ({ ...s, todos: s.todos.filter((t) => t.id !== id) })),
+              clearDone: () => update((s) => ({ ...s, todos: s.todos.filter((t) => !t.done) })),
+              setFilter: (filter) => update((s) => ({ ...s, filter })),
+            };
+            const visible = (s) => s.todos.filter((t) => (s.filter === "active" ? !t.done : s.filter === "done" ? t.done : true));
+
+            function render() {
+              list.replaceChildren(...visible(state).map((t) => {
+                const li = document.createElement("li");
+                li.dataset.id = t.id;
+                li.className = t.done ? "done" : "";
+                li.innerHTML = '<input type="checkbox" data-action="toggle"><span class="text"></span><button data-action="remove">✕</button>';
+                li.querySelector(".text").textContent = t.text;
+                li.querySelector("input").checked = t.done;
+                return li;
+              }));
+              counter.textContent = `Осталось: ${state.todos.filter((t) => !t.done).length}`;
+              document.querySelectorAll("[data-filter]").forEach((b) => b.classList.toggle("active", b.dataset.filter === state.filter));
+            }
+
+            list.addEventListener("click", (e) => {
+              const id = e.target.closest("li")?.dataset.id;
+              const a = e.target.dataset.action;
+              if (id && a) actions[a](id);
+            });
+            list.addEventListener("dblclick", (e) => {
+              const span = e.target.closest(".text");
+              if (!span) return;
+              const id = span.closest("li").dataset.id;
+              const edit = Object.assign(document.createElement("input"), { value: span.textContent });
+              span.replaceWith(edit);
+              edit.focus();
+              edit.addEventListener("keydown", (k) => {
+                if (k.key === "Enter" && edit.value.trim()) actions.edit(id, edit.value.trim());
+                if (k.key === "Escape") render();
+              });
+            });
+            form.addEventListener("submit", (e) => {
+              e.preventDefault();
+              const text = input.value.trim();
+              if (text) actions.add(text);
+              form.reset();
+            });
+            document.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", () => actions.setFilter(b.dataset.filter)));
+            $("#clear").addEventListener("click", actions.clearDone);
+            window.addEventListener("storage", (e) => { if (e.key === KEY) { state = JSON.parse(e.newValue); render(); } });
+            render();

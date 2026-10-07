@@ -1,0 +1,876 @@
+id: java
+modules:
+  - id: java-m10
+    title: Spring Boot
+    level: Middle
+    lessons:
+      - id: java-10-01
+        title: IoC и Dependency Injection
+        minutes: 40
+        xp: 50
+        theory: |
+          **Inversion of Control**: объекты не создают свои зависимости сами — их создаёт и связывает **контейнер Spring** (ApplicationContext). Объекты, которыми он управляет, называются **бинами**.
+
+          ```java
+          @SpringBootApplication           // = @Configuration + @EnableAutoConfiguration + @ComponentScan
+          public class ShopApplication {
+              public static void main(String[] args) { SpringApplication.run(ShopApplication.class, args); }
+          }
+
+          @Repository
+          class JpaOrderRepository implements OrderRepository { ... }
+
+          @Service
+          public class OrderService {
+              private final OrderRepository repo;
+              private final Clock clock;
+
+              public OrderService(OrderRepository repo, Clock clock) {   // внедрение через конструктор
+                  this.repo = repo;
+                  this.clock = clock;
+              }
+          }
+          ```
+
+          ## Способы внедрения
+
+          - **Через конструктор** — рекомендуемый: поля `final`, зависимости явные, легко тестировать без Spring. При одном конструкторе `@Autowired` не нужен.
+          - Через сеттер — для необязательных зависимостей.
+          - Через поле (`@Autowired private Repo repo;`) — не рекомендуется: скрывает зависимости, мешает тестам.
+
+          ## Объявление бинов
+
+          Стереотипы `@Component`, `@Service`, `@Repository` (+ перевод исключений БД), `@Controller`/`@RestController`. Либо методы `@Bean` в классе `@Configuration` — для чужих классов:
+
+          ```java
+          @Configuration
+          class AppConfig {
+              @Bean Clock clock() { return Clock.systemDefaultZone(); }
+          }
+          ```
+
+          ## Несколько реализаций
+
+          Если интерфейс реализуют два бина — ошибка `NoUniqueBeanDefinitionException`. Решение: `@Primary` на основном или `@Qualifier("smsSender")` в точке внедрения. Можно внедрить все: `List<NotificationSender> senders`.
+
+          ## Scope и жизненный цикл
+
+          По умолчанию бин — **singleton** (один на контекст), поэтому он должен быть **без изменяемого состояния** (потокобезопасность!). Также есть `prototype`, `request`, `session`. Хуки: `@PostConstruct`, `@PreDestroy`.
+
+          ## Конфигурация
+
+          ```properties
+          # application.properties
+          shop.delivery.free-from=3000
+          ```
+
+          ```java
+          @ConfigurationProperties(prefix = "shop.delivery")
+          record DeliveryProps(int freeFrom) {}
+          ```
+
+          Профили: `application-dev.properties`, `@Profile("dev")`, запуск с `--spring.profiles.active=prod`.
+        practice:
+          - type: choice
+            q: Какой способ внедрения зависимостей рекомендуется?
+            options: ["Через поле с @Autowired", "Через конструктор", "Через статический метод", "Через new внутри класса"]
+            answer: 1
+          - type: choice
+            q: Какой scope у бина по умолчанию?
+            options: ["prototype", "request", "singleton", "session"]
+            answer: 2
+          - type: fill
+            q: Объявите бин для стороннего класса
+            code: |
+              @Configuration
+              class Config {
+                  @___
+                  ObjectMapper mapper() { return new ObjectMapper(); }
+              }
+            answers: ["Bean"]
+          - type: bug
+            q: Какая строка опасна в singleton-бине, обрабатывающем запросы параллельно?
+            code: |
+              @Service
+              public class PriceService {
+                  private BigDecimal lastDiscount;
+                  public BigDecimal price(Item i) {
+                      lastDiscount = discountFor(i);
+                      return i.price().subtract(lastDiscount);
+                  }
+              }
+            bugLine: 3
+            fix: сделать скидку локальной переменной метода
+            explain: Изменяемое поле singleton-бина разделяется между потоками — гонка данных.
+          - type: choice
+            q: Два бина реализуют один интерфейс. Как выбрать нужный в точке внедрения?
+            options: ["@Qualifier", "@Lazy", "@Scope", "@Value"]
+            answer: 0
+        homework:
+          task: |
+            Создайте Spring Boot приложение (start.spring.io) «Уведомления»: интерфейс `Notifier` и реализации `EmailNotifier`, `SmsNotifier`, `TelegramNotifier`; сервис `NotificationService`, который получает `List<Notifier>` и рассылает сообщение всем включённым каналам. Включённые каналы задаются в `application.yml` через `@ConfigurationProperties`. Для профиля `dev` подмените `SmsNotifier` на `FakeSmsNotifier` (печатает в лог). Запустите через `CommandLineRunner`.
+          checklist:
+            - Внедрение через конструктор
+            - Используется List<Notifier>
+            - Свойства через @ConfigurationProperties
+            - Работает профиль dev
+          solution: |
+            public interface Notifier { String channel(); void send(String to, String text); }
+
+            @Component @Profile("!dev")
+            class SmsNotifier implements Notifier {
+                public String channel() { return "sms"; }
+                public void send(String to, String text) { /* вызов SMS-шлюза */ }
+            }
+            @Component @Profile("dev")
+            class FakeSmsNotifier implements Notifier {
+                private static final Logger log = LoggerFactory.getLogger(FakeSmsNotifier.class);
+                public String channel() { return "sms"; }
+                public void send(String to, String text) { log.info("[FAKE SMS] {}: {}", to, text); }
+            }
+            @Component
+            class EmailNotifier implements Notifier {
+                public String channel() { return "email"; }
+                public void send(String to, String text) { System.out.println("EMAIL " + to + ": " + text); }
+            }
+
+            @ConfigurationProperties(prefix = "notify")
+            record NotifyProps(Set<String> enabled) {}
+
+            @Service
+            class NotificationService {
+                private final List<Notifier> notifiers;
+                private final NotifyProps props;
+                NotificationService(List<Notifier> notifiers, NotifyProps props) { this.notifiers = notifiers; this.props = props; }
+                void broadcast(String to, String text) {
+                    notifiers.stream().filter(n -> props.enabled().contains(n.channel())).forEach(n -> n.send(to, text));
+                }
+            }
+
+            @SpringBootApplication
+            @ConfigurationPropertiesScan
+            public class App {
+                public static void main(String[] args) { SpringApplication.run(App.class, args); }
+                @Bean CommandLineRunner run(NotificationService s) { return args -> s.broadcast("anna", "Заказ отправлен"); }
+            }
+            // application.yml:
+            // notify:
+            //   enabled: [email, sms]
+      - id: java-10-02
+        title: REST-контроллеры
+        minutes: 45
+        xp: 50
+        theory: |
+          **REST** — стиль API, где ресурсы адресуются URL, а действия — HTTP-методами.
+
+          | Метод | URL | Действие | Код ответа |
+          |---|---|---|---|
+          | GET | /api/books | список | 200 |
+          | GET | /api/books/42 | один ресурс | 200 / 404 |
+          | POST | /api/books | создать | 201 + Location |
+          | PUT | /api/books/42 | заменить целиком | 200 |
+          | PATCH | /api/books/42 | частично изменить | 200 |
+          | DELETE | /api/books/42 | удалить | 204 |
+
+          ```java
+          @RestController
+          @RequestMapping("/api/books")
+          public class BookController {
+              private final BookService service;
+              public BookController(BookService service) { this.service = service; }
+
+              @GetMapping
+              public List<BookDto> list(@RequestParam(defaultValue = "") String author,
+                                        @RequestParam(defaultValue = "0") int page) {
+                  return service.find(author, page);
+              }
+
+              @GetMapping("/{id}")
+              public ResponseEntity<BookDto> get(@PathVariable long id) {
+                  return service.findById(id).map(ResponseEntity::ok)
+                                .orElse(ResponseEntity.notFound().build());
+              }
+
+              @PostMapping
+              public ResponseEntity<BookDto> create(@RequestBody CreateBookRequest req) {
+                  BookDto created = service.create(req);
+                  return ResponseEntity.created(URI.create("/api/books/" + created.id())).body(created);
+              }
+
+              @DeleteMapping("/{id}")
+              @ResponseStatus(HttpStatus.NO_CONTENT)
+              public void delete(@PathVariable long id) { service.delete(id); }
+          }
+          ```
+
+          ## DTO вместо сущностей
+
+          Не возвращайте JPA-сущности напрямую: ленивые связи, циклические ссылки, утечка внутренних полей. Используйте **DTO** (records) и маппинг (вручную или MapStruct):
+
+          ```java
+          public record BookDto(long id, String title, String author) {}
+          public record CreateBookRequest(String title, String author, int year) {}
+          ```
+
+          ## Полезное
+
+          - Jackson сам превращает объекты в JSON и обратно.
+          - `@RequestHeader`, `@CookieValue` — заголовки и куки.
+          - Пагинация: `Pageable pageable` в параметрах + `Page<T>` из Spring Data.
+          - Документация API: springdoc-openapi → Swagger UI на `/swagger-ui.html`.
+          - Версионирование: `/api/v1/...`.
+          - Тонкие контроллеры: только HTTP-слой, бизнес-логика — в сервисах.
+        practice:
+          - type: choice
+            q: Какой код ответа правильный при успешном создании ресурса через POST?
+            options: ["200 OK", "201 Created", "204 No Content", "302 Found"]
+            answer: 1
+          - type: fill
+            q: Получите id из пути /api/users/{id}
+            code: |
+              @GetMapping("/{id}")
+              public UserDto get(@___ long id) { ... }
+            answers: ["PathVariable"]
+          - type: fill
+            q: Примите JSON из тела запроса
+            code: |
+              @PostMapping
+              public UserDto create(@___ CreateUserRequest req) { ... }
+            answers: ["RequestBody"]
+          - type: choice
+            q: Почему не стоит возвращать JPA-сущность из контроллера?
+            options: ["Jackson не умеет их сериализовать", "Ленивые связи, циклы и утечка внутренних полей", "Это медленнее DTO в 10 раз", "Spring запрещает"]
+            answer: 1
+          - type: choice
+            q: Какой HTTP-метод соответствует частичному обновлению?
+            options: ["PUT", "PATCH", "POST", "UPDATE"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте REST API «Задачи» (Todo): сущность `Task` (id, title, done, dueDate), in-memory хранилище в сервисе (`ConcurrentHashMap` + `AtomicLong`). Эндпоинты: GET /api/tasks (фильтр `?done=true`), GET /api/tasks/{id} (404 если нет), POST (201 + Location), PUT /{id}, PATCH /{id}/done, DELETE /{id} (204). Используйте DTO-записи. Проверьте через curl или HTTP-клиент IDEA, подключите springdoc и откройте Swagger UI.
+          checklist:
+            - Правильные HTTP-методы и коды
+            - DTO отделены от модели
+            - Есть фильтрация через @RequestParam
+          solution: |
+            public record TaskDto(long id, String title, boolean done, LocalDate dueDate) {}
+            public record TaskRequest(String title, LocalDate dueDate) {}
+
+            @Service
+            class TaskService {
+                private final Map<Long, TaskDto> store = new ConcurrentHashMap<>();
+                private final AtomicLong seq = new AtomicLong();
+                List<TaskDto> all(Boolean done) {
+                    return store.values().stream().filter(t -> done == null || t.done() == done)
+                                .sorted(Comparator.comparing(TaskDto::id)).toList();
+                }
+                Optional<TaskDto> get(long id) { return Optional.ofNullable(store.get(id)); }
+                TaskDto create(TaskRequest r) {
+                    long id = seq.incrementAndGet();
+                    var t = new TaskDto(id, r.title(), false, r.dueDate());
+                    store.put(id, t); return t;
+                }
+                Optional<TaskDto> update(long id, TaskRequest r) {
+                    return get(id).map(o -> { var t = new TaskDto(id, r.title(), o.done(), r.dueDate()); store.put(id, t); return t; });
+                }
+                Optional<TaskDto> markDone(long id) {
+                    return get(id).map(o -> { var t = new TaskDto(id, o.title(), true, o.dueDate()); store.put(id, t); return t; });
+                }
+                boolean delete(long id) { return store.remove(id) != null; }
+            }
+
+            @RestController
+            @RequestMapping("/api/tasks")
+            class TaskController {
+                private final TaskService s;
+                TaskController(TaskService s) { this.s = s; }
+                @GetMapping List<TaskDto> list(@RequestParam(required = false) Boolean done) { return s.all(done); }
+                @GetMapping("/{id}") ResponseEntity<TaskDto> get(@PathVariable long id) { return ResponseEntity.of(s.get(id)); }
+                @PostMapping ResponseEntity<TaskDto> create(@RequestBody TaskRequest r) {
+                    var t = s.create(r);
+                    return ResponseEntity.created(URI.create("/api/tasks/" + t.id())).body(t);
+                }
+                @PutMapping("/{id}") ResponseEntity<TaskDto> put(@PathVariable long id, @RequestBody TaskRequest r) { return ResponseEntity.of(s.update(id, r)); }
+                @PatchMapping("/{id}/done") ResponseEntity<TaskDto> done(@PathVariable long id) { return ResponseEntity.of(s.markDone(id)); }
+                @DeleteMapping("/{id}") ResponseEntity<Void> delete(@PathVariable long id) {
+                    return s.delete(id) ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+                }
+            }
+            // curl -X POST localhost:8080/api/tasks -H 'Content-Type: application/json' -d '{"title":"Купить хлеб"}'
+      - id: java-10-03
+        title: Spring Data JPA
+        minutes: 40
+        xp: 50
+        theory: |
+          **Spring Data JPA** избавляет от шаблонного кода репозиториев: достаточно объявить интерфейс.
+
+          ```java
+          public interface BookRepository extends JpaRepository<Book, Long> {
+              // запросы по имени метода
+              List<Book> findByAuthor(String author);
+              List<Book> findByYearBetweenOrderByYearDesc(int from, int to);
+              Optional<Book> findByIsbn(String isbn);
+              boolean existsByIsbn(String isbn);
+              long countByGenre(Genre genre);
+              List<Book> findTop5ByTitleContainingIgnoreCase(String part);
+
+              // явный JPQL
+              @Query("SELECT b FROM Book b WHERE b.price < :max AND b.available = true")
+              List<Book> cheap(@Param("max") BigDecimal max);
+
+              // нативный SQL
+              @Query(value = "SELECT * FROM book WHERE to_tsvector(title) @@ plainto_tsquery(?1)", nativeQuery = true)
+              List<Book> fullText(String q);
+
+              // изменение
+              @Modifying
+              @Query("UPDATE Book b SET b.price = b.price * :k WHERE b.genre = :g")
+              int reprice(@Param("g") Genre g, @Param("k") BigDecimal k);
+          }
+          ```
+
+          `JpaRepository` уже даёт: `save`, `saveAll`, `findById`, `findAll`, `deleteById`, `count`, `existsById` и др.
+
+          ## Пагинация и сортировка
+
+          ```java
+          Page<Book> page = repo.findByGenre(Genre.NOVEL,
+                  PageRequest.of(0, 20, Sort.by("year").descending()));
+          page.getContent(); page.getTotalElements(); page.getTotalPages();
+          ```
+
+          В контроллер можно принять `Pageable` прямо из параметров `?page=0&size=20&sort=year,desc`.
+
+          ## Проекции
+
+          ```java
+          interface BookTitle { String getTitle(); String getAuthor(); }   // интерфейсная проекция
+          List<BookTitle> findByGenre(Genre g);
+          record BookShort(String title, int year) {}                      // DTO-проекция
+          ```
+
+          Выбираются только нужные колонки — быстрее, чем целые сущности.
+
+          ## Решение N+1
+
+          ```java
+          @EntityGraph(attributePaths = {"author", "tags"})
+          List<Book> findAllByGenre(Genre g);
+          ```
+
+          ## Specifications
+
+          Для динамических фильтров (поиск с необязательными полями) — `JpaSpecificationExecutor<Book>` и комбинация `Specification.where(...).and(...)`, либо Querydsl.
+
+          ## Аудит
+
+          `@EnableJpaAuditing` + `@CreatedDate`, `@LastModifiedDate` в сущности с `@EntityListeners(AuditingEntityListener.class)` — даты заполняются автоматически.
+        practice:
+          - type: fill
+            q: Создайте репозиторий для сущности User с id типа Long
+            code: |
+              public interface UserRepository extends ___<User, Long> {}
+            answers: ["JpaRepository"]
+          - type: choice
+            q: Какой метод корректно найдёт пользователей по email без учёта регистра?
+            options: ["findEmailIgnoreCase(String e)", "findByEmailIgnoreCase(String e)", "getUserByEmailCase(String e)", "searchEmail(String e)"]
+            answer: 1
+          - type: bug
+            q: Чего не хватает для UPDATE-запроса?
+            code: |
+              public interface UserRepository extends JpaRepository<User, Long> {
+                  @Query("UPDATE User u SET u.active = false WHERE u.lastLogin < :d")
+                  int deactivate(@Param("d") LocalDate d);
+              }
+            bugLine: 2
+            fix: добавить @Modifying над @Query (и вызывать в транзакции)
+            explain: Изменяющий запрос без @Modifying Spring Data выполнит как SELECT и упадёт.
+          - type: choice
+            q: Как получить вторую страницу по 10 элементов, отсортированную по имени?
+            options: ["PageRequest.of(2, 10, Sort.by(\"name\"))", "PageRequest.of(1, 10, Sort.by(\"name\"))", "Page.of(10, 2)", "Sort.page(1)"]
+            answer: 1
+          - type: fill
+            q: Подгрузите автора вместе с книгами одним запросом
+            code: |
+              @___(attributePaths = "author")
+              List<Book> findAll();
+            answers: ["EntityGraph"]
+        homework:
+          task: |
+            Переведите API «Задачи» из прошлого урока на Spring Data JPA + H2 (или PostgreSQL с Flyway). Добавьте: сущность `Project` 1—N `Task`; методы репозитория `findByDoneFalseAndDueDateBefore(LocalDate)`, `countByProjectId`, `@Query` для поиска по подстроке в названии; пагинацию в GET /api/tasks (`Pageable`), интерфейсную проекцию для списка (только id и title), `@EntityGraph` для загрузки задач с проектом. Включите `show-sql` и убедитесь, что нет N+1.
+          checklist:
+            - Используется JpaRepository
+            - Есть derived-запросы и @Query
+            - Пагинация через Pageable
+            - Нет N+1 в логах
+          solution: |
+            @Entity class Project { @Id @GeneratedValue Long id; String name; }
+            @Entity class Task {
+                @Id @GeneratedValue Long id;
+                String title; boolean done; LocalDate dueDate;
+                @ManyToOne(fetch = FetchType.LAZY) Project project;
+            }
+
+            interface TaskTitle { Long getId(); String getTitle(); }
+
+            public interface TaskRepository extends JpaRepository<Task, Long> {
+                List<Task> findByDoneFalseAndDueDateBefore(LocalDate date);
+                long countByProjectId(Long projectId);
+                @Query("SELECT t FROM Task t WHERE LOWER(t.title) LIKE LOWER(CONCAT('%', :q, '%'))")
+                List<Task> search(@Param("q") String q);
+                Page<TaskTitle> findAllProjectedBy(Pageable pageable);
+                @EntityGraph(attributePaths = "project")
+                List<Task> findByProjectNameOrderByDueDate(String projectName);
+            }
+
+            @RestController @RequestMapping("/api/tasks")
+            class TaskController {
+                private final TaskRepository repo;
+                TaskController(TaskRepository repo) { this.repo = repo; }
+                @GetMapping Page<TaskTitle> list(@PageableDefault(size = 20, sort = "id") Pageable p) { return repo.findAllProjectedBy(p); }
+                @GetMapping("/overdue") List<Task> overdue() { return repo.findByDoneFalseAndDueDateBefore(LocalDate.now()); }
+                @GetMapping("/search") List<Task> search(@RequestParam String q) { return repo.search(q); }
+            }
+            // spring.jpa.show-sql=true
+            // GET /api/tasks?page=0&size=5&sort=dueDate,desc
+      - id: java-10-04
+        title: Валидация и обработка ошибок
+        minutes: 40
+        xp: 50
+        theory: |
+          ## Bean Validation
+
+          Подключите `spring-boot-starter-validation` и опишите правила аннотациями:
+
+          ```java
+          public record RegisterRequest(
+              @NotBlank @Size(min = 3, max = 30) String login,
+              @NotBlank @Email String email,
+              @NotNull @Min(14) @Max(120) Integer age,
+              @Pattern(regexp = "\\+7\\d{10}") String phone,
+              @Valid @NotNull AddressDto address        // каскадная проверка вложенного объекта
+          ) {}
+
+          @PostMapping("/register")
+          public UserDto register(@Valid @RequestBody RegisterRequest req) { ... }
+          ```
+
+          Невалидный запрос → `MethodArgumentNotValidException` → по умолчанию 400. Для параметров (`@PathVariable @Min(1)`) нужен `@Validated` на классе контроллера.
+
+          Свои правила: аннотация + `ConstraintValidator<Annotation, Type>`.
+
+          ## Глобальная обработка ошибок
+
+          ```java
+          @RestControllerAdvice
+          public class ApiExceptionHandler {
+
+              @ExceptionHandler(NotFoundException.class)
+              @ResponseStatus(HttpStatus.NOT_FOUND)
+              public ProblemDetail notFound(NotFoundException e) {
+                  return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+              }
+
+              @ExceptionHandler(MethodArgumentNotValidException.class)
+              public ProblemDetail invalid(MethodArgumentNotValidException e) {
+                  ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+                  pd.setTitle("Ошибка валидации");
+                  Map<String, String> errors = new LinkedHashMap<>();
+                  e.getBindingResult().getFieldErrors()
+                   .forEach(fe -> errors.put(fe.getField(), fe.getDefaultMessage()));
+                  pd.setProperty("errors", errors);
+                  return pd;
+              }
+          }
+          ```
+
+          `ProblemDetail` — стандартный формат ошибок **RFC 7807/9457** (`type`, `title`, `status`, `detail`, `instance`), поддержан в Spring 6.
+
+          ## Принципы
+
+          - Бизнес-ошибки — свои исключения (`NotFoundException`, `ConflictException`) в сервисах, превращение в HTTP — в одном месте (advice).
+          - Коды: 400 — неверные данные, 401 — не аутентифицирован, 403 — нет прав, 404 — нет ресурса, 409 — конфликт (дубликат), 422 — бизнес-правило нарушено, 500 — непредвиденная ошибка.
+          - Для 500 не показывайте стек-трейс клиенту — логируйте его на сервере и возвращайте общий текст.
+          - Валидация на клиенте — для удобства, на сервере — **обязательна**.
+        practice:
+          - type: fill
+            q: Включите валидацию тела запроса
+            code: |
+              @PostMapping
+              public UserDto create(@___ @RequestBody CreateUserRequest req) { ... }
+            answers: ["Valid"]
+          - type: choice
+            q: Какая аннотация проверяет, что строка не null и не состоит из пробелов?
+            options: ["@NotNull", "@NotEmpty", "@NotBlank", "@Size(min=1)"]
+            answer: 2
+          - type: fill
+            q: Объявите глобальный обработчик ошибок для REST
+            code: |
+              @___
+              public class ErrorHandler { ... }
+            answers: ["RestControllerAdvice"]
+          - type: choice
+            q: Пользователь пытается зарегистрировать уже занятый email. Какой код ответа уместнее?
+            options: ["400", "404", "409", "500"]
+            answer: 2
+          - type: bug
+            q: Почему вложенный адрес не проверяется?
+            code: |
+              public record OrderRequest(
+                  @NotBlank String product,
+                  @NotNull AddressDto address
+              ) {}
+              public record AddressDto(@NotBlank String city) {}
+            bugLine: 3
+            fix: "@Valid @NotNull AddressDto address"
+            explain: Для каскадной проверки вложенного объекта нужна аннотация @Valid.
+        homework:
+          task: |
+            Добавьте в API «Задачи» валидацию: title 1–100 символов и не пустой, dueDate не в прошлом (`@FutureOrPresent`), своя аннотация `@NoBadWords` с `ConstraintValidator`. Создайте `@RestControllerAdvice`, возвращающий `ProblemDetail`: 400 со списком ошибок полей, 404 для `TaskNotFoundException`, 409 для дубликата названия в проекте, 500 с общим сообщением (и логированием стека). Напишите 3 теста через MockMvc.
+          checklist:
+            - Используется @Valid
+            - Есть своя аннотация-валидатор
+            - Ответы об ошибках в едином формате
+          solution: |
+            @Target(ElementType.FIELD) @Retention(RetentionPolicy.RUNTIME)
+            @Constraint(validatedBy = NoBadWordsValidator.class)
+            public @interface NoBadWords {
+                String message() default "недопустимые слова";
+                Class<?>[] groups() default {};
+                Class<? extends Payload>[] payload() default {};
+            }
+            public class NoBadWordsValidator implements ConstraintValidator<NoBadWords, String> {
+                private static final Set<String> BAD = Set.of("спам", "казино");
+                public boolean isValid(String v, ConstraintValidatorContext ctx) {
+                    return v == null || BAD.stream().noneMatch(v.toLowerCase()::contains);
+                }
+            }
+
+            public record TaskRequest(
+                @NotBlank @Size(max = 100) @NoBadWords String title,
+                @FutureOrPresent LocalDate dueDate) {}
+
+            @RestControllerAdvice
+            class ApiErrors {
+                private static final Logger log = LoggerFactory.getLogger(ApiErrors.class);
+                @ExceptionHandler(MethodArgumentNotValidException.class)
+                ProblemDetail invalid(MethodArgumentNotValidException e) {
+                    var pd = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Ошибка валидации");
+                    var errors = new LinkedHashMap<String, String>();
+                    e.getBindingResult().getFieldErrors().forEach(f -> errors.put(f.getField(), f.getDefaultMessage()));
+                    pd.setProperty("errors", errors);
+                    return pd;
+                }
+                @ExceptionHandler(TaskNotFoundException.class)
+                ProblemDetail notFound(TaskNotFoundException e) { return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage()); }
+                @ExceptionHandler(DuplicateTaskException.class)
+                ProblemDetail conflict(DuplicateTaskException e) { return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage()); }
+                @ExceptionHandler(Exception.class)
+                ProblemDetail other(Exception e) {
+                    log.error("Необработанная ошибка", e);
+                    return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Внутренняя ошибка сервера");
+                }
+            }
+
+            // Тест:
+            // mvc.perform(post("/api/tasks").contentType(APPLICATION_JSON).content("{\"title\":\"\"}"))
+            //    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.title").exists());
+      - id: java-10-05
+        title: Spring Security и JWT
+        minutes: 45
+        xp: 55
+        theory: |
+          **Аутентификация** — кто вы (логин/пароль, токен). **Авторизация** — что вам можно (роли, права).
+
+          ## Конфигурация Spring Security 6
+
+          ```java
+          @Configuration
+          @EnableMethodSecurity
+          public class SecurityConfig {
+              @Bean
+              SecurityFilterChain filterChain(HttpSecurity http, JwtFilter jwtFilter) throws Exception {
+                  return http
+                      .csrf(csrf -> csrf.disable())                       // REST без cookie-сессий
+                      .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                      .authorizeHttpRequests(auth -> auth
+                          .requestMatchers("/api/auth/**").permitAll()
+                          .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN")
+                          .anyRequest().authenticated())
+                      .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                      .build();
+              }
+
+              @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+          }
+          ```
+
+          Пароли **никогда** не хранят в открытом виде — только хеш BCrypt/Argon2: `encoder.encode(raw)`, проверка `encoder.matches(raw, hash)`.
+
+          ## JWT
+
+          **JSON Web Token** = `header.payload.signature` (Base64URL). В payload — «claims»: `sub` (пользователь), `roles`, `exp` (срок действия). Подпись (HMAC-SHA256 или RSA) гарантирует, что токен не подделан. Payload **не шифруется** — не кладите туда секреты.
+
+          Поток:
+          1. `POST /api/auth/login` с логином/паролем → сервер проверяет и выдаёт **access token** (15 мин) и **refresh token** (дни).
+          2. Клиент шлёт `Authorization: Bearer <token>` в каждом запросе.
+          3. Фильтр проверяет подпись и срок, кладёт пользователя в `SecurityContextHolder`.
+
+          ```java
+          @Component
+          class JwtFilter extends OncePerRequestFilter {
+              protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+                      throws ServletException, IOException {
+                  String h = req.getHeader("Authorization");
+                  if (h != null && h.startsWith("Bearer ")) {
+                      jwt.parse(h.substring(7)).ifPresent(claims -> {
+                          var auth = new UsernamePasswordAuthenticationToken(claims.user(), null, claims.authorities());
+                          SecurityContextHolder.getContext().setAuthentication(auth);
+                      });
+                  }
+                  chain.doFilter(req, res);
+              }
+          }
+          ```
+
+          ## Авторизация в методах
+
+          ```java
+          @PreAuthorize("hasRole('ADMIN') or #userId == authentication.name")
+          public UserDto getProfile(String userId) { ... }
+          ```
+
+          Альтернатива самописному фильтру — `spring-boot-starter-oauth2-resource-server` с `.oauth2ResourceServer(o -> o.jwt(...))` и внешним провайдером (Keycloak).
+        practice:
+          - type: choice
+            q: Как правильно хранить пароли пользователей?
+            options: ["В открытом виде", "В Base64", "Хеш BCrypt/Argon2", "Зашифрованными AES с ключом в коде"]
+            answer: 2
+          - type: choice
+            q: Какой заголовок обычно передаёт JWT?
+            options: ["Cookie: jwt=...", "Authorization: Bearer <token>", "X-Password", "Accept: token"]
+            answer: 1
+          - type: choice
+            q: Можно ли хранить секретные данные в payload JWT?
+            options: ["Да, он зашифрован", "Нет, payload только закодирован Base64URL и читается кем угодно", "Да, если подпись RSA", "Только пароль"]
+            answer: 1
+          - type: fill
+            q: Разрешите доступ к /api/auth/** без аутентификации
+            code: |
+              .requestMatchers("/api/auth/**").___()
+            answers: ["permitAll"]
+          - type: fill
+            q: Ограничьте метод ролью ADMIN
+            code: |
+              @___("hasRole('ADMIN')")
+              public void deleteUser(long id) { ... }
+            answers: ["PreAuthorize"]
+        homework:
+          task: |
+            Защитите API «Задачи»: сущность `User` (login, passwordHash, role USER/ADMIN), `POST /api/auth/register` и `POST /api/auth/login` (возвращает JWT, библиотека jjwt или nimbus-jose-jwt), фильтр JWT, stateless-сессии. Пользователь видит и меняет только свои задачи; ADMIN — все и может удалять пользователей (`@PreAuthorize`). 401 при отсутствии токена, 403 при нехватке прав. Напишите тест с `@WithMockUser`.
+          checklist:
+            - Пароли хранятся в BCrypt
+            - Токен имеет срок действия
+            - Пользователь не видит чужие задачи
+            - Правильные коды 401/403
+          solution: |
+            @Service
+            class JwtService {
+                private final SecretKey key = Keys.hmacShaKeyFor(System.getenv("JWT_SECRET").getBytes());
+                String issue(User u) {
+                    return Jwts.builder().subject(u.getLogin()).claim("role", u.getRole().name())
+                        .issuedAt(new Date()).expiration(Date.from(Instant.now().plus(15, ChronoUnit.MINUTES)))
+                        .signWith(key).compact();
+                }
+                Optional<Claims> parse(String token) {
+                    try { return Optional.of(Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload()); }
+                    catch (JwtException e) { return Optional.empty(); }
+                }
+            }
+
+            @RestController @RequestMapping("/api/auth")
+            class AuthController {
+                private final UserRepository users; private final PasswordEncoder enc; private final JwtService jwt;
+                AuthController(UserRepository u, PasswordEncoder e, JwtService j) { users = u; enc = e; jwt = j; }
+                record Credentials(@NotBlank String login, @NotBlank String password) {}
+                @PostMapping("/register") @ResponseStatus(HttpStatus.CREATED)
+                void register(@Valid @RequestBody Credentials c) {
+                    if (users.existsByLogin(c.login())) throw new ResponseStatusException(HttpStatus.CONFLICT);
+                    users.save(new User(c.login(), enc.encode(c.password()), Role.USER));
+                }
+                @PostMapping("/login")
+                Map<String, String> login(@Valid @RequestBody Credentials c) {
+                    User u = users.findByLogin(c.login())
+                        .filter(x -> enc.matches(c.password(), x.getPasswordHash()))
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+                    return Map.of("accessToken", jwt.issue(u));
+                }
+            }
+
+            // В TaskService: repo.findByOwnerLogin(SecurityContextHolder.getContext().getAuthentication().getName())
+            // @PreAuthorize("hasRole('ADMIN')") public void deleteUser(long id)
+
+            @SpringBootTest @AutoConfigureMockMvc
+            class SecurityTest {
+                @Autowired MockMvc mvc;
+                @Test void noToken401() throws Exception { mvc.perform(get("/api/tasks")).andExpect(status().isUnauthorized()); }
+                @Test @WithMockUser(roles = "USER")
+                void userCannotDeleteUsers() throws Exception { mvc.perform(delete("/api/admin/users/1")).andExpect(status().isForbidden()); }
+            }
+      - id: java-10-06
+        title: Тестирование Spring-приложений
+        minutes: 40
+        xp: 50
+        theory: |
+          ## Пирамида тестов
+
+          Много быстрых **модульных** тестов (JUnit + Mockito, без Spring), меньше **срезовых** и **интеграционных**, совсем немного end-to-end.
+
+          ## Срезы (slice tests)
+
+          Поднимают только часть контекста — быстрее полного:
+
+          ```java
+          @WebMvcTest(BookController.class)          // только веб-слой
+          class BookControllerTest {
+              @Autowired MockMvc mvc;
+              @MockitoBean BookService service;        // (до Boot 3.4 — @MockBean)
+
+              @Test
+              void returnsBook() throws Exception {
+                  when(service.findById(1L)).thenReturn(Optional.of(new BookDto(1, "Мастер и Маргарита", "Булгаков")));
+                  mvc.perform(get("/api/books/1"))
+                     .andExpect(status().isOk())
+                     .andExpect(jsonPath("$.title").value("Мастер и Маргарита"));
+              }
+
+              @Test
+              void validatesInput() throws Exception {
+                  mvc.perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"\"}"))
+                     .andExpect(status().isBadRequest());
+              }
+          }
+
+          @DataJpaTest                                 // только JPA + встроенная БД, каждый тест в откатываемой транзакции
+          class BookRepositoryTest {
+              @Autowired BookRepository repo;
+              @Test void findsByAuthor() {
+                  repo.save(new Book("Идиот", "Достоевский"));
+                  assertThat(repo.findByAuthor("Достоевский")).hasSize(1);
+              }
+          }
+          ```
+
+          ## Полный контекст
+
+          ```java
+          @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+          class ApiIT {
+              @Autowired TestRestTemplate rest;
+              @Test void createAndGet() {
+                  var resp = rest.postForEntity("/api/books", new CreateBookRequest("Дубровский", "Пушкин", 1841), BookDto.class);
+                  assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+              }
+          }
+          ```
+
+          ## Testcontainers
+
+          H2 ведёт себя не как PostgreSQL. **Testcontainers** запускает настоящую БД в Docker на время тестов:
+
+          ```java
+          @Testcontainers
+          @SpringBootTest
+          class RepoIT {
+              @Container @ServiceConnection
+              static PostgreSQLContainer<?> pg = new PostgreSQLContainer<>("postgres:16");
+          }
+          ```
+
+          `@ServiceConnection` (Boot 3.1+) сам пропишет URL, логин и пароль.
+
+          ## Советы
+
+          - Кеш контекста: одинаковая конфигурация тестов → контекст переиспользуется. Каждый новый `@MockitoBean` создаёт новый контекст — не злоупотребляйте.
+          - Не полагайтесь на порядок тестов и общие данные; очищайте БД или используйте транзакции.
+          - Тестовый профиль: `application-test.yml` + `@ActiveProfiles("test")`.
+        practice:
+          - type: choice
+            q: Какая аннотация поднимает только веб-слой для тестов контроллера?
+            options: ["@SpringBootTest", "@WebMvcTest", "@DataJpaTest", "@JsonTest"]
+            answer: 1
+          - type: fill
+            q: Проверьте статус и поле JSON ответа
+            code: |
+              mvc.perform(get("/api/books/1"))
+                 .andExpect(___().isOk())
+                 .andExpect(___("$.title").value("Идиот"));
+            answers: ["status", "jsonPath"]
+          - type: choice
+            q: Зачем нужен Testcontainers?
+            options: ["Для мокирования сервисов", "Запустить настоящую БД/брокер в Docker на время тестов", "Для нагрузочного тестирования", "Для генерации тестовых данных"]
+            answer: 1
+          - type: choice
+            q: Что происходит с данными после каждого теста в @DataJpaTest по умолчанию?
+            options: ["Сохраняются", "Транзакция откатывается", "Удаляется вся БД", "Экспортируются в файл"]
+            answer: 1
+          - type: order
+            q: Расставьте уровни пирамиды тестов от самого многочисленного к самому малочисленному
+            lines:
+              - Модульные тесты (JUnit + Mockito)
+              - Срезовые тесты (@WebMvcTest, @DataJpaTest)
+              - Интеграционные тесты (@SpringBootTest + Testcontainers)
+              - End-to-end тесты
+        homework:
+          task: |
+            Покройте API «Задачи» тестами: (1) модульные тесты `TaskService` с Mockito; (2) `@WebMvcTest` для контроллера — успешный GET, 404, 400 при невалидном теле, 201 при создании; (3) `@DataJpaTest` для derived-запросов репозитория; (4) один интеграционный тест `@SpringBootTest` + Testcontainers PostgreSQL, проверяющий полный сценарий «создать → получить → отметить выполненной → удалить». Настройте запуск в CI (`mvn verify`).
+          checklist:
+            - Есть все 4 уровня тестов
+            - Testcontainers с PostgreSQL
+            - Тесты независимы друг от друга
+          solution: |
+            @WebMvcTest(TaskController.class)
+            class TaskControllerTest {
+                @Autowired MockMvc mvc;
+                @MockitoBean TaskService service;
+
+                @Test void getOk() throws Exception {
+                    when(service.get(1L)).thenReturn(Optional.of(new TaskDto(1, "Тест", false, null)));
+                    mvc.perform(get("/api/tasks/1")).andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Тест"));
+                }
+                @Test void getNotFound() throws Exception {
+                    when(service.get(9L)).thenReturn(Optional.empty());
+                    mvc.perform(get("/api/tasks/9")).andExpect(status().isNotFound());
+                }
+                @Test void createInvalid() throws Exception {
+                    mvc.perform(post("/api/tasks").contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"\"}"))
+                       .andExpect(status().isBadRequest());
+                }
+            }
+
+            @DataJpaTest
+            class TaskRepositoryTest {
+                @Autowired TaskRepository repo;
+                @Test void overdue() {
+                    var t = new Task(); t.title = "старая"; t.dueDate = LocalDate.now().minusDays(1);
+                    repo.save(t);
+                    assertThat(repo.findByDoneFalseAndDueDateBefore(LocalDate.now())).hasSize(1);
+                }
+            }
+
+            @Testcontainers
+            @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+            class TaskFlowIT {
+                @Container @ServiceConnection static PostgreSQLContainer<?> pg = new PostgreSQLContainer<>("postgres:16");
+                @Autowired TestRestTemplate rest;
+
+                @Test void fullFlow() {
+                    var created = rest.postForEntity("/api/tasks", new TaskRequest("Купить хлеб", null), TaskDto.class);
+                    assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+                    long id = created.getBody().id();
+                    assertThat(rest.getForObject("/api/tasks/" + id, TaskDto.class).title()).isEqualTo("Купить хлеб");
+                    rest.patchForObject("/api/tasks/" + id + "/done", null, TaskDto.class);
+                    rest.delete("/api/tasks/" + id);
+                    assertThat(rest.getForEntity("/api/tasks/" + id, String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+                }
+            }

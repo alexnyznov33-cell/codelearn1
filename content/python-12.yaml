@@ -1,0 +1,611 @@
+id: python
+modules:
+  - id: py-m12
+    title: Инженерные практики Middle
+    level: Middle
+    lessons:
+      - id: py-12-01
+        title: Git и code review
+        minutes: 30
+        xp: 30
+        theory: |
+          **Git** — система контроля версий. Без неё не работает ни одна команда.
+
+          ## Базовые команды
+
+          ```
+          git init / git clone <url>
+          git status                     # что изменилось
+          git add file.py / git add .    # в индекс (staging)
+          git commit -m "feat: add login endpoint"
+          git log --oneline --graph
+          git diff                       # изменения
+          git push / git pull
+          ```
+
+          ## Ветки
+
+          ```
+          git switch -c feature/login    # создать ветку и перейти
+          git switch main
+          git merge feature/login        # влить ветку
+          git rebase main                # переписать свою ветку поверх main (линейная история)
+          git stash / git stash pop      # временно убрать изменения
+          ```
+
+          ## Рабочий процесс (GitHub Flow)
+
+          1. От `main` создаётся ветка под задачу: `feature/TASK-123-login`.
+          2. Небольшие осмысленные коммиты.
+          3. Push и **Pull Request** (Merge Request).
+          4. CI запускает тесты и линтеры, коллеги делают **code review**.
+          5. После одобрения — merge в `main`, деплой.
+
+          ## Хорошие коммиты
+
+          **Conventional Commits:** `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. Сообщение отвечает на вопрос «что и зачем», один коммит — одно логическое изменение.
+
+          ## Code review
+
+          Автору: маленькие PR (до ~400 строк), описание «что/зачем/как проверить», самопроверка перед отправкой.
+          Ревьюеру: проверять логику, граничные случаи, читаемость, тесты, безопасность; формулировать замечания вежливо и конкретно; отделять обязательные правки от пожеланий (`nit:`).
+
+          ## Конфликты
+
+          При merge/rebase Git помечает конфликтующие места `<<<<<<<`, `=======`, `>>>>>>>`. Их нужно вручную исправить, затем `git add` и продолжить (`git rebase --continue`).
+
+          `.gitignore` — не коммитим `.venv/`, `__pycache__/`, `.env`, секреты.
+        practice:
+          - type: choice
+            q: Какая команда создаёт новую ветку и переключается на неё?
+            options: ["`git branch`", "`git switch -c feature/x`", "`git merge feature/x`", "`git init feature/x`"]
+            answer: 1
+          - type: order
+            q: Расставьте шаги отправки изменений
+            lines:
+              - git add .
+              - "git commit -m \"fix: handle empty cart\""
+              - git push origin fix/empty-cart
+          - type: choice
+            q: Какое сообщение коммита лучше?
+            options: ["`fix`", "`изменения`", "`fix: return 404 when order not found`", "`asdasd`"]
+            answer: 2
+          - type: choice
+            q: Что НЕ должно попадать в Git?
+            options: ["`requirements.txt`", "`.env` с паролями", "Тесты", "`README.md`"]
+            answer: 1
+        homework:
+          task: |
+            Создайте репозиторий на GitHub для проекта «Заметки API». Сделайте 3 ветки с фичами, откройте Pull Request'ы, специально создайте и разрешите конфликт слиянием, оформите коммиты по Conventional Commits. Напишите шаблон PR `.github/pull_request_template.md`.
+          checklist:
+            - История коммитов осмысленная
+            - Конфликт разрешён вручную
+          solution: |
+            ## Что сделано
+            -
+
+            ## Зачем
+            -
+
+            ## Как проверить
+            1.
+
+            ## Чек-лист
+            - [ ] Тесты добавлены/обновлены
+            - [ ] Линтеры проходят
+            - [ ] Нет секретов в коде
+
+      - id: py-12-02
+        title: Docker для Python-приложений
+        minutes: 30
+        xp: 35
+        theory: |
+          **Docker** упаковывает приложение со всеми зависимостями в **образ**, который одинаково работает на ноутбуке, сервере и в CI. Запущенный образ — **контейнер**.
+
+          ## Dockerfile
+
+          ```
+          FROM python:3.12-slim
+
+          ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+          WORKDIR /app
+
+          COPY requirements.txt .
+          RUN pip install --no-cache-dir -r requirements.txt     # слой кэшируется, пока не изменятся зависимости
+
+          COPY . .
+          RUN useradd -m appuser
+          USER appuser                                           # не запускаем от root
+
+          EXPOSE 8000
+          CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ```
+
+          Порядок важен: сначала копируем `requirements.txt` и ставим зависимости, потом код — так при изменении кода не переустанавливаются пакеты. Добавьте `.dockerignore` (`.venv`, `.git`, `__pycache__`, `.env`).
+
+          ## Команды
+
+          ```
+          docker build -t notes-api .
+          docker run -p 8000:8000 --env-file .env notes-api
+          docker ps / docker logs <id> / docker exec -it <id> sh
+          ```
+
+          ## docker compose — несколько сервисов
+
+          ```yaml
+          services:
+            api:
+              build: .
+              ports: ["8000:8000"]
+              environment:
+                DATABASE_URL: postgresql+psycopg://app:secret@db:5432/app
+              depends_on:
+                db:
+                  condition: service_healthy
+            db:
+              image: postgres:16
+              environment:
+                POSTGRES_USER: app
+                POSTGRES_PASSWORD: secret
+                POSTGRES_DB: app
+              volumes: ["pgdata:/var/lib/postgresql/data"]
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U app"]
+                interval: 5s
+          volumes:
+            pgdata:
+          ```
+
+          `docker compose up -d --build`, `docker compose down`. Сервисы видят друг друга по имени (`db`).
+
+          ## Принципы
+
+          Один процесс на контейнер, конфигурация через переменные окружения (12-factor), данные — в volumes, образы — маленькие (`slim`, multi-stage сборка).
+        practice:
+          - type: choice
+            q: Чем образ отличается от контейнера?
+            options: ["Ничем", "Образ — шаблон, контейнер — его запущенный экземпляр", "Контейнер — шаблон", "Образ — это виртуальная машина"]
+            answer: 1
+          - type: choice
+            q: Почему requirements.txt копируют до остального кода?
+            options: ["Так требует Docker", "Чтобы слой с зависимостями кэшировался и не пересобирался при изменении кода", "Для безопасности", "Без разницы"]
+            answer: 1
+          - type: fill
+            q: Пробросьте порт 8000 контейнера на хост
+            code: |
+              docker run ___ 8000:8000 notes-api
+            answers: ["-p"]
+          - type: choice
+            q: Как сервис api обращается к базе в docker compose?
+            options: ["По `localhost`", "По имени сервиса, например `db`", "По IP хоста", "Никак"]
+            answer: 1
+        homework:
+          task: |
+            Контейнеризуйте «Заметки API» с PostgreSQL: Dockerfile (непривилегированный пользователь, кэширование зависимостей), `.dockerignore`, `docker-compose.yml` (api + db с healthcheck и volume). Миграции Alembic должны применяться при старте контейнера.
+          checklist:
+            - "`docker compose up` поднимает рабочее API"
+            - Данные БД переживают перезапуск
+          solution: |
+            # entrypoint.sh
+            #!/bin/sh
+            set -e
+            alembic upgrade head
+            exec uvicorn main:app --host 0.0.0.0 --port 8000
+
+            # Dockerfile
+            FROM python:3.12-slim
+            WORKDIR /app
+            COPY requirements.txt .
+            RUN pip install --no-cache-dir -r requirements.txt
+            COPY . .
+            RUN chmod +x entrypoint.sh && useradd -m app
+            USER app
+            CMD ["./entrypoint.sh"]
+
+      - id: py-12-03
+        title: CI/CD с GitHub Actions
+        minutes: 25
+        xp: 30
+        theory: |
+          - **CI** (Continuous Integration) — при каждом push/PR автоматически запускаются линтеры, проверка типов и тесты.
+          - **CD** (Continuous Delivery/Deployment) — после успешных проверок приложение автоматически собирается и выкатывается.
+
+          ## GitHub Actions
+
+          Файл `.github/workflows/ci.yml`:
+
+          ```yaml
+          name: CI
+          on:
+            push:
+              branches: [main]
+            pull_request:
+
+          jobs:
+            test:
+              runs-on: ubuntu-latest
+              services:
+                postgres:
+                  image: postgres:16
+                  env:
+                    POSTGRES_PASSWORD: secret
+                  ports: ["5432:5432"]
+                  options: --health-cmd pg_isready --health-interval 5s
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: "3.12"
+                    cache: pip
+                - run: pip install -r requirements.txt -r requirements-dev.txt
+                - run: ruff check .
+                - run: mypy src
+                - run: pytest --cov=src --cov-fail-under=80
+                  env:
+                    DATABASE_URL: postgresql://postgres:secret@localhost:5432/postgres
+          ```
+
+          ## Понятия
+
+          - **workflow** — сценарий, **job** — набор шагов на одной машине, **step** — команда или готовое действие (`uses:`);
+          - **matrix** — запуск на нескольких версиях Python/ОС;
+          - **secrets** — токены и пароли в настройках репозитория: `${{ secrets.DEPLOY_KEY }}`;
+          - **artifacts** — сохранение файлов сборки.
+
+          ## CD
+
+          Отдельный job (`needs: test`) собирает Docker-образ, пушит в registry (GHCR, Docker Hub) и деплоит на сервер/в облако. Включите **branch protection**: merge в main только при зелёном CI и одобренном ревью.
+        practice:
+          - type: choice
+            q: Что такое CI?
+            options: ["Ручной деплой", "Автоматические проверки (тесты, линтеры) при каждом изменении", "Система контроля версий", "Облачный сервер"]
+            answer: 1
+          - type: choice
+            q: Где хранить токен для деплоя в GitHub Actions?
+            options: ["В yml-файле", "В Secrets репозитория", "В коде", "В README"]
+            answer: 1
+          - type: fill
+            q: Job deploy должен запускаться только после успешного test
+            code: |
+              deploy:
+                ___: test
+                runs-on: ubuntu-latest
+            answers: [needs]
+          - type: choice
+            q: Что делает `--cov-fail-under=80`?
+            options: ["Пропускает тесты", "Роняет сборку, если покрытие ниже 80%", "Ускоряет тесты", "Ничего"]
+            answer: 1
+        homework:
+          task: |
+            Настройте для «Заметки API» CI: ruff, mypy, pytest с покрытием на матрице Python 3.11 и 3.12, сервис PostgreSQL. Добавьте job, который при push в main собирает Docker-образ и публикует его в GitHub Container Registry. Включите branch protection.
+          checklist:
+            - CI зелёный на PR
+            - Образ появляется в ghcr.io
+          solution: |
+            name: CI
+            on: { push: { branches: [main] }, pull_request: {} }
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                strategy:
+                  matrix: { python: ["3.11", "3.12"] }
+                steps:
+                  - uses: actions/checkout@v4
+                  - uses: actions/setup-python@v5
+                    with: { python-version: "${{ matrix.python }}", cache: pip }
+                  - run: pip install -r requirements.txt -r requirements-dev.txt
+                  - run: ruff check . && mypy src && pytest --cov=src --cov-fail-under=80
+              image:
+                needs: test
+                if: github.ref == 'refs/heads/main'
+                runs-on: ubuntu-latest
+                permissions: { packages: write, contents: read }
+                steps:
+                  - uses: actions/checkout@v4
+                  - uses: docker/login-action@v3
+                    with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+                  - uses: docker/build-push-action@v6
+                    with: { push: true, tags: "ghcr.io/${{ github.repository }}:latest" }
+
+      - id: py-12-04
+        title: Паттерны проектирования
+        minutes: 30
+        xp: 35
+        theory: |
+          **Паттерны** — типовые решения частых задач проектирования. В Python многие реализуются проще, чем в Java, благодаря функциям первого класса и динамической типизации.
+
+          ## Порождающие
+
+          **Фабрика** — создание объектов без привязки к конкретному классу:
+
+          ```python
+          EXPORTERS = {"csv": CsvExporter, "json": JsonExporter}
+          def make_exporter(fmt: str) -> Exporter:
+              return EXPORTERS[fmt]()
+          ```
+
+          **Singleton** — в Python обычно не нужен: модуль уже импортируется один раз (`settings = Settings()` в `config.py`).
+
+          **Builder** — пошаговая сборка сложного объекта (query builder в SQLAlchemy: `select(...).where(...).order_by(...)`).
+
+          ## Структурные
+
+          **Адаптер** — приводит чужой интерфейс к нужному:
+
+          ```python
+          class StripeAdapter(PaymentGateway):
+              def __init__(self, client): self.client = client
+              def pay(self, amount): return self.client.create_charge(amount_cents=int(amount * 100))
+          ```
+
+          **Декоратор** — добавление поведения обёрткой (в Python — синтаксис `@`). **Фасад** — простой интерфейс к сложной подсистеме.
+
+          ## Поведенческие
+
+          **Стратегия** — взаимозаменяемые алгоритмы. В Python часто просто функция:
+
+          ```python
+          def no_discount(total): return total
+          def black_friday(total): return total * 0.7
+          def checkout(total, discount=no_discount): return discount(total)
+          ```
+
+          **Наблюдатель (Observer)** — подписка на события:
+
+          ```python
+          class EventBus:
+              def __init__(self): self.handlers = defaultdict(list)
+              def subscribe(self, event, fn): self.handlers[event].append(fn)
+              def publish(self, event, data):
+                  for fn in self.handlers[event]: fn(data)
+          ```
+
+          **Команда**, **Шаблонный метод**, **Итератор** (встроен в язык).
+
+          ## Архитектурные
+
+          **Repository** — абстракция хранилища (`OrderRepository.get/add`), **Unit of Work** — транзакция над несколькими репозиториями, **Service layer** — бизнес-логика отдельно от веб-фреймворка и БД.
+
+          > 💡 Паттерн применяют, когда он решает реальную проблему, а не «на всякий случай».
+        practice:
+          - type: choice
+            q: Как в Python обычно реализуют «одиночку»?
+            options: ["Метакласс обязательно", "Объект на уровне модуля — модуль импортируется один раз", "Глобальная переменная в каждой функции", "Никак"]
+            answer: 1
+          - type: choice
+            q: Обёртка над сторонним SDK, приводящая его к вашему интерфейсу, — это…
+            options: ["Стратегия", "Адаптер", "Наблюдатель", "Фабрика"]
+            answer: 1
+          - type: choice
+            q: Выбор алгоритма скидки, передаваемого в checkout как функция, — это…
+            options: ["Стратегия", "Singleton", "Builder", "Фасад"]
+            answer: 0
+          - type: choice
+            q: Что делает паттерн Repository?
+            options: ["Хранит Git-репозиторий", "Абстрагирует доступ к хранилищу данных от бизнес-логики", "Кэширует HTTP", "Логирует"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте модуль уведомлений: интерфейс `Notifier` и адаптеры `EmailNotifier`, `TelegramNotifier` (заглушки), фабрику по настройке, шину событий (Observer), на которую подписываются уведомления при событии `order_paid`, и стратегию выбора канала по предпочтениям пользователя.
+          checklist:
+            - Новый канал добавляется без правки существующего кода
+            - Есть тесты с фейковым Notifier
+          solution: |
+            from abc import ABC, abstractmethod
+            from collections import defaultdict
+
+            class Notifier(ABC):
+                @abstractmethod
+                def send(self, user: dict, text: str) -> None: ...
+
+            class EmailNotifier(Notifier):
+                def send(self, user, text): print(f"email → {user['email']}: {text}")
+
+            class TelegramNotifier(Notifier):
+                def send(self, user, text): print(f"tg → {user['tg']}: {text}")
+
+            NOTIFIERS = {"email": EmailNotifier, "telegram": TelegramNotifier}
+
+            def make_notifier(kind: str) -> Notifier:
+                return NOTIFIERS[kind]()
+
+            class EventBus:
+                def __init__(self): self.handlers = defaultdict(list)
+                def subscribe(self, event, fn): self.handlers[event].append(fn)
+                def publish(self, event, data):
+                    for fn in self.handlers[event]:
+                        fn(data)
+
+            bus = EventBus()
+            bus.subscribe("order_paid", lambda d: make_notifier(d["user"]["channel"])
+                          .send(d["user"], f"Заказ {d['order_id']} оплачен"))
+            bus.publish("order_paid", {"order_id": 7, "user": {"channel": "email", "email": "a@x.ru"}})
+
+      - id: py-12-05
+        title: Профилирование и оптимизация
+        minutes: 25
+        xp: 30
+        theory: |
+          > «Преждевременная оптимизация — корень всех зол» — Д. Кнут.
+
+          Сначала **измерьте**, найдите узкое место, потом оптимизируйте именно его.
+
+          ## Замер времени
+
+          ```python
+          import timeit
+          timeit.timeit("sum(range(1000))", number=10_000)
+
+          # в Jupyter/IPython: %timeit sum(range(1000))
+          ```
+
+          ## cProfile — какие функции тратят время
+
+          ```
+          python -m cProfile -s cumtime main.py
+          ```
+
+          ```python
+          import cProfile, pstats
+          with cProfile.Profile() as pr:
+              main()
+          pstats.Stats(pr).sort_stats("cumtime").print_stats(10)
+          ```
+
+          Визуализация: `snakeviz`, сэмплирующий профайлер **py-spy** (можно подключиться к работающему процессу: `py-spy top --pid 1234`).
+
+          ## Память
+
+          `tracemalloc` (встроен), `memory_profiler`. Генераторы вместо списков, `__slots__` в классах с миллионами объектов.
+
+          ## Типичные приёмы
+
+          - правильная структура данных: `set`/`dict` для поиска вместо `list`;
+          - вынести неизменное из цикла; кэширование (`functools.cache`);
+          - встроенные функции и генераторы списков быстрее ручных циклов;
+          - склейка строк через `"".join(parts)`, а не `+=` в цикле;
+          - векторизация: NumPy/pandas вместо циклов по числам;
+          - для I/O — асинхронность и батчинг запросов к БД (один запрос вместо тысячи);
+          - в БД — индексы и устранение N+1 (чаще всего именно здесь узкое место веб-приложений).
+
+          ## Когда Python не хватает
+
+          PyPy (JIT), Cython, расширения на Rust (PyO3) — для горячих участков.
+        practice:
+          - type: choice
+            q: С чего начинать оптимизацию?
+            options: ["Переписать всё на C", "С профилирования и поиска узкого места", "С замены всех списков на кортежи", "С отключения логов"]
+            answer: 1
+          - type: choice
+            q: Что быстрее для сборки строки из 100 000 частей?
+            options: ["`s += part` в цикле", "`\"\".join(parts)`", "Одинаково", "`s = s + part`"]
+            answer: 1
+          - type: fill
+            q: Запуск профайлера для скрипта
+            code: |
+              python -m ___ -s cumtime main.py
+            answers: [cProfile]
+          - type: choice
+            q: Самое частое узкое место веб-приложения?
+            options: ["Скорость Python", "Запросы к базе данных (N+1, нет индексов)", "Цвет кнопок", "Логирование"]
+            answer: 1
+        homework:
+          task: |
+            Возьмите «медленную» функцию: поиск пар товаров с суммой цен = X перебором O(n²) + чтение файла построчно с `+=` строк. Профилируйте cProfile, оптимизируйте (set, join, генераторы), докажите ускорение замерами timeit на 100 000 элементов.
+          checklist:
+            - Есть замеры до и после
+            - Описано, что именно было узким местом
+          solution: |
+            import timeit, random
+
+            prices = [random.randint(1, 10_000) for _ in range(5_000)]
+
+            def pairs_slow(prices, x):
+                return {(a, b) for i, a in enumerate(prices) for b in prices[i + 1:] if a + b == x}
+
+            def pairs_fast(prices, x):
+                seen, res = set(), set()
+                for p in prices:
+                    if x - p in seen:
+                        res.add((min(p, x - p), max(p, x - p)))
+                    seen.add(p)
+                return res
+
+            print(timeit.timeit(lambda: pairs_slow(prices, 5000), number=1))
+            print(timeit.timeit(lambda: pairs_fast(prices, 5000), number=1))
+
+      - id: py-12-06
+        title: "Итоговый проект: REST-сервис с БД и тестами"
+        minutes: 120
+        xp: 100
+        theory: |
+          Итоговый проект собирает всё, что нужно Middle Python-разработчику. Результат положите на GitHub — это ваше портфолио для собеседований.
+
+          ## Задание: сервис «Трекер задач для команд»
+
+          **Функциональность**
+          - регистрация и вход (JWT access + refresh);
+          - команды (workspaces) и участники с ролями `owner` / `member`;
+          - проекты и задачи: статус, приоритет, исполнитель, дедлайн, теги;
+          - фильтры, поиск, сортировка, пагинация;
+          - комментарии к задачам;
+          - фоновая отправка уведомлений о назначении задачи (asyncio-задача или очередь).
+
+          **Стек**
+          - FastAPI + Pydantic v2;
+          - PostgreSQL + SQLAlchemy 2.0 (async) + Alembic;
+          - pytest (unit + интеграционные тесты API на тестовой БД), покрытие ≥ 80%;
+          - ruff, mypy --strict, pre-commit;
+          - Docker + docker compose;
+          - GitHub Actions: линтеры, тесты, сборка образа.
+
+          ## Архитектура
+
+          ```
+          src/
+            api/          роутеры FastAPI, зависимости (current_user, get_session)
+            schemas/      Pydantic-модели (In / Out / Update)
+            models/       SQLAlchemy-модели
+            repositories/ доступ к данным
+            services/     бизнес-логика (права, правила переходов статусов)
+            core/         настройки, безопасность, логирование
+          tests/
+          migrations/
+          ```
+
+          Бизнес-логика не знает о FastAPI, роутеры не пишут SQL — так код легко тестировать.
+
+          ## Критерии «уровня Middle»
+
+          - нет N+1, есть нужные индексы;
+          - транзакции там, где изменяются несколько сущностей;
+          - корректные коды ответов и единый формат ошибок;
+          - проверка прав (участник не видит чужие команды);
+          - конфигурация через переменные окружения, секреты не в Git;
+          - понятный README: как запустить, как запустить тесты, схема API.
+        practice:
+          - type: choice
+            q: Где должна находиться проверка «только owner может удалить проект»?
+            options: ["В SQL-миграции", "В слое сервисов (бизнес-логика)", "В Dockerfile", "В README"]
+            answer: 1
+          - type: choice
+            q: Какие тесты проверяют API вместе с реальной (тестовой) БД?
+            options: ["Unit", "Интеграционные", "Нагрузочные", "Ручные"]
+            answer: 1
+          - type: choice
+            q: Что обязательно должно быть в README проекта-портфолио?
+            options: ["Только название", "Как запустить проект и тесты, описание API и стека", "Пароли от БД", "Ничего"]
+            answer: 1
+          - type: choice
+            q: Удаление команды удаляет проекты и задачи. Что нужно гарантировать?
+            options: ["Скорость", "Атомарность — всё в одной транзакции (или каскадное удаление в БД)", "Логирование", "Ничего"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте итоговый проект по описанию из теории. Минимальный объём: аутентификация, команды, проекты, задачи с фильтрами и пагинацией, права доступа, 30+ тестов, Docker Compose, CI. Опубликуйте на GitHub с подробным README.
+          hints:
+            - Начните со схемы БД и списка эндпоинтов.
+            - Делайте проект итерациями, каждую — отдельным PR.
+            - "Для тестов API используйте `httpx.AsyncClient` с `ASGITransport(app=app)`."
+          checklist:
+            - "`docker compose up` поднимает рабочий сервис"
+            - CI зелёный, покрытие ≥ 80%
+            - mypy --strict и ruff без ошибок
+            - README с инструкциями
+          solution: |
+            # Пример интеграционного теста
+            import pytest
+            from httpx import ASGITransport, AsyncClient
+            from src.main import app
+
+            @pytest.mark.anyio
+            async def test_create_task_requires_auth():
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    r = await client.post("/projects/1/tasks", json={"title": "x"})
+                assert r.status_code == 401
+
+            @pytest.mark.anyio
+            async def test_member_cannot_see_foreign_team(client_as_bob, team_of_alice):
+                r = await client_as_bob.get(f"/teams/{team_of_alice.id}")
+                assert r.status_code == 404

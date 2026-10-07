@@ -1,0 +1,752 @@
+id: cpp
+modules:
+  - id: cpp-m6
+    title: Многопоточность
+    level: Middle
+    lessons:
+      - id: cpp-06-01
+        title: std::thread и join
+        minutes: 30
+        xp: 40
+        theory: |
+          С C++11 потоки — часть стандарта (`<thread>`).
+
+          ```cpp
+          #include <thread>
+          #include <iostream>
+
+          void work(int id, int n) {
+              for (int i = 0; i < n; ++i) std::cout << "поток " << id << ": " << i << "\n";
+          }
+
+          int main() {
+              std::thread t1(work, 1, 3);                 // запуск сразу при создании
+              std::thread t2([] { work(2, 3); });         // лямбда
+              t1.join();                                   // ждать завершения
+              t2.join();
+              std::cout << std::thread::hardware_concurrency() << " ядер\n";
+          }
+          ```
+
+          Вывод потоков перемешается — порядок выполнения не определён.
+
+          ## join или detach — обязательно
+
+          Если объект `std::thread` уничтожается, пока поток «joinable» (не сделан `join()`/`detach()`), вызывается **`std::terminate`** — программа падает.
+
+          - `join()` — дождаться завершения.
+          - `detach()` — «отпустить» поток работать в фоне. Опасно: поток может пережить данные, на которые ссылается, и main. Избегайте.
+
+          ## std::jthread (C++20) — используйте его
+
+          RAII-поток: в деструкторе сам делает `request_stop()` + `join()`. Плюс встроенная кооперативная отмена:
+
+          ```cpp
+          std::jthread worker([](std::stop_token st) {
+              while (!st.stop_requested()) {
+                  doWork();
+                  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+              }
+          });
+          // ...
+          worker.request_stop();   // или просто выход из области видимости
+          ```
+
+          ## Передача аргументов
+
+          Аргументы **копируются** в поток. Для передачи по ссылке — `std::ref`:
+
+          ```cpp
+          void fill(std::vector<int>& v);
+          std::vector<int> data;
+          std::thread t(fill, std::ref(data));   // без std::ref — ошибка компиляции
+          t.join();
+          ```
+
+          ⚠️ Не передавайте ссылки/указатели на локальные переменные в detach-потоки.
+
+          ## Исключения
+
+          Необработанное исключение в потоке → `std::terminate`. Ловите внутри потока или используйте `std::async`/`std::promise` (урок 5), чтобы передать исключение в вызывающий поток.
+
+          ## Полезное
+
+          ```cpp
+          std::this_thread::get_id();
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          std::this_thread::yield();
+          ```
+
+          ## Сколько потоков
+
+          Для CPU-задач — около `hardware_concurrency()`. Больше потоков, чем ядер, не ускоряет вычисления, а добавляет переключения контекста. Для многих мелких задач используют **пул потоков**.
+        practice:
+          - type: choice
+            q: Что произойдёт, если std::thread уничтожится без join() и detach()?
+            options: ["Поток завершится тихо", "std::terminate — аварийное завершение", "Поток станет detached", "Ничего"]
+            answer: 1
+          - type: fill
+            q: Передайте вектор в поток по ссылке
+            code: |
+              std::thread t(process, std::___(data));
+            answers: ["ref"]
+          - type: choice
+            q: Чем std::jthread лучше std::thread?
+            options: ["Быстрее", "Сам делает join в деструкторе и поддерживает stop_token", "Работает без ОС", "Не требует #include"]
+            answer: 1
+          - type: bug
+            q: Какая строка приведёт к аварийному завершению?
+            code: |
+              void run() {
+                  std::thread t([] { compute(); });
+                  if (!ready()) return;
+                  t.join();
+              }
+            bugLine: 3
+            fix: использовать std::jthread или join перед return
+            explain: При раннем return t уничтожится joinable → std::terminate.
+          - type: choice
+            q: Сколько потоков разумно для CPU-bound вычислений?
+            options: ["1000", "Примерно число ядер (hardware_concurrency)", "Всегда 2", "Один на каждый элемент данных"]
+            answer: 1
+        homework:
+          task: |
+            Посчитайте сумму квадратов чисел от 1 до 200 000 000, разбив диапазон на K частей (K = hardware_concurrency) и запустив K `std::jthread`, каждый пишет результат в свой элемент `std::vector<long long>` (без общих переменных). Сравните время с однопоточной версией. Добавьте фоновый jthread-«индикатор», печатающий точку раз в 200 мс и останавливаемый через stop_token.
+          checklist:
+            - Нет гонок данных (каждый поток пишет в свою ячейку)
+            - Все потоки корректно завершаются
+            - Выведено ускорение
+          solution: |
+            #include <chrono>
+            #include <iostream>
+            #include <numeric>
+            #include <thread>
+            #include <vector>
+
+            int main() {
+                const long long N = 200'000'000;
+                unsigned K = std::max(1u, std::thread::hardware_concurrency());
+                auto t0 = std::chrono::steady_clock::now();
+                long long single = 0;
+                for (long long i = 1; i <= N; ++i) single += i * i % 1000;
+                auto t1 = std::chrono::steady_clock::now();
+
+                std::jthread spinner([](std::stop_token st) {
+                    while (!st.stop_requested()) { std::cout << '.' << std::flush; std::this_thread::sleep_for(std::chrono::milliseconds(200)); }
+                });
+                std::vector<long long> parts(K);
+                {
+                    std::vector<std::jthread> ws;
+                    for (unsigned k = 0; k < K; ++k)
+                        ws.emplace_back([&parts, k, K, N] {
+                            long long from = N / K * k + 1, to = (k == K - 1) ? N : N / K * (k + 1), s = 0;
+                            for (long long i = from; i <= to; ++i) s += i * i % 1000;
+                            parts[k] = s;
+                        });
+                }   // join всех
+                spinner.request_stop();
+                auto t2 = std::chrono::steady_clock::now();
+                long long multi = std::accumulate(parts.begin(), parts.end(), 0LL);
+                using ms = std::chrono::milliseconds;
+                std::cout << "\n" << single << " " << multi << " x" << double(std::chrono::duration_cast<ms>(t1 - t0).count()) /
+                             std::chrono::duration_cast<ms>(t2 - t1).count() << "\n";
+            }
+      - id: cpp-06-02
+        title: mutex, lock_guard, гонки
+        minutes: 35
+        xp: 45
+        theory: |
+          **Гонка данных** (data race) — два потока обращаются к одной памяти без синхронизации, и хотя бы один пишет. В C++ это **неопределённое поведение**, а не просто «неверный результат».
+
+          ```cpp
+          int counter = 0;
+          auto inc = [&] { for (int i = 0; i < 100000; ++i) ++counter; };   // ❌ data race
+          std::jthread a(inc), b(inc);
+          ```
+
+          ## std::mutex
+
+          ```cpp
+          #include <mutex>
+
+          std::mutex m;
+          int counter = 0;
+
+          void inc() {
+              for (int i = 0; i < 100000; ++i) {
+                  std::lock_guard<std::mutex> lock(m);   // захват; освобождение в деструкторе
+                  ++counter;
+              }
+          }
+          ```
+
+          Никогда не вызывайте `m.lock()`/`m.unlock()` вручную — при исключении мьютекс останется захваченным. Используйте RAII:
+
+          | Обёртка | Когда |
+          |---|---|
+          | `std::lock_guard` | просто захватить на область видимости |
+          | `std::unique_lock` | нужно отпускать/захватывать повторно, отложенный захват, для `condition_variable` |
+          | `std::scoped_lock` (C++17) | несколько мьютексов сразу **без deadlock** |
+          | `std::shared_lock` + `std::shared_mutex` | много читателей / один писатель |
+
+          ## Потокобезопасный класс
+
+          ```cpp
+          class Bank {
+              mutable std::mutex m_;
+              std::unordered_map<std::string, long> acc_;
+          public:
+              void deposit(const std::string& who, long sum) {
+                  std::lock_guard lk(m_);
+                  acc_[who] += sum;
+              }
+              long balance(const std::string& who) const {
+                  std::lock_guard lk(m_);                 // mutable позволяет лочить в const-методе
+                  auto it = acc_.find(who);
+                  return it == acc_.end() ? 0 : it->second;
+              }
+          };
+          ```
+
+          ## Deadlock
+
+          ```cpp
+          // поток 1: lock(a); lock(b);    поток 2: lock(b); lock(a);  → взаимная блокировка
+          std::scoped_lock lk(a.m, b.m);   // ✅ захватывает оба по алгоритму без deadlock
+          ```
+
+          Правила: фиксированный порядок захвата; не вызывать чужой код (колбэки) под мьютексом; держать блокировку минимально.
+
+          ## Читатели-писатели
+
+          ```cpp
+          std::shared_mutex sm;
+          std::string config;
+          std::string read()  { std::shared_lock lk(sm); return config; }   // параллельно
+          void write(std::string s) { std::unique_lock lk(sm); config = std::move(s); } // эксклюзивно
+          ```
+
+          ## ThreadSanitizer
+
+          `g++ -fsanitize=thread -g main.cpp` — находит гонки данных во время выполнения. Обязателен для многопоточного кода.
+        practice:
+          - type: choice
+            q: Что такое data race в C++ с точки зрения стандарта?
+            options: ["Просто медленный код", "Неопределённое поведение", "Ошибка компиляции", "Предупреждение"]
+            answer: 1
+          - type: fill
+            q: Захватите мьютекс на область видимости
+            code: |
+              std::___<std::mutex> lock(m);
+            answers: ["lock_guard"]
+          - type: choice
+            q: Как захватить два мьютекса без риска deadlock?
+            options: ["lock_guard дважды в любом порядке", "std::scoped_lock lk(m1, m2)", "m1.try_lock()", "Не захватывать"]
+            answer: 1
+          - type: bug
+            q: Какая строка приводит к риску, что мьютекс останется захваченным навсегда?
+            code: |
+              void save(const Item& it) {
+                  m.lock();
+                  storage.push_back(it);
+                  m.unlock();
+              }
+            bugLine: 2
+            fix: std::lock_guard lk(m);
+            explain: Если push_back бросит исключение (bad_alloc), unlock не вызовется.
+          - type: fill
+            q: Включите поиск гонок данных
+            code: |
+              g++ -g -fsanitize=___ main.cpp
+            answers: ["thread"]
+        homework:
+          task: |
+            Реализуйте потокобезопасный `ThreadSafeCache<K, V>` на `std::shared_mutex` (get — shared_lock, put — unique_lock, `getOrCompute(key, fn)` — вычисление вне блокировки с повторной проверкой). Нагрузите 8 потоками (90% чтений) и проверьте ThreadSanitizer. Затем смоделируйте deadlock при переводе между двумя счетами и исправьте через scoped_lock.
+          checklist:
+            - TSan не находит гонок
+            - Чтения идут параллельно
+            - Deadlock воспроизведён и исправлен
+          solution: |
+            #include <functional>
+            #include <mutex>
+            #include <optional>
+            #include <shared_mutex>
+            #include <unordered_map>
+
+            template <class K, class V>
+            class ThreadSafeCache {
+                mutable std::shared_mutex m_;
+                std::unordered_map<K, V> map_;
+            public:
+                std::optional<V> get(const K& k) const {
+                    std::shared_lock lk(m_);
+                    if (auto it = map_.find(k); it != map_.end()) return it->second;
+                    return std::nullopt;
+                }
+                void put(const K& k, V v) { std::unique_lock lk(m_); map_.insert_or_assign(k, std::move(v)); }
+                V getOrCompute(const K& k, const std::function<V()>& fn) {
+                    if (auto v = get(k)) return *v;
+                    V computed = fn();                       // без блокировки — долгая операция
+                    std::unique_lock lk(m_);
+                    auto [it, inserted] = map_.try_emplace(k, std::move(computed));
+                    return it->second;                       // если кто-то успел раньше — берём его значение
+                }
+            };
+
+            struct Account { std::mutex m; long balance = 0; };
+            void transfer(Account& a, Account& b, long sum) {
+                std::scoped_lock lk(a.m, b.m);               // было: lock_guard la(a.m); lock_guard lb(b.m); → deadlock
+                a.balance -= sum; b.balance += sum;
+            }
+      - id: cpp-06-03
+        title: condition_variable
+        minutes: 30
+        xp: 45
+        theory: |
+          `std::condition_variable` позволяет потоку **эффективно ждать** события (без активного опроса в цикле), пока другой поток не сообщит о нём.
+
+          ## Классика: очередь задач producer/consumer
+
+          ```cpp
+          #include <condition_variable>
+          #include <mutex>
+          #include <queue>
+
+          template <typename T>
+          class BlockingQueue {
+              std::mutex m_;
+              std::condition_variable cv_;
+              std::queue<T> q_;
+              bool closed_ = false;
+          public:
+              void push(T v) {
+                  {
+                      std::lock_guard lk(m_);
+                      q_.push(std::move(v));
+                  }
+                  cv_.notify_one();                         // разбудить одного ожидающего
+              }
+
+              std::optional<T> pop() {
+                  std::unique_lock lk(m_);
+                  cv_.wait(lk, [&] { return !q_.empty() || closed_; });   // ждать с предикатом
+                  if (q_.empty()) return std::nullopt;      // закрыта и пуста
+                  T v = std::move(q_.front());
+                  q_.pop();
+                  return v;
+              }
+
+              void close() {
+                  { std::lock_guard lk(m_); closed_ = true; }
+                  cv_.notify_all();                         // разбудить всех
+              }
+          };
+          ```
+
+          ## Как работает wait
+
+          1. Требует `std::unique_lock` (захваченный).
+          2. Атомарно **отпускает** мьютекс и засыпает.
+          3. При пробуждении снова захватывает мьютекс и проверяет предикат; если ложен — спит дальше.
+
+          ## Ложные пробуждения
+
+          Поток может проснуться **без** notify (spurious wakeup). Поэтому всегда используйте версию с предикатом — `wait(lk, pred)` — она сама крутит цикл `while (!pred()) wait(lk);`.
+
+          ## Потерянный сигнал
+
+          Если notify произошёл **до** того, как поток начал ждать, — без предиката сигнал потерян навсегда. Предикат + изменение состояния под мьютексом решают проблему.
+
+          ## Тайм-ауты
+
+          ```cpp
+          if (cv_.wait_for(lk, std::chrono::seconds(2), [&] { return ready; })) { /* дождались */ }
+          else { /* тайм-аут */ }
+          ```
+
+          ## Пул потоков на очереди
+
+          ```cpp
+          BlockingQueue<std::function<void()>> tasks;
+          std::vector<std::jthread> workers;
+          for (int i = 0; i < 4; ++i)
+              workers.emplace_back([&] { while (auto t = tasks.pop()) (*t)(); });
+          tasks.push([] { std::cout << "задача\n"; });
+          tasks.close();    // воркеры доработают очередь и выйдут
+          ```
+
+          C++20 добавил более простые примитивы: `std::latch`, `std::barrier`, `std::counting_semaphore`, а также `atomic::wait/notify`.
+        practice:
+          - type: choice
+            q: Зачем wait принимает предикат?
+            options: ["Для скорости", "Защита от ложных пробуждений и потерянных сигналов", "Чтобы не нужен был мьютекс", "Это необязательный параметр для логов"]
+            answer: 1
+          - type: choice
+            q: Какой тип блокировки нужен для condition_variable::wait?
+            options: ["std::lock_guard", "std::unique_lock", "std::scoped_lock", "Без блокировки"]
+            answer: 1
+          - type: fill
+            q: Разбудите все ожидающие потоки
+            code: |
+              cv.___();
+            answers: ["notify_all"]
+          - type: bug
+            q: Какая строка может навсегда «усыпить» потребителя?
+            code: |
+              std::unique_lock lk(m);
+              cv.wait(lk);
+              auto item = q.front();
+              q.pop();
+            bugLine: 2
+            fix: cv.wait(lk, [&] { return !q.empty(); });
+            explain: Без предиката сигнал, отправленный до wait, потеряется; также возможны ложные пробуждения при пустой очереди.
+        homework:
+          task: |
+            Реализуйте `ThreadPool` (N воркеров на `std::jthread`, очередь `std::function<void()>` на mutex + condition_variable) с методом `template<class F> auto submit(F f) -> std::future<decltype(f())>` (через `std::packaged_task`) и корректной остановкой в деструкторе (доработать очередь). Проверьте: 1000 задач, сумма результатов совпадает с ожидаемой.
+          checklist:
+            - wait с предикатом
+            - Деструктор не теряет задачи и не зависает
+            - submit возвращает future
+          solution: |
+            #include <condition_variable>
+            #include <functional>
+            #include <future>
+            #include <iostream>
+            #include <memory>
+            #include <mutex>
+            #include <queue>
+            #include <thread>
+            #include <vector>
+
+            class ThreadPool {
+                std::mutex m_;
+                std::condition_variable cv_;
+                std::queue<std::function<void()>> q_;
+                bool stop_ = false;
+                std::vector<std::jthread> workers_;
+            public:
+                explicit ThreadPool(unsigned n) {
+                    for (unsigned i = 0; i < n; ++i)
+                        workers_.emplace_back([this] {
+                            for (;;) {
+                                std::function<void()> task;
+                                {
+                                    std::unique_lock lk(m_);
+                                    cv_.wait(lk, [this] { return stop_ || !q_.empty(); });
+                                    if (stop_ && q_.empty()) return;
+                                    task = std::move(q_.front()); q_.pop();
+                                }
+                                task();
+                            }
+                        });
+                }
+                template <class F>
+                auto submit(F f) -> std::future<decltype(f())> {
+                    auto task = std::make_shared<std::packaged_task<decltype(f())()>>(std::move(f));
+                    auto fut = task->get_future();
+                    { std::lock_guard lk(m_); q_.emplace([task] { (*task)(); }); }
+                    cv_.notify_one();
+                    return fut;
+                }
+                ~ThreadPool() {
+                    { std::lock_guard lk(m_); stop_ = true; }
+                    cv_.notify_all();
+                }   // jthread join
+            };
+
+            int main() {
+                ThreadPool pool(4);
+                std::vector<std::future<int>> fs;
+                for (int i = 1; i <= 1000; ++i) fs.push_back(pool.submit([i] { return i; }));
+                long sum = 0;
+                for (auto& f : fs) sum += f.get();
+                std::cout << sum << "\n";   // 500500
+            }
+      - id: cpp-06-04
+        title: atomic и модель памяти
+        minutes: 35
+        xp: 50
+        theory: |
+          `std::atomic<T>` — переменная, операции над которой **неделимы** и не образуют гонку данных. Без мьютекса.
+
+          ```cpp
+          #include <atomic>
+
+          std::atomic<int> counter{0};
+          auto inc = [&] { for (int i = 0; i < 100000; ++i) ++counter; };   // ✅ атомарно
+          std::jthread a(inc), b(inc);
+          // после join: counter == 200000
+
+          counter.fetch_add(5);
+          counter.store(10);
+          int v = counter.load();
+          int old = counter.exchange(0);
+
+          // CAS — основа lock-free алгоритмов
+          int expected = 10;
+          bool ok = counter.compare_exchange_strong(expected, 20);  // если ==10, записать 20
+          ```
+
+          `std::atomic_flag` — простейший флаг, гарантированно lock-free. `is_lock_free()` — проверить, не использует ли реализация скрытый мьютекс.
+
+          ## Модель памяти
+
+          Компилятор и процессор **переставляют** инструкции ради скорости. В одном потоке это незаметно, но другой поток может увидеть записи в другом порядке.
+
+          ```cpp
+          int data = 0;
+          std::atomic<bool> ready{false};
+
+          // поток 1
+          data = 42;
+          ready.store(true, std::memory_order_release);   // все записи ДО — видны тому, кто сделает acquire
+
+          // поток 2
+          while (!ready.load(std::memory_order_acquire)) {}
+          std::cout << data;                              // гарантированно 42
+          ```
+
+          ## Порядки памяти
+
+          | Порядок | Гарантия |
+          |---|---|
+          | `seq_cst` (по умолчанию) | единый глобальный порядок всех атомарных операций; проще всего рассуждать |
+          | `acquire` / `release` | синхронизация пары «публикация — чтение» (happens-before) |
+          | `acq_rel` | для read-modify-write |
+          | `relaxed` | только атомарность, без упорядочивания (счётчики статистики) |
+
+          ```cpp
+          std::atomic<long> hits{0};
+          hits.fetch_add(1, std::memory_order_relaxed);   // порядок не важен — только итог
+          ```
+
+          **Совет:** используйте `seq_cst` (по умолчанию), пока профилировщик не докажет, что это узкое место. Ошибки в слабых порядках крайне трудно найти.
+
+          ## Atomic ≠ потокобезопасный объект
+
+          ```cpp
+          std::atomic<int> x{0};
+          if (x == 0) x = 1;     // ❌ проверка и запись — две операции, между ними вклинится другой поток
+          int zero = 0;
+          x.compare_exchange_strong(zero, 1);  // ✅
+          ```
+
+          Атомик защищает одну переменную. Для инвариантов между несколькими полями нужен мьютекс.
+
+          ## False sharing
+
+          Два атомика в одной кэш-линии (64 байта), изменяемые разными потоками, заставляют ядра постоянно синхронизировать линию:
+
+          ```cpp
+          struct alignas(std::hardware_destructive_interference_size) PaddedCounter { std::atomic<long> v; };
+          ```
+
+          `volatile` в C++ **не** для многопоточности (это для памяти устройств).
+        practice:
+          - type: choice
+            q: Что гарантирует std::atomic<int> для операции ++?
+            options: ["Что она быстрее мьютекса всегда", "Что она неделима и не создаёт гонку данных", "Что значение не изменится", "Ничего"]
+            answer: 1
+          - type: fill
+            q: Атомарно замените значение, только если оно равно ожидаемому
+            code: |
+              flag.___(expected, desired);
+            answers: [["compare_exchange_strong", "compare_exchange_weak"]]
+          - type: choice
+            q: Какой memory_order подходит для простого счётчика статистики?
+            options: ["seq_cst обязательно", "relaxed", "acquire", "consume"]
+            answer: 1
+          - type: bug
+            q: В какой строке логическая гонка, несмотря на atomic?
+            code: |
+              std::atomic<int> slots{1};
+              void take() {
+                  if (slots.load() > 0) {
+                      slots.fetch_sub(1);
+                      use();
+                  }
+              }
+            bugLine: 3
+            fix: "int s = slots.load(); while (s > 0 && !slots.compare_exchange_weak(s, s - 1)) {}"
+            explain: Два потока могут оба пройти проверку до уменьшения — slots станет -1.
+          - type: choice
+            q: Для чего volatile в C++?
+            options: ["Для многопоточности", "Для обращений к памяти устройств / сигналам, не для синхронизации потоков", "Для атомарности", "Для константности"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте: (1) спинлок на `std::atomic_flag` (test_and_set с acquire, clear с release) и сравните скорость с std::mutex на 4 потоках × 1 000 000 инкрементов; (2) lock-free стек (Treiber stack) `push` через compare_exchange_weak (pop — с пометкой про проблему ABA и утечку памяти); (3) продемонстрируйте false sharing: два счётчика рядом vs с alignas(64).
+          checklist:
+            - Спинлок корректен (TSan чист)
+            - push lock-free через CAS
+            - Замер false sharing показывает разницу
+          solution: |
+            #include <atomic>
+            #include <chrono>
+            #include <iostream>
+            #include <thread>
+            #include <vector>
+
+            class SpinLock {
+                std::atomic_flag f_ = ATOMIC_FLAG_INIT;
+            public:
+                void lock() { while (f_.test_and_set(std::memory_order_acquire)) f_.wait(true); }
+                void unlock() { f_.clear(std::memory_order_release); f_.notify_one(); }
+            };
+
+            template <class T>
+            class LockFreeStack {
+                struct Node { T v; Node* next; };
+                std::atomic<Node*> head_{nullptr};
+            public:
+                void push(T v) {
+                    Node* n = new Node{std::move(v), head_.load(std::memory_order_relaxed)};
+                    while (!head_.compare_exchange_weak(n->next, n, std::memory_order_release, std::memory_order_relaxed)) {}
+                }
+                // pop без схемы освобождения памяти (hazard pointers / epoch) подвержен ABA — в проде используйте готовые библиотеки
+            };
+
+            struct Near { std::atomic<long> a{0}, b{0}; };
+            struct Far { alignas(64) std::atomic<long> a{0}; alignas(64) std::atomic<long> b{0}; };
+
+            template <class S> long long bench() {
+                S s; auto t = std::chrono::steady_clock::now();
+                {
+                    std::jthread x([&] { for (int i = 0; i < 50'000'000; ++i) s.a.fetch_add(1, std::memory_order_relaxed); });
+                    std::jthread y([&] { for (int i = 0; i < 50'000'000; ++i) s.b.fetch_add(1, std::memory_order_relaxed); });
+                }
+                return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t).count();
+            }
+
+            int main() { std::cout << "near " << bench<Near>() << " ms, far " << bench<Far>() << " ms\n"; }
+      - id: cpp-06-05
+        title: async, future, promise
+        minutes: 30
+        xp: 40
+        theory: |
+          Высокоуровневые инструменты `<future>` позволяют запускать задачи и получать **результат или исключение** без ручной синхронизации.
+
+          ## std::async
+
+          ```cpp
+          #include <future>
+
+          int heavy(int x) { std::this_thread::sleep_for(std::chrono::seconds(1)); return x * x; }
+
+          std::future<int> f1 = std::async(std::launch::async, heavy, 5);   // в отдельном потоке
+          std::future<int> f2 = std::async(std::launch::async, heavy, 6);
+          int total = f1.get() + f2.get();    // get() ждёт результат; ~1 c вместо 2
+          ```
+
+          Политики: `std::launch::async` — новый поток сразу; `std::launch::deferred` — выполнить лениво при `get()` в вызывающем потоке. Без указания — на усмотрение реализации, лучше всегда указывайте `async`.
+
+          ⚠️ Деструктор future, полученного из `std::async`, **блокируется** до завершения задачи:
+
+          ```cpp
+          std::async(std::launch::async, task);   // результат не сохранён → выполняется синхронно!
+          ```
+
+          ## Исключения передаются
+
+          ```cpp
+          auto f = std::async(std::launch::async, [] { throw std::runtime_error("ошибка"); return 1; });
+          try { f.get(); }                                  // исключение перебрасывается здесь
+          catch (const std::exception& e) { std::cout << e.what(); }
+          ```
+
+          ## std::future
+
+          - `get()` — один раз (потом future невалиден); `std::shared_future` — для многократного/многих читателей.
+          - `wait()`, `wait_for(timeout)` → `future_status::ready/timeout/deferred`.
+
+          ## std::promise — ручная установка результата
+
+          ```cpp
+          std::promise<std::string> p;
+          std::future<std::string> f = p.get_future();
+
+          std::jthread worker([pr = std::move(p)]() mutable {
+              try { pr.set_value(download()); }
+              catch (...) { pr.set_exception(std::current_exception()); }
+          });
+
+          std::cout << f.get();
+          ```
+
+          Применение: связать колбэк-API с future, сигнал «готово» между потоками.
+
+          ## std::packaged_task
+
+          Обёртка над функцией, результат которой попадёт в future — удобна для пулов потоков (см. урок про condition_variable).
+
+          ## Ограничения
+
+          В стандартных `std::future` нет `then`/продолжений и нет отмены. Для сложной асинхронности используют корутины C++20 (`co_await`) с библиотеками (cppcoro, Boost.Asio, folly), а для параллельных алгоритмов — `std::execution::par` или Intel TBB.
+        practice:
+          - type: fill
+            q: Запустите задачу в отдельном потоке
+            code: |
+              auto f = std::async(std::launch::___, compute, 10);
+            answers: ["async"]
+          - type: choice
+            q: Что произойдёт с исключением внутри задачи std::async?
+            options: ["Программа упадёт", "Оно будет переброшено при вызове get()", "Оно потеряется", "Вернётся 0"]
+            answer: 1
+          - type: choice
+            q: Сколько раз можно вызвать get() у std::future?
+            options: ["Сколько угодно", "Один раз", "Два раза", "Ни разу"]
+            answer: 1
+          - type: fill
+            q: Установите результат через promise
+            code: |
+              std::promise<int> p;
+              auto f = p.get_future();
+              p.___(42);
+            answers: ["set_value"]
+          - type: choice
+            q: Почему `std::async(std::launch::async, task);` без сохранения результата выполняется синхронно?
+            options: ["Это баг компилятора", "Временный future уничтожается сразу и его деструктор ждёт завершения задачи", "launch::async игнорируется", "Нет потоков"]
+            answer: 1
+        homework:
+          task: |
+            Параллельный поиск: функция `std::optional<std::string> findFirst(const std::vector<std::string>& files, std::string_view word)` запускает `std::async` на каждый файл (не более N одновременно), возвращает имя первого файла (по порядку в списке), содержащего слово. Ошибки чтения передаются через future и логируются, не прерывая остальные. Используйте `wait_for` для вывода прогресса.
+          checklist:
+            - Исключения ловятся из get()
+            - Ограничено число одновременных задач
+            - Используется wait_for
+          solution: |
+            #include <chrono>
+            #include <fstream>
+            #include <future>
+            #include <iostream>
+            #include <optional>
+            #include <sstream>
+            #include <string>
+            #include <vector>
+
+            static bool contains(const std::string& path, std::string_view word) {
+                std::ifstream in(path);
+                if (!in) throw std::runtime_error("не открыть " + path);
+                std::stringstream ss; ss << in.rdbuf();
+                return ss.str().find(word) != std::string::npos;
+            }
+
+            std::optional<std::string> findFirst(const std::vector<std::string>& files, std::string_view word, std::size_t N = 4) {
+                for (std::size_t start = 0; start < files.size(); start += N) {
+                    std::vector<std::future<bool>> batch;
+                    for (std::size_t i = start; i < std::min(files.size(), start + N); ++i)
+                        batch.push_back(std::async(std::launch::async, contains, files[i], word));
+                    for (auto& f : batch)
+                        while (f.wait_for(std::chrono::milliseconds(100)) != std::future_status::ready) std::cout << "." << std::flush;
+                    for (std::size_t k = 0; k < batch.size(); ++k) {
+                        try { if (batch[k].get()) return files[start + k]; }
+                        catch (const std::exception& e) { std::cerr << "ошибка: " << e.what() << "\n"; }
+                    }
+                }
+                return std::nullopt;
+            }
+
+            int main() {
+                auto r = findFirst({"a.txt", "b.txt", "missing.txt", "c.txt"}, "TODO");
+                std::cout << "\n" << r.value_or("не найдено") << "\n";
+            }

@@ -1,0 +1,776 @@
+id: java
+title: Java
+short: Java
+lang: java
+color: "#e76f00"
+description: Корпоративный бэкенд, Android и банковские системы. Spring — стандарт индустрии.
+modules:
+  - id: java-m1
+    title: Основы Java
+    level: Junior
+    lessons:
+      - id: java-01-01
+        title: JVM и первая программа
+        minutes: 15
+        xp: 15
+        theory: |
+          **Java** — строго типизированный объектно-ориентированный язык. Код компилируется в **байт-код**, который исполняет **JVM** (Java Virtual Machine). Принцип: «написано однажды — работает везде».
+
+          - **JDK** — набор для разработки (компилятор `javac` + JVM). Установите JDK 21 (LTS), например Eclipse Temurin.
+          - IDE: IntelliJ IDEA Community — стандарт для Java.
+
+          ## Первая программа
+
+          Файл должен называться так же, как публичный класс — `Main.java`:
+
+          ```java
+          public class Main {
+              public static void main(String[] args) {
+                  System.out.println("Привет, мир!");
+              }
+          }
+          ```
+
+          Компиляция и запуск:
+
+          ```
+          javac Main.java
+          java Main
+          ```
+
+          С Java 11 можно запускать сразу: `java Main.java`.
+
+          ## Разбор
+
+          - `public class Main` — всё в Java живёт внутри классов;
+          - `public static void main(String[] args)` — точка входа;
+          - `System.out.println` — вывод с переводом строки, `System.out.print` — без;
+          - инструкции заканчиваются `;`.
+
+          ## Соглашения об именах
+
+          - классы — `PascalCase`: `UserService`;
+          - методы и переменные — `camelCase`: `getName`, `totalCount`;
+          - константы — `UPPER_SNAKE_CASE`: `MAX_SIZE`;
+          - пакеты — строчными: `com.example.app`.
+        practice:
+          - type: choice
+            q: Что исполняет JVM?
+            options: ["Исходный код .java", "Байт-код .class", "Машинный код процессора", "Скрипты JavaScript"]
+            answer: 1
+          - type: output
+            q: Что выведет программа?
+            code: |
+              System.out.print("Hello");
+              System.out.println(" Java");
+              System.out.print("!");
+            answer: |
+              Hello Java
+              !
+          - type: bug
+            q: Класс лежит в файле `Main.java`. Где ошибка?
+            code: |
+              public class main {
+                  public static void main(String[] args) {
+                      System.out.println("Hi");
+                  }
+              }
+            bugLine: 1
+            explain: Имя публичного класса должно совпадать с именем файла с учётом регистра — `Main`.
+          - type: fill
+            q: Допишите точку входа
+            code: |
+              public ___ void main(String[] args) {
+              }
+            answers: [static]
+          - type: choice
+            q: Какое имя класса соответствует соглашениям Java?
+            options: ["`user_service`", "`userService`", "`UserService`", "`USERSERVICE`"]
+            answer: 2
+        homework:
+          task: |
+            Установите JDK 21 и IntelliJ IDEA. Создайте проект и программу, выводящую визитку из 4 строк. Затем скомпилируйте и запустите тот же файл из консоли через `javac` и `java`. Найдите получившийся `.class` файл.
+          checklist:
+            - Программа запускается из IDE и из консоли
+            - Понимаю разницу между .java и .class
+          solution: |
+            public class Main {
+                public static void main(String[] args) {
+                    System.out.println("==========");
+                    System.out.println("Имя: Алекс");
+                    System.out.println("Язык: Java");
+                    System.out.println("==========");
+                }
+            }
+
+      - id: java-01-02
+        title: Переменные и примитивные типы
+        minutes: 20
+        xp: 20
+        theory: |
+          ## 8 примитивных типов
+
+          | Тип | Размер | Пример |
+          |---|---|---|
+          | `byte` | 1 байт | `byte b = 100;` |
+          | `short` | 2 байта | `short s = 3000;` |
+          | `int` | 4 байта | `int n = 42;` |
+          | `long` | 8 байт | `long l = 9_000_000_000L;` |
+          | `float` | 4 байта | `float f = 3.14f;` |
+          | `double` | 8 байт | `double d = 2.5;` |
+          | `char` | 2 байта | `char c = 'A';` |
+          | `boolean` | — | `boolean ok = true;` |
+
+          `String` — не примитив, а класс (ссылочный тип): `String name = "Анна";`
+
+          ## var и final
+
+          ```java
+          var count = 10;           // тип выводится: int (Java 10+)
+          final int MAX = 100;      // константа, нельзя переприсвоить
+          ```
+
+          ## Приведение типов
+
+          ```java
+          int i = 10;
+          long l = i;               // расширение — автоматически
+          double d = 7.9;
+          int n = (int) d;          // сужение — явно, n = 7
+          int parsed = Integer.parseInt("42");
+          String s = String.valueOf(3.5);
+          ```
+
+          ## Классы-обёртки
+
+          Каждому примитиву соответствует класс: `Integer`, `Double`, `Boolean`, `Character`... Они нужны для коллекций (`List<Integer>`) и могут быть `null`. Преобразование выполняется автоматически (**autoboxing**).
+
+          > ⚠️ Сравнивайте объекты `Integer` через `equals()`, а не `==`: `==` сравнивает ссылки.
+        practice:
+          - type: choice
+            q: Какой из типов НЕ примитивный?
+            options: ["`int`", "`boolean`", "`String`", "`char`"]
+            answer: 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              double d = 5.99;
+              int n = (int) d;
+              System.out.println(n + 1);
+            answer: "6"
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              int a = 10;
+              long b = a;
+              int c = b;
+            bugLine: 3
+            explain: Сужение `long → int` требует явного приведения `(int) b`.
+          - type: fill
+            q: Преобразуйте строку в число
+            code: |
+              int n = Integer.___("123");
+            answers: [parseInt]
+          - type: output
+            q: Что выведет код?
+            code: |
+              System.out.println(10 / 4 + " " + 10 / 4.0);
+            answer: 2 2.5
+          - type: bug
+            q: Где ошибка?
+            code: |
+              final int LIMIT = 5;
+              int x = LIMIT * 2;
+              LIMIT = 7;
+            bugLine: 3
+        homework:
+          task: |
+            Выведите минимальное и максимальное значения для `byte`, `short`, `int`, `long` (константы `Byte.MIN_VALUE`, `Integer.MAX_VALUE` и т.д.). Затем проверьте, что получится при `Integer.MAX_VALUE + 1`, и объясните результат в комментарии.
+          checklist:
+            - Выведены диапазоны 4 типов
+            - Объяснено переполнение
+          solution: |
+            public class Main {
+                public static void main(String[] args) {
+                    System.out.println(Byte.MIN_VALUE + " .. " + Byte.MAX_VALUE);
+                    System.out.println(Short.MIN_VALUE + " .. " + Short.MAX_VALUE);
+                    System.out.println(Integer.MIN_VALUE + " .. " + Integer.MAX_VALUE);
+                    System.out.println(Long.MIN_VALUE + " .. " + Long.MAX_VALUE);
+                    // переполнение: значение «заворачивается» в минимальное
+                    System.out.println(Integer.MAX_VALUE + 1); // -2147483648
+                }
+            }
+
+      - id: java-01-03
+        title: Операторы, Scanner и строки
+        minutes: 20
+        xp: 20
+        theory: |
+          ## Ввод через Scanner
+
+          ```java
+          import java.util.Scanner;
+
+          Scanner sc = new Scanner(System.in);
+          String name = sc.nextLine();   // целая строка
+          int age = sc.nextInt();        // число
+          double h = sc.nextDouble();
+          ```
+
+          > ⚠️ После `nextInt()` в буфере остаётся перевод строки — следующий `nextLine()` вернёт пустую строку.
+
+          ## Операторы
+
+          `+ - * / %`, `++ --`, `+= -= *=`. Деление целых — целое: `7 / 2 == 3`.
+          `Math.pow(2, 10)`, `Math.sqrt(16)`, `Math.max(a, b)`, `Math.round(2.6)`, `Math.random()`.
+
+          ## Строки
+
+          ```java
+          String s = "Hello";
+          s.length();             // 5
+          s.charAt(0);            // 'H'
+          s.substring(1, 4);      // "ell" — [начало, конец)
+          s.toUpperCase();
+          s.contains("ll");
+          s.indexOf('l');         // 2
+          s.replace("l", "L");
+          s.split(",");
+          s.trim(); s.isBlank();
+          String.join("-", "a", "b");    // "a-b"
+          "Итого: %d руб.".formatted(100);
+          String.format("%.2f", 3.14159); // "3.14"
+          ```
+
+          ## Сравнение строк
+
+          ```java
+          s1.equals(s2);             // ✅ сравнение содержимого
+          s1.equalsIgnoreCase(s2);
+          s1 == s2;                  // ❌ сравнение ссылок
+          ```
+
+          Строки неизменяемы. Для сборки в цикле используйте `StringBuilder`.
+
+          ## Text blocks (Java 15+)
+
+          ```java
+          String json = """
+              {"name": "Аня"}
+              """;
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              String s = "programming";
+              System.out.println(s.substring(3, 7));
+            answer: gram
+          - type: choice
+            q: Как правильно сравнить содержимое двух строк?
+            options: ["`a == b`", "`a.equals(b)`", "`a.compare(b)`", "`a === b`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              System.out.println(1 + 2 + "3" + 4 + 5);
+            answer: "3345"
+            explain: Сложение идёт слева направо — сначала 1 + 2 = 3, дальше конкатенация строк.
+          - type: fill
+            q: Выведите число с 2 знаками после запятой
+            code: |
+              System.out.println(String.___("%.2f", price));
+            answers: [format]
+          - type: output
+            q: Что выведет код?
+            code: |
+              StringBuilder sb = new StringBuilder("abc");
+              sb.append("d").reverse();
+              System.out.println(sb);
+            answer: dcba
+        homework:
+          task: |
+            Программа читает строку и выводит: длину, строку в верхнем регистре, количество гласных (а, е, ё, и, о, у, ы, э, ю, я, a, e, i, o, u), строку наоборот (через `StringBuilder`) и является ли она палиндромом без учёта регистра и пробелов.
+          checklist:
+            - Используется Scanner.nextLine()
+            - Сравнение строк через equals
+          solution: |
+            import java.util.Scanner;
+
+            public class Main {
+                public static void main(String[] args) {
+                    String s = new Scanner(System.in).nextLine();
+                    System.out.println(s.length() + " " + s.toUpperCase());
+                    int vowels = 0;
+                    for (char c : s.toLowerCase().toCharArray())
+                        if ("аеёиоуыэюяaeiou".indexOf(c) >= 0) vowels++;
+                    System.out.println("Гласных: " + vowels);
+                    String rev = new StringBuilder(s).reverse().toString();
+                    System.out.println(rev);
+                    String clean = s.replace(" ", "").toLowerCase();
+                    System.out.println(clean.equals(new StringBuilder(clean).reverse().toString()));
+                }
+            }
+
+      - id: java-01-04
+        title: Условия и switch
+        minutes: 20
+        xp: 25
+        theory: |
+          ## if / else
+
+          ```java
+          if (age >= 18) {
+              System.out.println("Взрослый");
+          } else if (age >= 14) {
+              System.out.println("Подросток");
+          } else {
+              System.out.println("Ребёнок");
+          }
+          ```
+
+          Условие обязано иметь тип `boolean`. Логика: `&&`, `||`, `!` (сокращённые вычисления).
+
+          Тернарный оператор: `String s = n % 2 == 0 ? "чёт" : "нечёт";`
+
+          ## Классический switch
+
+          ```java
+          switch (day) {
+              case 6:
+              case 7:
+                  System.out.println("Выходной");
+                  break;
+              default:
+                  System.out.println("Будний");
+          }
+          ```
+
+          ## Switch-выражения (Java 14+)
+
+          ```java
+          String type = switch (day) {
+              case 6, 7 -> "Выходной";
+              case 1, 2, 3, 4, 5 -> "Будний";
+              default -> throw new IllegalArgumentException("Нет такого дня");
+          };
+
+          int len = switch (cmd) {
+              case "start" -> 1;
+              default -> {
+                  System.out.println("Неизвестно");
+                  yield 0;          // вернуть значение из блока
+              }
+          };
+          ```
+
+          В стрелочной форме нет «проваливания», `break` не нужен. `switch` работает с `int`, `char`, `String`, `enum`, а с Java 21 — с паттернами по типам.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int d = 6;
+              String t = switch (d) {
+                  case 6, 7 -> "weekend";
+                  default -> "workday";
+              };
+              System.out.println(t);
+            answer: weekend
+          - type: output
+            q: Что выведет код?
+            code: |
+              int k = 1;
+              switch (k) {
+                  case 1: System.out.print("a");
+                  case 2: System.out.print("b"); break;
+                  case 3: System.out.print("c");
+              }
+            answer: ab
+          - type: fill
+            q: Верните значение из блока в switch-выражении
+            code: |
+              default -> {
+                  log("unknown");
+                  ___ -1;
+              }
+            answers: [yield]
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              int count = 0;
+              if (count) {
+                  System.out.println("empty");
+              }
+            bugLine: 2
+            fix: if (count == 0) {
+          - type: output
+            q: Что выведет код?
+            code: |
+              int x = 5;
+              System.out.println(x > 3 && x < 10 ? "in" : "out");
+            answer: in
+        homework:
+          task: |
+            **Калькулятор стоимости доставки.** Пользователь вводит зону (`A`, `B`, `C`) и вес посылки в кг. Базовая цена зависит от зоны (A — 300, B — 500, C — 800, через switch-выражение). За каждый кг сверх 5 — плюс 50 руб. Неизвестная зона — сообщение об ошибке.
+          checklist:
+            - Используется switch-выражение со стрелками
+            - Обработана неизвестная зона
+          solution: |
+            import java.util.Scanner;
+
+            public class Main {
+                public static void main(String[] args) {
+                    Scanner sc = new Scanner(System.in);
+                    String zone = sc.next().toUpperCase();
+                    double weight = sc.nextDouble();
+                    int base = switch (zone) {
+                        case "A" -> 300;
+                        case "B" -> 500;
+                        case "C" -> 800;
+                        default -> -1;
+                    };
+                    if (base < 0) {
+                        System.out.println("Неизвестная зона");
+                        return;
+                    }
+                    double extra = Math.max(0, Math.ceil(weight - 5)) * 50;
+                    System.out.println("Стоимость: " + (base + extra));
+                }
+            }
+
+      - id: java-01-05
+        title: Циклы и массивы
+        minutes: 25
+        xp: 25
+        theory: |
+          ## Циклы
+
+          ```java
+          for (int i = 0; i < 5; i++) { }
+          while (n > 0) { n--; }
+          do { x = sc.nextInt(); } while (x < 0);
+
+          int[] nums = {3, 1, 4};
+          for (int x : nums) {          // for-each
+              System.out.println(x);
+          }
+          ```
+
+          `break` и `continue` работают как обычно. Для выхода из вложенных циклов есть метки: `outer: for (...) { ... break outer; }`.
+
+          ## Массивы
+
+          ```java
+          int[] a = new int[5];              // [0, 0, 0, 0, 0]
+          String[] names = {"Аня", "Боб"};
+          a.length;                          // 5 — поле, не метод!
+          a[10];                             // ArrayIndexOutOfBoundsException
+          int[][] grid = new int[3][4];      // двумерный
+          ```
+
+          ## Класс Arrays
+
+          ```java
+          import java.util.Arrays;
+          Arrays.sort(a);
+          Arrays.toString(a);                // "[1, 3, 4]" — для печати
+          Arrays.fill(a, 7);
+          int[] copy = Arrays.copyOf(a, a.length);
+          Arrays.stream(a).sum();
+          ```
+
+          > ⚠️ `System.out.println(a)` выведет что-то вроде `[I@1b6d3586` — адрес. Используйте `Arrays.toString(a)`.
+
+          Массив — ссылочный тип: `int[] b = a;` не копирует данные, обе переменные указывают на один массив.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int[] a = {5, 3, 8, 1};
+              Arrays.sort(a);
+              System.out.println(Arrays.toString(a));
+            answer: "[1, 3, 5, 8]"
+          - type: output
+            q: Что выведет код?
+            code: |
+              int[] a = {1, 2, 3};
+              int[] b = a;
+              b[0] = 100;
+              System.out.println(a[0]);
+            answer: "100"
+          - type: choice
+            q: Как узнать длину массива `arr`?
+            options: ["`arr.length()`", "`arr.size()`", "`arr.length`", "`len(arr)`"]
+            answer: 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              int s = 0;
+              for (int i = 1; i <= 5; i++) {
+                  if (i == 4) break;
+                  s += i;
+              }
+              System.out.println(s);
+            answer: "6"
+          - type: bug
+            q: Где будет исключение?
+            code: |
+              int[] arr = new int[3];
+              for (int i = 1; i <= arr.length; i++) {
+                  arr[i] = i;
+              }
+            bugLine: 3
+            explain: При i = 3 — `ArrayIndexOutOfBoundsException`. Индексы от 0 до length - 1.
+        homework:
+          task: |
+            Заполните массив из 20 элементов случайными числами от -50 до 50. Выведите массив, сумму положительных, количество отрицательных, индекс максимального элемента. Затем отсортируйте **пузырьком** (без `Arrays.sort`) и выведите результат.
+          checklist:
+            - Сортировка пузырьком реализована вручную
+            - Вывод массива через Arrays.toString
+          solution: |
+            import java.util.Arrays;
+            import java.util.Random;
+
+            public class Main {
+                public static void main(String[] args) {
+                    Random r = new Random();
+                    int[] a = new int[20];
+                    for (int i = 0; i < a.length; i++) a[i] = r.nextInt(101) - 50;
+                    System.out.println(Arrays.toString(a));
+                    int pos = 0, neg = 0, maxI = 0;
+                    for (int i = 0; i < a.length; i++) {
+                        if (a[i] > 0) pos += a[i];
+                        if (a[i] < 0) neg++;
+                        if (a[i] > a[maxI]) maxI = i;
+                    }
+                    System.out.println(pos + " " + neg + " " + maxI);
+                    for (int i = 0; i < a.length - 1; i++)
+                        for (int j = 0; j < a.length - 1 - i; j++)
+                            if (a[j] > a[j + 1]) { int t = a[j]; a[j] = a[j + 1]; a[j + 1] = t; }
+                    System.out.println(Arrays.toString(a));
+                }
+            }
+
+      - id: java-01-06
+        title: Методы
+        minutes: 25
+        xp: 30
+        theory: |
+          ```java
+          public class Main {
+              static int add(int a, int b) {
+                  return a + b;
+              }
+
+              static void greet(String name) {
+                  System.out.println("Привет, " + name);
+              }
+
+              public static void main(String[] args) {
+                  System.out.println(add(2, 3));
+                  greet("Аня");
+              }
+          }
+          ```
+
+          Структура: `модификаторы тип_возврата имя(параметры) { тело }`. `void` — ничего не возвращает.
+
+          ## Перегрузка
+
+          ```java
+          static int max(int a, int b) { return a > b ? a : b; }
+          static double max(double a, double b) { return a > b ? a : b; }
+          ```
+
+          Параметров по умолчанию в Java нет — их заменяет перегрузка.
+
+          ## Varargs
+
+          ```java
+          static int sum(int... nums) {
+              int s = 0;
+              for (int n : nums) s += n;
+              return s;
+          }
+          sum(1, 2, 3);
+          ```
+
+          ## Передача параметров
+
+          В Java **всё передаётся по значению**:
+          - примитив — копируется значение;
+          - объект — копируется **ссылка**: метод может изменить содержимое объекта, но не может заставить внешнюю переменную указывать на другой объект.
+
+          ```java
+          static void fill(int[] arr) { arr[0] = 99; }   // изменит исходный массив
+          static void reset(int[] arr) { arr = new int[3]; } // снаружи ничего не изменится
+          ```
+
+          ## Рекурсия
+
+          ```java
+          static long factorial(int n) {
+              return n <= 1 ? 1 : n * factorial(n - 1);
+          }
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              static void inc(int x) { x++; }
+              // в main:
+              int a = 5;
+              inc(a);
+              System.out.println(a);
+            answer: "5"
+          - type: output
+            q: Что выведет код?
+            code: |
+              static void change(int[] arr) { arr[0] = 42; }
+              // в main:
+              int[] a = {1, 2};
+              change(a);
+              System.out.println(a[0]);
+            answer: "42"
+          - type: fill
+            q: Метод, принимающий любое число аргументов
+            code: |
+              static int sum(int___ nums) {
+                  int s = 0;
+                  for (int n : nums) s += n;
+                  ___ s;
+              }
+            answers: ["...", return]
+          - type: choice
+            q: Как в Java сделать «параметр по умолчанию»?
+            options: ["`void f(int x = 5)`", "Через перегрузку метода", "Аннотацией `@Default`", "Никак, нельзя"]
+            answer: 1
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              static int square(int x) {
+                  int r = x * x;
+              }
+            bugLine: 2
+            explain: Метод объявлен как возвращающий `int`, но нет `return`.
+            fix: "    return x * x;"
+        homework:
+          task: |
+            Напишите класс `MathUtils` со статическими методами: `isPrime(int)`, `gcd(int, int)` (рекурсивно), `fibonacci(int n)` (итеративно, `long`), `max(int...)` и перегрузку `max(double, double)`. Проверьте все методы в `main`.
+          checklist:
+            - Методы статические и не печатают, а возвращают результат
+            - fibonacci(50) работает быстро
+          solution: |
+            public class MathUtils {
+                static boolean isPrime(int n) {
+                    if (n < 2) return false;
+                    for (int d = 2; (long) d * d <= n; d++) if (n % d == 0) return false;
+                    return true;
+                }
+                static int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
+                static long fibonacci(int n) {
+                    long a = 0, b = 1;
+                    for (int i = 0; i < n; i++) { long t = a + b; a = b; b = t; }
+                    return a;
+                }
+                static int max(int... xs) { int m = xs[0]; for (int x : xs) m = Math.max(m, x); return m; }
+                static double max(double a, double b) { return a > b ? a : b; }
+
+                public static void main(String[] args) {
+                    System.out.println(isPrime(97) + " " + gcd(48, 18) + " " + fibonacci(50));
+                    System.out.println(max(3, 9, 2) + " " + max(2.5, 1.5));
+                }
+            }
+
+  - id: java-m2
+    title: ООП в Java
+    level: Junior
+    lessons:
+      - Классы и объекты, конструкторы
+      - Инкапсуляция, геттеры и сеттеры
+      - Наследование и super
+      - Полиморфизм и переопределение
+      - Абстрактные классы и интерфейсы
+      - static, final, enum, record
+      - equals, hashCode, toString
+  - id: java-m3
+    title: Коллекции и generics
+    level: Junior
+    lessons:
+      - ArrayList и LinkedList
+      - HashMap и TreeMap
+      - HashSet и TreeSet
+      - Comparable и Comparator
+      - Generics и wildcards
+      - Iterator и Collections
+  - id: java-m4
+    title: Исключения и I/O
+    level: Junior+
+    lessons:
+      - Checked и unchecked исключения
+      - try-with-resources
+      - Свои исключения
+      - Файлы и java.nio.file
+      - Сериализация и JSON (Jackson)
+  - id: java-m5
+    title: Функциональный стиль
+    level: Junior+
+    lessons:
+      - Лямбды и функциональные интерфейсы
+      - Ссылки на методы
+      - Stream API — основы
+      - Stream API — collect и группировка
+      - Optional
+  - id: java-m6
+    title: Многопоточность
+    level: Middle
+    lessons:
+      - Thread и Runnable
+      - synchronized и volatile
+      - ExecutorService и пулы потоков
+      - CompletableFuture
+      - Concurrent-коллекции и атомики
+      - Виртуальные потоки Java 21
+  - id: java-m7
+    title: JVM изнутри
+    level: Middle
+    lessons:
+      - Память JVM — стек, куча, metaspace
+      - Сборщики мусора
+      - Загрузчики классов
+      - Профилирование и JFR
+  - id: java-m8
+    title: Инструменты и тестирование
+    level: Middle
+    lessons:
+      - Maven и Gradle
+      - JUnit 5
+      - Mockito
+      - Логирование SLF4J/Logback
+  - id: java-m9
+    title: Базы данных
+    level: Middle
+    lessons:
+      - JDBC
+      - JPA и Hibernate
+      - Связи сущностей и N+1
+      - Транзакции
+      - Миграции Flyway
+  - id: java-m10
+    title: Spring Boot
+    level: Middle
+    lessons:
+      - IoC и Dependency Injection
+      - REST-контроллеры
+      - Spring Data JPA
+      - Валидация и обработка ошибок
+      - Spring Security и JWT
+      - Тестирование Spring-приложений
+  - id: java-m11
+    title: Инженерные практики
+    level: Middle
+    lessons:
+      - Паттерны проектирования
+      - Git, code review
+      - Docker и CI/CD
+      - "Итоговый проект: REST API на Spring Boot"

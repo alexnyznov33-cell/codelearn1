@@ -1,0 +1,529 @@
+id: python
+modules:
+  - id: py-m8
+    title: Тестирование и качество кода
+    level: Middle
+    lessons:
+      - id: py-08-01
+        title: PEP 8, линтеры ruff и black
+        minutes: 20
+        xp: 25
+        theory: |
+          **PEP 8** — официальный стиль кода Python. Единый стиль делает код команды читаемым, а ревью — быстрым.
+
+          ## Главные правила
+
+          - отступ — 4 пробела, длина строки — до 79–100 символов;
+          - `snake_case` для функций и переменных, `PascalCase` для классов, `UPPER_CASE` для констант;
+          - два пустых ряда между функциями/классами верхнего уровня, один — между методами;
+          - импорты в начале файла: стандартная библиотека → сторонние → свои, по группам;
+          - пробелы вокруг операторов: `x = a + b`, но `f(x=1)` без пробелов у `=` в аргументах;
+          - сравнение с `None` через `is`: `if x is None`;
+          - проверка пустоты: `if not items:` вместо `if len(items) == 0:`.
+
+          ## Инструменты
+
+          **ruff** — сверхбыстрый линтер (заменяет flake8, isort, pyupgrade и др.):
+
+          ```
+          pip install ruff
+          ruff check .          # найти проблемы
+          ruff check . --fix    # исправить автоматически
+          ruff format .         # форматирование (совместимо с black)
+          ```
+
+          **black** — «бескомпромиссный» форматтер: вы не спорите о стиле, он форматирует всё одинаково.
+
+          ## Настройка в pyproject.toml
+
+          ```
+          [tool.ruff]
+          line-length = 100
+          [tool.ruff.lint]
+          select = ["E", "F", "I", "B", "UP"]   # ошибки, pyflakes, isort, bugbear, pyupgrade
+          ```
+
+          ## pre-commit
+
+          Запускает проверки автоматически перед каждым коммитом: `pip install pre-commit`, файл `.pre-commit-config.yaml`, `pre-commit install`. Так плохо отформатированный код не попадёт в репозиторий.
+        practice:
+          - type: choice
+            q: Как по PEP 8 правильно назвать функцию?
+            options: ["`CalculateTotal`", "`calculateTotal`", "`calculate_total`", "`CALCULATE_TOTAL`"]
+            answer: 2
+          - type: choice
+            q: Как правильно проверить переменную на None?
+            options: ["`if x == None:`", "`if x is None:`", "`if x === None:`", "`if None(x):`"]
+            answer: 1
+          - type: bug
+            q: Какая строка нарушает PEP 8?
+            code: |
+              import os
+              MAX_SIZE = 100
+              def GetUser(user_id):
+                  return {"id": user_id}
+            bugLine: 3
+            explain: Имена функций — snake_case `get_user`. Также перед функцией нужны 2 пустые строки.
+          - type: choice
+            q: Что делает `ruff check . --fix`?
+            options: ["Запускает тесты", "Находит и автоматически исправляет проблемы стиля", "Устанавливает пакеты", "Компилирует код"]
+            answer: 1
+        homework:
+          task: |
+            Возьмите любые свои решения из прошлых модулей, установите ruff, включите правила `E, F, I, B, UP` и исправьте все замечания. Настройте pre-commit с хуками ruff и ruff-format.
+          checklist:
+            - "`ruff check .` без ошибок"
+            - pre-commit срабатывает при коммите
+          solution: |
+            # .pre-commit-config.yaml
+            repos:
+              - repo: https://github.com/astral-sh/ruff-pre-commit
+                rev: v0.6.9
+                hooks:
+                  - id: ruff
+                    args: [--fix]
+                  - id: ruff-format
+
+      - id: py-08-02
+        title: Unit-тесты с pytest
+        minutes: 30
+        xp: 35
+        theory: |
+          **Unit-тест** проверяет маленький кусок кода (функцию, класс) изолированно. Тесты ловят регрессии и позволяют смело рефакторить.
+
+          ## pytest
+
+          ```
+          pip install pytest
+          ```
+
+          ```python
+          # calc.py
+          def divide(a, b):
+              if b == 0:
+                  raise ValueError("Деление на ноль")
+              return a / b
+
+          # test_calc.py
+          import pytest
+          from calc import divide
+
+          def test_divide():
+              assert divide(10, 2) == 5
+
+          def test_divide_float():
+              assert divide(1, 3) == pytest.approx(0.333, abs=1e-3)   # сравнение float
+
+          def test_divide_by_zero():
+              with pytest.raises(ValueError, match="ноль"):
+                  divide(1, 0)
+          ```
+
+          Запуск: `pytest` (найдёт файлы `test_*.py` и функции `test_*`), `pytest -v` — подробно, `pytest -k divide` — по имени, `pytest -x` — остановиться на первой ошибке.
+
+          ## Структура теста AAA
+
+          ```python
+          def test_cart_total():
+              cart = Cart()                     # Arrange — подготовка
+              cart.add("Мышь", 900, qty=2)
+              total = cart.total()              # Act — действие
+              assert total == 1800              # Assert — проверка
+          ```
+
+          ## Что тестировать
+
+          - обычный сценарий;
+          - граничные случаи: пустой список, 0, отрицательные числа, очень большие значения;
+          - ошибочный ввод и исключения.
+
+          Один тест — одна проверяемая идея; имя теста описывает поведение: `test_withdraw_more_than_balance_raises`.
+
+          ## Покрытие
+
+          `pip install pytest-cov`, затем `pytest --cov=myapp --cov-report=term-missing`. 100% покрытия не гарантирует отсутствие багов, но непокрытый код — точно не проверен.
+        practice:
+          - type: fill
+            q: Проверьте, что функция бросает исключение
+            code: |
+              def test_negative():
+                  with pytest.___(ValueError):
+                      sqrt(-1)
+            answers: [raises]
+          - type: choice
+            q: Как pytest находит тесты?
+            options: ["По файлам `test_*.py` и функциям `test_*`", "По декоратору @test", "Все файлы .py", "Только по конфигу"]
+            answer: 0
+          - type: choice
+            q: Почему `assert 0.1 + 0.2 == 0.3` упадёт и как исправить?
+            options: ["Ошибка pytest", "Погрешность float — использовать `pytest.approx`", "Нужно int()", "Не упадёт"]
+            answer: 1
+          - type: order
+            q: Расставьте части теста по схеме AAA
+            lines:
+              - account = Account(balance=100)
+              - account.withdraw(30)
+              - assert account.balance == 70
+        homework:
+          task: |
+            Покройте тестами класс `BankAccount` из модуля ООП: пополнение, снятие, перевод, запрет ухода в минус, некорректные суммы, история операций. Добейтесь покрытия ≥ 90% (`pytest --cov`).
+          checklist:
+            - Минимум 8 тестов, включая граничные случаи
+            - Имена тестов описывают поведение
+          solution: |
+            import pytest
+            from bank import BankAccount
+
+            def test_deposit_increases_balance():
+                acc = BankAccount("Аня")
+                acc.deposit(100)
+                assert acc.balance == 100
+
+            def test_withdraw_more_than_balance_raises():
+                acc = BankAccount("Аня", 50)
+                with pytest.raises(ValueError):
+                    acc.withdraw(100)
+
+            @pytest.mark.parametrize("amount", [0, -10])
+            def test_invalid_deposit_raises(amount):
+                with pytest.raises(ValueError):
+                    BankAccount("Аня").deposit(amount)
+
+            def test_transfer_moves_money():
+                a, b = BankAccount("A", 100), BankAccount("B")
+                a.transfer_to(b, 40)
+                assert (a.balance, b.balance) == (60, 40)
+
+      - id: py-08-03
+        title: Фикстуры, моки и параметризация
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Фикстуры — подготовка данных
+
+          ```python
+          import pytest
+
+          @pytest.fixture
+          def account():
+              return BankAccount("Аня", balance=100)
+
+          def test_withdraw(account):          # pytest передаст фикстуру по имени параметра
+              account.withdraw(30)
+              assert account.balance == 70
+
+          @pytest.fixture
+          def db():
+              conn = create_test_db()
+              yield conn                       # тест выполняется здесь
+              conn.close()                     # очистка после теста
+          ```
+
+          Общие фикстуры кладут в `conftest.py` — они доступны всем тестам папки. Область: `@pytest.fixture(scope="session")` — один раз на весь запуск. Встроенные: `tmp_path` (временная папка), `monkeypatch`, `capsys` (перехват print).
+
+          ## Параметризация
+
+          ```python
+          @pytest.mark.parametrize("text, expected", [
+              ("шалаш", True),
+              ("кот", False),
+              ("", True),
+          ])
+          def test_palindrome(text, expected):
+              assert is_palindrome(text) == expected
+          ```
+
+          ## Моки — подмена зависимостей
+
+          Unit-тест не должен ходить в сеть, БД или отправлять письма. Зависимости подменяют:
+
+          ```python
+          from unittest.mock import Mock, patch
+
+          def test_notify_sends_email():
+              sender = Mock()
+              service = OrderService(sender=sender)     # DI делает подмену простой
+              service.complete(order_id=1)
+              sender.send.assert_called_once()
+
+          @patch("weather.requests.get")                # патчим там, где используется
+          def test_weather(mock_get):
+              mock_get.return_value.json.return_value = {"temp": 20}
+              assert get_temperature("Moscow") == 20
+          ```
+
+          `Mock` записывает все вызовы: `assert_called_with(...)`, `call_count`, `side_effect` (исключение или последовательность значений).
+        practice:
+          - type: choice
+            q: Где хранить фикстуры, общие для многих тест-файлов?
+            options: ["`fixtures.py`", "`conftest.py`", "`__init__.py`", "`setup.cfg`"]
+            answer: 1
+          - type: fill
+            q: Параметризуйте тест
+            code: |
+              @pytest.mark.___("n, expected", [(2, True), (4, False)])
+              def test_prime(n, expected):
+                  assert is_prime(n) == expected
+            answers: [parametrize]
+          - type: choice
+            q: Зачем в unit-тестах моки?
+            options: ["Ускорить Python", "Изолировать код от сети, БД и других внешних зависимостей", "Генерировать данные", "Покрытие кода"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              from unittest.mock import Mock
+              m = Mock(return_value=42)
+              m(1); m(2)
+              print(m(), m.call_count)
+            answer: 42 3
+          - type: choice
+            q: Что делает код после `yield` в фикстуре?
+            options: ["Ничего", "Выполняет очистку после теста", "Запускается до теста", "Повторяет тест"]
+            answer: 1
+        homework:
+          task: |
+            Напишите функцию `get_usd_rate()`, которая запрашивает курс через `requests.get(...)` и возвращает float, а при ошибке сети — последнее закешированное значение из файла. Протестируйте: успешный ответ, ошибка сети (side_effect), запись в кэш (через `tmp_path`). Ни один тест не должен ходить в интернет.
+          checklist:
+            - Используются patch, side_effect, tmp_path
+            - Тесты проходят без интернета
+          solution: |
+            # rates.py
+            import json, requests
+            from pathlib import Path
+
+            def get_usd_rate(cache: Path) -> float:
+                try:
+                    r = requests.get("https://www.cbr-xml-daily.ru/daily_json.js", timeout=5)
+                    rate = r.json()["Valute"]["USD"]["Value"]
+                    cache.write_text(json.dumps(rate))
+                    return rate
+                except requests.RequestException:
+                    return json.loads(cache.read_text())
+
+            # test_rates.py
+            from unittest.mock import patch
+            import requests
+            from rates import get_usd_rate
+
+            @patch("rates.requests.get")
+            def test_success_writes_cache(mock_get, tmp_path):
+                mock_get.return_value.json.return_value = {"Valute": {"USD": {"Value": 95.5}}}
+                cache = tmp_path / "c.json"
+                assert get_usd_rate(cache) == 95.5
+                assert cache.read_text() == "95.5"
+
+            @patch("rates.requests.get", side_effect=requests.ConnectionError)
+            def test_network_error_uses_cache(mock_get, tmp_path):
+                cache = tmp_path / "c.json"
+                cache.write_text("90.0")
+                assert get_usd_rate(cache) == 90.0
+
+      - id: py-08-04
+        title: Статическая типизация с mypy
+        minutes: 20
+        xp: 25
+        theory: |
+          В модуле «Функции» мы познакомились с аннотациями. На уровне Middle типизация — часть ежедневной работы и CI.
+
+          ## Запуск
+
+          ```
+          pip install mypy
+          mypy src/ --strict
+          ```
+
+          `--strict` включает все проверки: обязательные аннотации, запрет неявного `Any`, проверку возвращаемых значений.
+
+          ## Сужение типов (narrowing)
+
+          ```python
+          def length(x: str | None) -> int:
+              if x is None:
+                  return 0
+              return len(x)          # здесь mypy знает, что x — str
+          ```
+
+          ## Generics
+
+          ```python
+          from typing import TypeVar, Generic
+
+          T = TypeVar("T")
+
+          def first(items: list[T]) -> T:      # тип результата зависит от входа
+              return items[0]
+
+          class Stack(Generic[T]):
+              def __init__(self) -> None:
+                  self._items: list[T] = []
+              def push(self, item: T) -> None:
+                  self._items.append(item)
+              def pop(self) -> T:
+                  return self._items.pop()
+
+          # Python 3.12+: def first[T](items: list[T]) -> T: ...
+          ```
+
+          ## Полезные конструкции
+
+          - `TypedDict` — словарь с фиксированными ключами (например, JSON из API);
+          - `Literal["asc", "desc"]` — только перечисленные значения;
+          - `Final` — константа;
+          - `Protocol` — структурная (утиная) типизация;
+          - `cast()` и `# type: ignore[код]` — крайние меры с комментарием «почему».
+
+          ## Конфигурация
+
+          ```
+          [tool.mypy]
+          strict = true
+          python_version = "3.12"
+          ```
+        practice:
+          - type: choice
+            q: Что делает флаг `--strict` у mypy?
+            options: ["Запускает тесты", "Включает максимально строгие проверки", "Удаляет аннотации", "Форматирует код"]
+            answer: 1
+          - type: fill
+            q: Объявите обобщённую функцию
+            code: |
+              T = ___("T")
+              def last(items: list[T]) -> ___:
+                  return items[-1]
+            answers: [TypeVar, T]
+          - type: choice
+            q: Как ограничить параметр значениями "asc" или "desc"?
+            options: ["`str`", "`Literal[\"asc\", \"desc\"]`", "`Enum`-строка обязательно", "`Final`"]
+            answer: 1
+          - type: choice
+            q: "Что делает mypy в строке после `if x is None: return 0`?"
+            options: ["Считает x всё ещё Optional", "Сужает тип x до не-None", "Выдаёт ошибку", "Удаляет x"]
+            answer: 1
+        homework:
+          task: |
+            Типизируйте модуль «Список задач» (TypedDict для задачи, Literal для статуса, Generic-репозиторий `Repository[T]` с методами add/get/list). Запустите `mypy --strict` и добейтесь 0 ошибок. Добавьте mypy в pre-commit.
+          checklist:
+            - Нет Any и type ignore без причины
+            - Используются TypedDict, Literal, Generic
+          solution: |
+            from typing import Generic, Literal, TypedDict, TypeVar
+
+            Status = Literal["todo", "done"]
+
+            class Task(TypedDict):
+                id: int
+                title: str
+                status: Status
+
+            T = TypeVar("T")
+
+            class Repository(Generic[T]):
+                def __init__(self) -> None:
+                    self._items: dict[int, T] = {}
+                def add(self, key: int, item: T) -> None:
+                    self._items[key] = item
+                def get(self, key: int) -> T | None:
+                    return self._items.get(key)
+                def list(self) -> list[T]:
+                    return list(self._items.values())
+
+            repo: Repository[Task] = Repository()
+            repo.add(1, {"id": 1, "title": "Учить mypy", "status": "todo"})
+
+      - id: py-08-05
+        title: Логирование
+        minutes: 20
+        xp: 25
+        theory: |
+          `print` годится для отладки, но в рабочем приложении нужен **logging**: уровни важности, время, место в коде, вывод в файл, ротация.
+
+          ## Уровни
+
+          `DEBUG` < `INFO` < `WARNING` < `ERROR` < `CRITICAL`. Сообщения ниже установленного уровня не выводятся.
+
+          ## Базовая настройка
+
+          ```python
+          import logging
+
+          logging.basicConfig(
+              level=logging.INFO,
+              format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+          )
+          logger = logging.getLogger(__name__)     # свой логгер в каждом модуле
+
+          logger.info("Сервер запущен на порту %s", 8000)   # ленивое форматирование
+          logger.warning("Мало места на диске")
+          try:
+              1 / 0
+          except ZeroDivisionError:
+              logger.exception("Ошибка при расчёте")       # ERROR + трейсбэк
+          ```
+
+          Передавайте аргументы через `%s`, а не f-строкой — строка соберётся, только если сообщение реально выводится.
+
+          ## Обработчики
+
+          ```python
+          from logging.handlers import RotatingFileHandler
+
+          handler = RotatingFileHandler("app.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+          handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+          logging.getLogger().addHandler(handler)
+          ```
+
+          ## Практики
+
+          - библиотеки не вызывают `basicConfig` — только приложение;
+          - не логируйте пароли, токены, персональные данные;
+          - в продакшене часто пишут **структурированные логи** (JSON) — библиотеки `structlog`, `python-json-logger`, чтобы искать по полям в ELK/Grafana Loki;
+          - у каждого запроса — `request_id` в логах, чтобы собрать всю цепочку.
+        practice:
+          - type: choice
+            q: Какой уровень выше — WARNING или INFO?
+            options: ["INFO", "WARNING", "Одинаковые", "Зависит от настроек"]
+            answer: 1
+          - type: choice
+            q: Что выведет `logger.debug("x")` при `level=logging.INFO`?
+            options: ["Сообщение x", "Ничего", "Ошибку", "Предупреждение"]
+            answer: 1
+          - type: fill
+            q: Залогируйте ошибку вместе с трейсбэком
+            code: |
+              try:
+                  process()
+              except Exception:
+                  logger.___("Не удалось обработать")
+            answers: [exception]
+          - type: choice
+            q: Как правильно создавать логгер в модуле?
+            options: ["`logging.getLogger(__name__)`", "`print`", "`logging.Logger()`", "`log = open('log.txt')`"]
+            answer: 0
+        homework:
+          task: |
+            Добавьте логирование в приложение «Учёт расходов»: INFO при добавлении расхода, WARNING при неверном вводе, ERROR с трейсбэком при ошибке сохранения. Логи пишутся в консоль (уровень INFO) и в файл с ротацией (уровень DEBUG). Настройка — в отдельной функции `setup_logging()`.
+          checklist:
+            - Разные уровни для консоли и файла
+            - Нет f-строк в вызовах логгера
+          solution: |
+            import logging
+            from logging.handlers import RotatingFileHandler
+
+            def setup_logging() -> None:
+                fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+                root = logging.getLogger()
+                root.setLevel(logging.DEBUG)
+                console = logging.StreamHandler()
+                console.setLevel(logging.INFO)
+                console.setFormatter(fmt)
+                file = RotatingFileHandler("expenses.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+                file.setLevel(logging.DEBUG)
+                file.setFormatter(fmt)
+                root.addHandler(console)
+                root.addHandler(file)
+
+            setup_logging()
+            log = logging.getLogger("expenses")
+            log.info("Добавлен расход %s на сумму %.2f", "еда", 450)
+            log.warning("Неверная сумма: %r", "abc")

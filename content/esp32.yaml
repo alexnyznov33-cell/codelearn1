@@ -1,0 +1,1388 @@
+id: esp32
+title: ESP32
+short: ESP
+lang: cpp
+color: '#d95b38'
+description: 'Arduino-ESP32 3.x: GPIO, Wi-Fi, BLE, MQTT, энергосбережение и IoT-проект.'
+modules:
+- id: esp32-m1
+  title: Старт и периферия
+  level: Junior
+  lessons:
+  - title: 'ESP32: установка и первый запуск'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Платформа и версия
+      Этот курс рассчитан на **классический ESP32 DevKit с модулем ESP32-WROOM-32**, не ESP32-C3/S3. Скетчи используют Arduino framework и **Arduino-ESP32 3.x**. Распиновка, периферия и APIs отличаются между моделями и версиями: примеры нужно адаптировать для других плат.
+
+      В Arduino IDE добавьте официальный индекс Espressif в дополнительные URL менеджера плат: `https://espressif.github.io/arduino-esp32/package_esp32_index.json`. Установите **esp32 by Espressif Systems**, выберите ESP32 Dev Module (для указанной платы) и порт. Используйте USB-кабель с данными. На некоторых платах при начале загрузки нужно удержать BOOT и отпустить после соединения; сначала попробуйте обычную загрузку.
+
+      ## Электробезопасность
+      GPIO ESP32 — **3,3 В и не допускают 5 В**. Надпись 5V/VIN означает вход питания платы, а не разрешённое напряжение GPIO. Питайте через USB по документации платы, не подавайте одновременно конфликтующие источники. Все подключения делайте без питания, внешние схемы должны иметь общую землю.
+
+      Serial обычно работает на 115200 бод. Встроенный LED имеется не на каждой плате; стартовый пример не требует светодиода.
+
+      ## Пример
+
+      ```cpp
+      void setup() {
+        Serial.begin(115200);
+        Serial.println("Hello, ESP32!");
+      }
+      void loop() {}
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Какие логические уровни используют GPIO ESP32?
+      options:
+      - 3,3 В
+      - 5 В без ограничений
+      - 12 В
+      - 220 В
+      answer: 0
+      explain: Входы ESP32 не являются 5-вольт-совместимыми.
+    - type: choice
+      q: Для какой версии framework написан этот курс?
+      options:
+      - Arduino-ESP32 3.x
+      - Только MicroPython
+      - Arduino AVR Boards
+      - Только ESP-IDF без Arduino
+      answer: 0
+      explain: В частности, API LEDC изменился в 3.x.
+    - type: fill
+      q: Настройте Serial на скорость курса.
+      code: |
+        Serial.begin(___);
+      answers:
+      - '115200'
+      explain: Монитор должен использовать ту же скорость.
+    - type: order
+      q: Подготовьте ESP32 к первой загрузке.
+      lines:
+      - Установить пакет esp32 by Espressif Systems
+      - Подключить плату USB-кабелем с данными
+      - Выбрать модель платы и порт
+      - Проверить и загрузить скетч
+      - Открыть Serial Monitor на 115200
+      explain: Установка пакета добавляет компилятор и определения плат.
+    - type: bug
+      q: Где опасный выход за пределы напряжения GPIO?
+      code: |
+        // Подключение внешнего сигнала:
+        // Соединить сигнал 5V напрямую с GPIO18.
+        // Соединить земли устройств.
+      bugLine: 2
+      fix: // Использовать подходящий согласователь уровней до 3,3 В.
+      explain: 5 В могут повредить ESP32, общая земля это не исправляет.
+    homework:
+      task: Установите Arduino-ESP32 3.x и загрузите приветствие на ESP32-WROOM-32 DevKit. Проверьте скорость Serial
+        115200. Запишите точную модель своей платы.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        void setup() {
+          Serial.begin(115200);
+          Serial.println("Hello, ESP32!");
+        }
+        void loop() {}
+    id: esp32-01-01
+  - title: 'GPIO: выходы, входы и ограничения'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Не все GPIO одинаковы
+      На классическом ESP32 GPIO34…39 — **только входы**, без внутренних подтяжек. GPIO6…11 обычно подключены к flash и не предназначены для ваших схем. Загрузочные (strapping) пины требуют осторожности; проверьте схему конкретной платы. Номера в скетче — номера GPIO, не порядковые номера контактов.
+
+      Для примера используем LED: GPIO18 → резистор 330 Ом → LED → GND; кнопка: GPIO19 → кнопка → GND. GPIO19 поддерживает INPUT_PULLUP, нажатие читается как LOW. Этот пример для ESP32-WROOM-32: на других семействах назначение пинов может отличаться.
+
+      Земли внешних источников сигналов должны быть соединены, уровни — 3,3 В. GPIO не питают моторы и мощные нагрузки. Кнопка может дребезжать: здесь отображаем уровень, для событий применяйте фильтр времени.
+
+      ## Пример
+
+      ```cpp
+      const int LED = 18, BUTTON = 19;
+      void setup() {
+        pinMode(LED, OUTPUT);
+        pinMode(BUTTON, INPUT_PULLUP);
+      }
+      void loop() {
+        digitalWrite(LED, digitalRead(BUTTON) == LOW ? HIGH : LOW);
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Можно ли использовать GPIO34 как выход на классическом ESP32?
+      options:
+      - Нет, только вход
+      - Да, для любого мотора
+      - Да, он выдерживает 12 В
+      - Только с analogWrite
+      answer: 0
+      explain: GPIO34…39 являются входными пинами.
+    - type: choice
+      q: Почему не берём GPIO6…11 на ESP32-WROOM-32?
+      options:
+      - Обычно заняты подключением flash
+      - Всегда подключены к кнопке
+      - Это пины 220 В
+      - Они не существуют
+      answer: 0
+      explain: Использование может нарушить работу flash и загрузку.
+    - type: fill
+      q: Включите внутреннюю подтяжку на GPIO19.
+      code: |
+        pinMode(19, ___);
+      answers:
+      - INPUT_PULLUP
+      explain: GPIO19 поддерживает внутреннюю подтяжку.
+    - type: output
+      q: Что появится в Serial Monitor при выполнении этого фрагмента? Скорость порта уже настроена.
+      code: |
+        int reading = LOW;
+        Serial.println(reading == LOW ? "pressed" : "released");
+      answer: pressed
+      explain: В схеме с подтяжкой нажатие активно низким уровнем.
+    - type: bug
+      q: Найдите недопустимую настройку GPIO34.
+      code: |
+        void setup() {
+          pinMode(34, OUTPUT);
+        }
+      bugLine: 2
+      fix: '  pinMode(18, OUTPUT);'
+      explain: Для выхода выберите поддерживаемый пин и перенесите подключение на него.
+    homework:
+      task: Подключите внешний LED к GPIO18 через резистор, кнопку к GPIO19 и GND. LED должен гореть при нажатии.
+        До сборки проверьте распиновку.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        const int LED = 18, BUTTON = 19;
+        void setup() {
+          pinMode(LED, OUTPUT);
+          pinMode(BUTTON, INPUT_PULLUP);
+        }
+        void loop() {
+          digitalWrite(LED, digitalRead(BUTTON) == LOW ? HIGH : LOW);
+        }
+    id: esp32-01-02
+  - title: 'ADC: измерение на ADC1'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Измерения при работающем Wi-Fi
+      На классическом ESP32 используйте **ADC1**, например GPIO34: ADC2 конфликтует с Wi-Fi в этом семействе. GPIO34 — вход, он подходит для АЦП. Потенциометр около 10 кОм: крайние выводы 3V3/GND, движок GPIO34. Никогда не подавайте 5 В.
+
+      `analogReadResolution(12)` задаёт сырой диапазон 0…4095. Затухание (`analogSetPinAttenuation`) влияет на рабочий диапазон. При `ADC_11db` на классическом ESP32 полезный диапазон не равен идеальным 0…3,3 В; края могут насыщаться, АЦП нелинеен. Значение максимальной шкалы не является точным измерением 3,3 В.
+
+      `analogReadMilliVolts()` возвращает оценку в милливольтах с доступной калибровкой ядра/чипа. Для точного прибора нужны измерения, калибровка и иногда внешний АЦП. Усреднение снижает случайный шум, но не устраняет систематическую ошибку.
+
+      ## Пример
+
+      ```cpp
+      const int SENSOR = 34;
+      void setup() {
+        Serial.begin(115200);
+        analogReadResolution(12);
+        analogSetPinAttenuation(SENSOR, ADC_11db);
+      }
+      void loop() {
+        int raw = analogRead(SENSOR);
+        uint32_t mv = analogReadMilliVolts(SENSOR);
+        Serial.print(raw);
+        Serial.print(" ");
+        Serial.println(mv);
+        delay(100);
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Какой АЦП предпочтителен при Wi-Fi на классическом ESP32?
+      options:
+      - ADC1
+      - ADC2 без ограничений
+      - Только внешний UART
+      - Никакой АЦП не существует
+      answer: 0
+      explain: ADC2 разделяет ресурсы с Wi-Fi.
+    - type: choice
+      q: Диапазон сырого результата при 12 битах?
+      options:
+      - 0…4095
+      - 0…255
+      - 0…1023
+      - 0…12
+      answer: 0
+      explain: 2^12 = 4096 значений.
+    - type: fill
+      q: Задайте 12-битное чтение.
+      code: |
+        analogReadResolution(___);
+      answers:
+      - '12'
+      explain: Разрешение определяет число кодов АЦП.
+    - type: output
+      q: Что появится в Serial Monitor при выполнении этого фрагмента? Скорость порта уже настроена.
+      code: |
+        int values[] = {1000, 1100, 1200};
+        Serial.println((values[0] + values[1] + values[2]) / 3);
+      answer: '1100'
+      explain: Среднее трёх измерений; это не исправляет ошибку калибровки.
+    - type: bug
+      q: Найдите небезопасное питание потенциометра.
+      code: |
+        // Потенциометр:
+        // Крайние выводы к 5V и GND.
+        // Движок к GPIO34.
+      bugLine: 2
+      fix: // Крайние выводы к 3V3 и GND.
+      explain: Движок не должен подавать на GPIO 5 В.
+    homework:
+      task: Подключите потенциометр к GPIO34 с питанием 3,3 В. Выводите сырое значение и милливольты. Сравните с
+        мультиметром, если доступен, и отметьте насыщение у края диапазона.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        const int SENSOR = 34;
+        void setup() {
+          Serial.begin(115200);
+          analogReadResolution(12);
+          analogSetPinAttenuation(SENSOR, ADC_11db);
+        }
+        void loop() {
+          int raw = analogRead(SENSOR);
+          uint32_t mv = analogReadMilliVolts(SENSOR);
+          Serial.print(raw);
+          Serial.print(" ");
+          Serial.println(mv);
+          delay(100);
+        }
+    id: esp32-01-03
+- id: esp32-m2
+  title: PWM и Wi-Fi
+  level: Junior
+  lessons:
+  - title: 'LEDC: PWM в Arduino-ESP32 3.x'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Новый API LEDC
+      В Arduino-ESP32 **3.x** используйте `ledcAttach(pin, frequency, resolution)` и `ledcWrite(pin, duty)`. Старые руководства с `ledcSetup()` и `ledcAttachPin()` для 2.x нельзя механически копировать: API изменился.
+
+      Для GPIO18 задаём 5000 Гц и 8 бит: duty 0…255. Подключение — GPIO18 → 330 Ом → LED → GND. `ledcAttach()` возвращает bool, поэтому проверяем успех настройки. Частота и разрешение совместно ограничены аппаратным таймером; произвольное сочетание не всегда допустимо.
+
+      PWM меняет долю импульсов, а не выдаёт истинный аналоговый сигнал. Если настройка не удалась, не продолжаем управление. В примере яркость 128 — около половины диапазона, но воспринимаемая глазом яркость нелинейна.
+
+      ## Пример
+
+      ```cpp
+      const int LED = 18;
+      bool pwmReady = false;
+      void setup() {
+        Serial.begin(115200);
+        pwmReady = ledcAttach(LED, 5000, 8);
+        if (!pwmReady) Serial.println("PWM setup failed");
+      }
+      void loop() {
+        if (pwmReady) ledcWrite(LED, 128);
+        delay(10);
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Первый аргумент ledcWrite в используемом API 3.x?
+      options:
+      - Номер GPIO
+      - Номер канала из старого API
+      - SSID
+      - Напряжение
+      answer: 0
+      explain: В этом pin-based API duty записывается по пину.
+    - type: choice
+      q: Максимальная скважность для 8 бит?
+      options:
+      - '255'
+      - '4095'
+      - '1023'
+      - '8'
+      answer: 0
+      explain: 2^8 - 1 = 255.
+    - type: fill
+      q: Подключите PWM в API 3.x.
+      code: |
+        bool ok = ___(18, 5000, 8);
+      answers:
+      - ledcAttach
+      explain: Возвращаемое bool позволяет обработать ошибку.
+    - type: output
+      q: Что появится в Serial Monitor при выполнении этого фрагмента? Скорость порта уже настроена.
+      code: |
+        int duty = 255 / 2;
+        Serial.println(duty);
+      answer: '127'
+      explain: Целочисленное деление отбрасывает дробную часть.
+    - type: bug
+      q: Найдите старый API, отсутствующий в ядре 3.x.
+      code: |
+        void setup() {
+          ledcSetup(0, 5000, 8);
+        }
+      bugLine: 2
+      fix: '  ledcAttach(18, 5000, 8);'
+      explain: В 3.x настройка привязана к пину через ledcAttach.
+    homework:
+      task: 'Настройте LEDC на GPIO18: 5 кГц, 8 бит. Проверьте значения 0, 128 и 255 по очереди. Используйте ядро
+        3.x.'
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        const int LED = 18;
+        bool pwmReady = false;
+        void setup() {
+          Serial.begin(115200);
+          pwmReady = ledcAttach(LED, 5000, 8);
+          if (!pwmReady) Serial.println("PWM setup failed");
+        }
+        void loop() {
+          if (pwmReady) ledcWrite(LED, 128);
+          delay(10);
+        }
+    id: esp32-02-01
+  - title: 'Wi-Fi: подключение с тайм-аутом'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Режим станции
+      Классический ESP32 поддерживает Wi-Fi 2,4 ГГц, не 5 ГГц. `WIFI_STA` подключает устройство к существующей сети. `WiFi.begin(ssid, password)` начинает соединение; статус становится `WL_CONNECTED`, когда подключение завершено.
+
+      Не ждите бесконечно в setup: в примере максимум 10 секунд, затем сообщаем об ошибке. Короткий `delay(100)` в начальном ожидании допустим, но это ещё не полноценный неблокирующий менеджер Wi-Fi. Для рабочего продукта нужны повторное подключение и обработка потери связи.
+
+      Подставьте свои данные **локально**, не публикуйте пароль в репозитории или скриншотах. `localIP()` — адрес в вашей локальной сети, не публичный адрес. Клиентская изоляция роутера может мешать доступу между устройствами.
+
+      ## Пример
+
+      ```cpp
+      #include <WiFi.h>
+      const char* SSID = "YOUR_SSID";
+      const char* PASSWORD = "YOUR_PASSWORD";
+      void setup() {
+        Serial.begin(115200);
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(SSID, PASSWORD);
+        unsigned long start = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+          delay(100);
+        }
+        if (WiFi.status() == WL_CONNECTED) Serial.println(WiFi.localIP());
+        else Serial.println("Wi-Fi timeout");
+      }
+      void loop() {}
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Какую сеть поддерживает классический ESP32?
+      options:
+      - Wi-Fi 2,4 ГГц
+      - Только 5 ГГц
+      - Только Ethernet
+      - Любую сотовую сеть
+      answer: 0
+      explain: Радиомодуль этого семейства не поддерживает 5 ГГц.
+    - type: choice
+      q: Зачем ограничивать ожидание подключения?
+      options:
+      - Чтобы продолжить работу при недоступной сети
+      - Чтобы раскрыть пароль
+      - Чтобы изменить MAC на каждый цикл
+      - Чтобы зарядить плату
+      answer: 0
+      explain: Ошибка сети не должна навсегда блокировать программу.
+    - type: fill
+      q: Проверьте успешный статус.
+      code: |
+        if (WiFi.status() == ___) { /* сеть доступна */ }
+      answers:
+      - WL_CONNECTED
+      explain: Этот статус означает установленное соединение.
+    - type: output
+      q: Что появится в Serial Monitor при выполнении этого фрагмента? Скорость порта уже настроена.
+      code: |
+        unsigned long now = 12000, start = 2000;
+        Serial.println(now - start < 10000 ? "wait" : "timeout");
+      answer: timeout
+      explain: На границе десяти секунд условие продолжения ложно.
+    - type: bug
+      q: Найдите ожидание без тайм-аута.
+      code: |
+        WiFi.begin(SSID, PASSWORD);
+        while (WiFi.status() != WL_CONNECTED) { delay(100); }
+        Serial.println("done");
+      bugLine: 2
+      fix: while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) { delay(100); }
+      explain: Перед циклом объявите unsigned long start = millis(); условие должно ограничивать время.
+    homework:
+      task: 'Подключите ESP32 к своей сети 2,4 ГГц. Проверьте правильный и неправильный пароль: во втором случае
+        программа должна завершить ожидание через тайм-аут, а не зависнуть.'
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <WiFi.h>
+        const char* SSID = "YOUR_SSID";
+        const char* PASSWORD = "YOUR_PASSWORD";
+        void setup() {
+          Serial.begin(115200);
+          WiFi.mode(WIFI_STA);
+          WiFi.begin(SSID, PASSWORD);
+          unsigned long start = millis();
+          while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+            delay(100);
+          }
+          if (WiFi.status() == WL_CONNECTED) Serial.println(WiFi.localIP());
+          else Serial.println("Wi-Fi timeout");
+        }
+        void loop() {}
+    id: esp32-02-02
+  - title: Локальный веб-сервер
+    minutes: 25
+    xp: 30
+    theory: |
+      ## HTTP на ESP32
+      Встроенные библиотеки `WiFi.h` и `WebServer.h` позволяют поднять учебный HTTP-сервер. `server.on()` назначает маршрут, `server.begin()` запускает сервер, `handleClient()` обслуживает запросы в loop.
+
+      В примере плата создаёт **собственную точку доступа** `CodeLearn-ESP32`, чтобы не зависеть от домашнего роутера. Подключите телефон/компьютер к ней и откройте IP, который напечатал `softAPIP()`, с префиксом `http://`. Обычно это 192.168.4.1, но используйте фактический адрес. Интернет в такой сети не предоставляется.
+
+      Маршрут `/` возвращает текст. Это **не защищённый сайт**: HTTP не шифруется; WPA-пароль точки доступа не заменяет авторизацию приложения. Смените учебный пароль перед реальным использованием, не открывайте порт в Интернет. Обработчики должны быть короткими, без бесконечных циклов.
+
+      ## Пример
+
+      ```cpp
+      #include <WiFi.h>
+      #include <WebServer.h>
+      WebServer server(80);
+      void setup() {
+        Serial.begin(115200);
+        WiFi.mode(WIFI_AP);
+        if (!WiFi.softAP("CodeLearn-ESP32", "learn-esp32")) {
+          Serial.println("AP failed");
+          return;
+        }
+        Serial.println(WiFi.softAPIP());
+        server.on("/", HTTP_GET, []() {
+          server.send(200, "text/plain; charset=utf-8", "Hello, ESP32!");
+        });
+        server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
+        server.begin();
+      }
+      void loop() {
+        server.handleClient();
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Зачем server.handleClient() в loop?
+      options:
+      - Обслуживать HTTP-запросы
+      - Прошивать плату
+      - Сохранять пароль в EEPROM
+      - Включать 5 ГГц
+      answer: 0
+      explain: Синхронному серверу нужно регулярно отдавать управление.
+    - type: choice
+      q: Что означает HTTP 404?
+      options:
+      - Маршрут не найден
+      - Успех
+      - Перенаправление
+      - Сброс процессора
+      answer: 0
+      explain: Несуществующие пути обработчик возвращает с кодом 404.
+    - type: fill
+      q: Верните успешный HTTP-ответ.
+      code: |
+        server.send(___, "text/plain", "OK");
+      answers:
+      - '200'
+      explain: Код 200 означает успешную обработку.
+    - type: order
+      q: Порядок запуска сервера в точке доступа.
+      lines:
+      - Создать Wi-Fi точку доступа
+      - Зарегистрировать маршруты
+      - Вызвать server.begin()
+      - Регулярно вызывать server.handleClient() в loop
+      explain: Маршруты задают до обслуживания запросов.
+    - type: bug
+      q: Где обработка HTTP никогда не вызывается?
+      code: |
+        void loop() {
+          // пусто
+        }
+      bugLine: 2
+      fix: '  server.handleClient();'
+      explain: Добавьте обслуживание в цикл без длительных блокировок.
+    homework:
+      task: Поднимите точку доступа и страницу приветствия. Подключитесь к ней, откройте напечатанный IP по HTTP,
+        проверьте / и несуществующий путь. Не делайте проброс порта в Интернет.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <WiFi.h>
+        #include <WebServer.h>
+        WebServer server(80);
+        void setup() {
+          Serial.begin(115200);
+          WiFi.mode(WIFI_AP);
+          if (!WiFi.softAP("CodeLearn-ESP32", "learn-esp32")) {
+            Serial.println("AP failed");
+            return;
+          }
+          Serial.println(WiFi.softAPIP());
+          server.on("/", HTTP_GET, []() {
+            server.send(200, "text/plain; charset=utf-8", "Hello, ESP32!");
+          });
+          server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
+          server.begin();
+        }
+        void loop() {
+          server.handleClient();
+        }
+    id: esp32-02-03
+- id: esp32-m3
+  title: IoT и энергосбережение
+  level: Junior+
+  lessons:
+  - title: 'MQTT: телеметрия и переподключение'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Publisher и broker
+      MQTT использует брокер и темы (topics). Устройство публикует данные, подписчики получают сообщения. Установите **PubSubClient by Nick O’Leary** через менеджер библиотек. Нужны ваша Wi-Fi-сеть и доступный **локальный** MQTT-брокер на порту 1883, настроенный для учебного соединения.
+
+      Замените SSID, пароль, адрес брокера и уникальный client ID. `mqtt.loop()` обслуживает соединение; `publish()` отправляет сообщение. В примере попытки reconnect ограничены интервалом 5 с, публикации — 2 с. Сам вызов connect может ждать сетевого/сокетного тайм-аута: это не полностью асинхронный клиент. Начальная Wi-Fi попытка ограничена 10 с, повторные стартуют не чаще 10 с.
+
+      Обычный WiFiClient на 1883 **не шифрует трафик**; используйте только доверенную изолированную сеть. Для реального применения нужны аутентификация брокера, ACL и TLS с проверкой сертификата через WiFiClientSecure. Не отправляйте секреты в публичные topics. В этом примере PubSubClient публикует с QoS 0: доставка не гарантируется.
+
+      ## Пример
+
+      ```cpp
+      #include <WiFi.h>
+      #include <PubSubClient.h>
+      WiFiClient network;
+      PubSubClient mqtt(network);
+      unsigned long retryAt = 0, sentAt = 0, wifiAt = 0;
+      void setup() {
+        Serial.begin(115200);
+        WiFi.mode(WIFI_STA);
+        WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
+        unsigned long start = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) delay(100);
+        mqtt.setServer("192.168.1.10", 1883); // Замените адрес брокера.
+        mqtt.setSocketTimeout(2);
+        wifiAt = millis();
+      }
+      void loop() {
+        unsigned long now = millis();
+        if (WiFi.status() != WL_CONNECTED) {
+          if (now - wifiAt >= 10000) { wifiAt = now; WiFi.reconnect(); }
+          delay(10);
+          return;
+        }
+        if (!mqtt.connected()) {
+          if (now - retryAt >= 5000) {
+            retryAt = now;
+            mqtt.connect("codelearn-esp32-01"); // Уникальный ID для каждой платы.
+          }
+          return;
+        }
+        mqtt.loop();
+        if (now - sentAt >= 2000) {
+          sentAt = now;
+          if (!mqtt.publish("codelearn/esp32/status", "online")) Serial.println("Publish failed");
+        }
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Кто распределяет сообщения между клиентами?
+      options:
+      - MQTT-брокер
+      - Резистор
+      - Компилятор
+      - Serial Monitor
+      answer: 0
+      explain: Клиенты соединяются с брокером.
+    - type: choice
+      q: Почему client ID должен быть уникальным?
+      options:
+      - Одинаковый ID может вытеснить существующий клиент
+      - Он задаёт напряжение
+      - Это частота PWM
+      - Он заменяет TLS
+      answer: 0
+      explain: Брокер различает сессии по client ID.
+    - type: fill
+      q: Обслужите подключённый MQTT-клиент.
+      code: |
+        mqtt.___();
+      answers:
+      - loop
+      explain: Без регулярного loop соединение и подписки не обслуживаются.
+    - type: order
+      q: Порядок отправки телеметрии.
+      lines:
+      - Подключиться к Wi-Fi
+      - Настроить адрес и порт брокера
+      - Подключить MQTT с уникальным client ID
+      - Публиковать сообщение в topic
+      - Регулярно обслуживать mqtt.loop()
+      explain: Если связь потеряна, восстановите её с ограничением частоты.
+    - type: bug
+      q: Где переподключение вызывается без ограничения частоты?
+      code: |
+        void loop() {
+          if (!mqtt.connected()) mqtt.connect("node-01");
+        }
+      bugLine: 2
+      fix: '  // Используйте таймер retryAt и интервал перед mqtt.connect().'
+      explain: Плотный reconnect нагружает сеть и блокирует приложение.
+    homework:
+      task: На локальном брокере подпишитесь на codelearn/esp32/status. Проверьте публикации online и восстановление
+        после выключения/включения брокера. Для второй платы измените client ID.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <WiFi.h>
+        #include <PubSubClient.h>
+        WiFiClient network;
+        PubSubClient mqtt(network);
+        unsigned long retryAt = 0, sentAt = 0, wifiAt = 0;
+        void setup() {
+          Serial.begin(115200);
+          WiFi.mode(WIFI_STA);
+          WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
+          unsigned long start = millis();
+          while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) delay(100);
+          mqtt.setServer("192.168.1.10", 1883); // Замените адрес брокера.
+          mqtt.setSocketTimeout(2);
+          wifiAt = millis();
+        }
+        void loop() {
+          unsigned long now = millis();
+          if (WiFi.status() != WL_CONNECTED) {
+            if (now - wifiAt >= 10000) { wifiAt = now; WiFi.reconnect(); }
+            delay(10);
+            return;
+          }
+          if (!mqtt.connected()) {
+            if (now - retryAt >= 5000) {
+              retryAt = now;
+              mqtt.connect("codelearn-esp32-01"); // Уникальный ID для каждой платы.
+            }
+            return;
+          }
+          mqtt.loop();
+          if (now - sentAt >= 2000) {
+            sentAt = now;
+            if (!mqtt.publish("codelearn/esp32/status", "online")) Serial.println("Publish failed");
+          }
+        }
+    id: esp32-03-01
+  - title: 'BLE: сервис и характеристика'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Не путать BLE и Bluetooth Classic
+      Bluetooth Low Energy организован вокруг GATT: сервис содержит характеристики, каждая имеет UUID и свойства read/write/notify. В этом уроке используется BLE из пакета Arduino-ESP32 для **классического ESP32**, без сторонней NimBLE-библиотеки.
+
+      Создаём характеристику только для чтения с текстом `Hello BLE`. Реклама (advertising) позволяет телефону обнаружить устройство; чтение выполняет BLE-клиент (например, мобильный GATT-инструмент). UUID примера учебные: для собственного продукта назначьте уникальные UUID.
+
+      Пример не задаёт pairing/bonding или защиту доступа. Любой находящийся рядом клиент с доступом к GATT может читать характеристику. Не храните в ней пароли. Notify требует отдельной настройки и подписки клиента; наличие характеристики read не означает автоматическую отправку данных.
+
+      ## Пример
+
+      ```cpp
+      #include <BLEDevice.h>
+      #include <BLEServer.h>
+      #include <BLEUtils.h>
+      const char* SERVICE_UUID = "6dca0001-5da0-4df1-a124-601c6b917001";
+      const char* VALUE_UUID = "6dca0002-5da0-4df1-a124-601c6b917001";
+      void setup() {
+        Serial.begin(115200);
+        BLEDevice::init("CodeLearn-BLE");
+        BLEServer* server = BLEDevice::createServer();
+        BLEService* service = server->createService(SERVICE_UUID);
+        BLECharacteristic* value = service->createCharacteristic(VALUE_UUID, BLECharacteristic::PROPERTY_READ);
+        value->setValue("Hello BLE");
+        service->start();
+        BLEAdvertising* advertising = BLEDevice::getAdvertising();
+        advertising->addServiceUUID(SERVICE_UUID);
+        advertising->start();
+      }
+      void loop() { delay(100); }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Что содержит GATT-сервис?
+      options:
+      - Характеристики
+      - Только HTML
+      - Скетчи Python
+      - Пины PWM
+      answer: 0
+      explain: Характеристики предоставляют значения и разрешённые операции.
+    - type: choice
+      q: Для чего advertising?
+      options:
+      - Обнаружение устройства клиентом
+      - Шифрование всех данных автоматически
+      - Компиляция
+      - Зарядка
+      answer: 0
+      explain: Реклама сообщает о доступности BLE-устройства.
+    - type: fill
+      q: Разрешите чтение характеристики.
+      code: |
+        BLECharacteristic::PROPERTY___
+      answers:
+      - _READ
+      explain: Свойство PROPERTY_READ разрешает операцию чтения.
+    - type: order
+      q: Порядок запуска BLE-примера.
+      lines:
+      - Инициализировать BLEDevice
+      - Создать сервер и сервис
+      - Создать характеристику и задать значение
+      - Запустить сервис
+      - Запустить advertising
+      explain: Клиенту рекламируют уже готовый сервис.
+    - type: bug
+      q: Где не задана требуемая возможность чтения?
+      code: |
+        BLECharacteristic* value = service->createCharacteristic(
+          VALUE_UUID, BLECharacteristic::PROPERTY_WRITE);
+        value->setValue("Hello BLE");
+      bugLine: 2
+      fix: '  VALUE_UUID, BLECharacteristic::PROPERTY_READ);'
+      explain: Для read-only примера требуется PROPERTY_READ.
+    homework:
+      task: Найдите CodeLearn-BLE через BLE-клиент на телефоне, подключитесь и прочитайте характеристику с VALUE_UUID.
+        Учтите разрешения Bluetooth/сканирования в вашей ОС.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <BLEDevice.h>
+        #include <BLEServer.h>
+        #include <BLEUtils.h>
+        const char* SERVICE_UUID = "6dca0001-5da0-4df1-a124-601c6b917001";
+        const char* VALUE_UUID = "6dca0002-5da0-4df1-a124-601c6b917001";
+        void setup() {
+          Serial.begin(115200);
+          BLEDevice::init("CodeLearn-BLE");
+          BLEServer* server = BLEDevice::createServer();
+          BLEService* service = server->createService(SERVICE_UUID);
+          BLECharacteristic* value = service->createCharacteristic(VALUE_UUID, BLECharacteristic::PROPERTY_READ);
+          value->setValue("Hello BLE");
+          service->start();
+          BLEAdvertising* advertising = BLEDevice::getAdvertising();
+          advertising->addServiceUUID(SERVICE_UUID);
+          advertising->start();
+        }
+        void loop() { delay(100); }
+    id: esp32-03-02
+  - title: Deep sleep и таймер пробуждения
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Экономия энергии
+      Deep sleep выключает основную работу CPU и большую часть периферии. После пробуждения программа снова выполняет setup: это не продолжение инструкции после sleep. Обычные переменные не сохраняются, но `RTC_DATA_ATTR` хранит данные в RTC-памяти между deep-sleep пробуждениями, пока сохранено её питание. После полного обесточивания значение снова инициализируется.
+
+      `esp_sleep_enable_timer_wakeup()` принимает **микросекунды**. `10ULL * 1000000ULL` задаёт 10 секунд с 64-битным вычислением. `esp_deep_sleep_start()` переводит чип в сон. `Serial.flush()` дожидается отправки вывода перед сном.
+
+      DevKit может потреблять заметно больше самого чипа из-за USB-UART, стабилизатора и LED. Сон не делает питание платы автоматически экономичным; измеряйте ток подходящим прибором. В этом уроке используем таймер, не внешние wake-up пины, ограничения которых зависят от модели.
+
+      ## Пример
+
+      ```cpp
+      #include <esp_sleep.h>
+      RTC_DATA_ATTR unsigned int bootCount = 0;
+      void setup() {
+        Serial.begin(115200);
+        bootCount++;
+        Serial.print("Wake #");
+        Serial.println(bootCount);
+        Serial.flush();
+        esp_sleep_enable_timer_wakeup(10ULL * 1000000ULL);
+        esp_deep_sleep_start();
+      }
+      void loop() {}
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Единицы таймера пробуждения?
+      options:
+      - Микросекунды
+      - Миллисекунды
+      - Часы
+      - Байты
+      answer: 0
+      explain: Миллион микросекунд составляет секунду.
+    - type: choice
+      q: Что происходит с обычной переменной после deep sleep?
+      options:
+      - Она заново инициализируется при новом запуске
+      - Любая всегда сохраняется
+      - Она превращается в EEPROM
+      - Она хранится в Wi-Fi
+      answer: 0
+      explain: Для данных между снами используют RTC-память или NVS.
+    - type: fill
+      q: Объявите переменную в RTC-памяти.
+      code: |
+        ___ unsigned int bootCount = 0;
+      answers:
+      - RTC_DATA_ATTR
+      explain: Это не сохраняет значение после полного обесточивания.
+    - type: output
+      q: Что появится в Serial Monitor при выполнении этого фрагмента? Скорость порта уже настроена.
+      code: |
+        unsigned long long us = 10ULL * 1000000ULL;
+        Serial.println((unsigned long)(us / 1000000ULL));
+      answer: '10'
+      explain: Перевод микросекунд обратно в секунды.
+    - type: bug
+      q: Где таймер настроен на 10 микросекунд вместо 10 секунд?
+      code: |
+        Serial.flush();
+        esp_sleep_enable_timer_wakeup(10);
+        esp_deep_sleep_start();
+      bugLine: 2
+      fix: esp_sleep_enable_timer_wakeup(10ULL * 1000000ULL);
+      explain: Аргумент измеряется в микросекундах.
+    homework:
+      task: Сделайте пробуждение раз в 10 секунд и счётчик в RTC-памяти. Проверьте рост счётчика между снами и сброс
+        после полного снятия питания.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <esp_sleep.h>
+        RTC_DATA_ATTR unsigned int bootCount = 0;
+        void setup() {
+          Serial.begin(115200);
+          bootCount++;
+          Serial.print("Wake #");
+          Serial.println(bootCount);
+          Serial.flush();
+          esp_sleep_enable_timer_wakeup(10ULL * 1000000ULL);
+          esp_deep_sleep_start();
+        }
+        void loop() {}
+    id: esp32-03-03
+- id: esp32-m4
+  title: Хранение, задачи и итоговый проект
+  level: Junior+
+  lessons:
+  - title: 'Preferences: настройки в NVS'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Key-value вместо EEPROM
+      ESP32 хранит настройки во flash через NVS. Arduino-библиотека `Preferences` предоставляет namespace и пары ключ/значение. Откройте namespace через `begin("codelearn", false)` (запись разрешена), прочитайте `getUInt(key, default)`, сохраните `putUInt()`, затем вызовите `end()`.
+
+      Namespaces и ключи ограничены по длине (обычно до 15 символов), поэтому используем короткие имена. Проверяйте результат открытия и записи. Значение по умолчанию позволяет запустить устройство при отсутствующем ключе; диапазон всё равно проверяют.
+
+      Flash имеет ограниченный ресурс: сохраняйте по команде или при реальном изменении, не в каждом loop. NVS обеспечивает управление хранением, но не отменяет износ. Preferences не шифрует секреты автоматически: не считать обычное сохранение пароля безопасным хранилищем.
+
+      ## Пример
+
+      ```cpp
+      #include <Preferences.h>
+      Preferences prefs;
+      unsigned int interval = 1000;
+      void setup() {
+        Serial.begin(115200);
+        if (prefs.begin("codelearn", true)) {
+          interval = prefs.getUInt("interval", 1000);
+          prefs.end();
+        }
+        if (interval < 100 || interval > 60000) interval = 1000;
+        Serial.println(interval);
+      }
+      void loop() {
+        if (Serial.available() > 0 && Serial.read() == 's') {
+          if (prefs.begin("codelearn", false)) {
+            size_t written = prefs.putUInt("interval", interval);
+            prefs.end();
+            Serial.println(written > 0 ? "Saved" : "Save failed");
+          } else Serial.println("NVS open failed");
+        }
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Что означает true в prefs.begin(namespace, true)?
+      options:
+      - Режим только чтения
+      - Обязательное стирание
+      - TLS
+      - Перезапуск Wi-Fi
+      answer: 0
+      explain: false открывает namespace с возможностью записи.
+    - type: choice
+      q: Где Preferences хранит данные?
+      options:
+      - В NVS во flash
+      - В Serial Monitor
+      - В браузере
+      - Только в RAM
+      answer: 0
+      explain: NVS сохраняется после снятия питания.
+    - type: fill
+      q: Прочитайте unsigned int с умолчанием.
+      code: |
+        unsigned int value = prefs.___("interval", 1000);
+      answers:
+      - getUInt
+      explain: Тип getter должен соответствовать типу сохранённого значения.
+    - type: output
+      q: Что появится в Serial Monitor при выполнении этого фрагмента? Скорость порта уже настроена.
+      code: |
+        unsigned int interval = 50;
+        if (interval < 100 || interval > 60000) interval = 1000;
+        Serial.println(interval);
+      answer: '1000'
+      explain: Некорректную настройку заменяем безопасным умолчанием.
+    - type: bug
+      q: Где namespace открыт только для чтения перед записью?
+      code: |
+        prefs.begin("codelearn", true);
+        prefs.putUInt("interval", 1000);
+        prefs.end();
+      bugLine: 1
+      fix: prefs.begin("codelearn", false);
+      explain: Для записи откройте readOnly=false и проверьте успешность begin.
+    homework:
+      task: Прочитайте interval с умолчанием 1000, сохраните командой s и проверьте после перезагрузки. Измените
+        значение локально и повторите. Запись должна происходить только по команде.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <Preferences.h>
+        Preferences prefs;
+        unsigned int interval = 1000;
+        void setup() {
+          Serial.begin(115200);
+          if (prefs.begin("codelearn", true)) {
+            interval = prefs.getUInt("interval", 1000);
+            prefs.end();
+          }
+          if (interval < 100 || interval > 60000) interval = 1000;
+          Serial.println(interval);
+        }
+        void loop() {
+          if (Serial.available() > 0 && Serial.read() == 's') {
+            if (prefs.begin("codelearn", false)) {
+              size_t written = prefs.putUInt("interval", interval);
+              prefs.end();
+              Serial.println(written > 0 ? "Saved" : "Save failed");
+            } else Serial.println("NVS open failed");
+          }
+        }
+    id: esp32-04-01
+  - title: 'FreeRTOS: задачи и очередь'
+    minutes: 25
+    xp: 30
+    theory: |
+      ## Параллельная работа
+      Arduino-ESP32 работает поверх FreeRTOS. Задача — функция с бесконечным циклом и собственным стеком. `vTaskDelay(pdMS_TO_TICKS(ms))` уступает процессор; бесконечный цикл без ожидания способен нагрузить CPU и вызвать watchdog.
+
+      Для передачи данных используем **очередь**, а не общую переменную без синхронизации. Producer отправляет возрастающий счётчик, loop читает его. `xQueueCreate()` и `xTaskCreate()` могут завершиться ошибкой, проверяйте результат. В порте ESP-IDF параметр размера стека задачи задаётся в байтах (не переносите это предположение на каждый порт FreeRTOS).
+
+      Не полагайтесь на наличие двух ядер во всех ESP32: C3, например, другой. Пример не закрепляет задачу за ядром. Не делайте вывод о гарантированном порядке Serial-сообщений между задачами: планировщик определяет их выполнение. Очередь копирует заданное число байтов.
+
+      ## Пример
+
+      ```cpp
+      #include <freertos/FreeRTOS.h>
+      #include <freertos/task.h>
+      #include <freertos/queue.h>
+      QueueHandle_t samples = nullptr;
+      void producer(void*) {
+        uint32_t value = 0;
+        for (;;) {
+          value++;
+          xQueueSend(samples, &value, pdMS_TO_TICKS(100));
+          vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+      }
+      void setup() {
+        Serial.begin(115200);
+        samples = xQueueCreate(4, sizeof(uint32_t));
+        if (!samples) { Serial.println("Queue failed"); return; }
+        if (xTaskCreate(producer, "producer", 2048, nullptr, 1, nullptr) != pdPASS) {
+          Serial.println("Task failed");
+          vQueueDelete(samples);
+          samples = nullptr;
+        }
+      }
+      void loop() {
+        uint32_t value;
+        if (samples && xQueueReceive(samples, &value, pdMS_TO_TICKS(100)) == pdTRUE) {
+          Serial.println(value);
+        }
+        delay(10);
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Зачем задача вызывает vTaskDelay?
+      options:
+      - Уступить CPU другим задачам
+      - Остановить все ядра навсегда
+      - Перезаписать flash
+      - Удалить очередь
+      answer: 0
+      explain: Ожидание блокирует текущую задачу, а не всю систему.
+    - type: choice
+      q: Что даёт очередь?
+      options:
+      - Синхронизированную передачу копий данных
+      - Автоматическое шифрование
+      - Бесконечный объём памяти
+      - Увеличение напряжения
+      answer: 0
+      explain: Размер и длина очереди задаются при создании.
+    - type: fill
+      q: Преобразуйте 1000 мс в тики RTOS.
+      code: |
+        vTaskDelay(___(1000));
+      answers:
+      - pdMS_TO_TICKS
+      explain: Длительность тика зависит от конфигурации.
+    - type: order
+      q: Порядок безопасного старта producer.
+      lines:
+      - Создать очередь с размером uint32_t
+      - Проверить, что очередь создана
+      - Создать задачу и проверить результат
+      - Получать данные из очереди в loop
+      explain: Producer нельзя запускать с несуществующей очередью.
+    - type: bug
+      q: Где слишком маленький размер элемента очереди?
+      code: |
+        QueueHandle_t q = xQueueCreate(4, sizeof(uint8_t));
+        uint32_t value = 1000;
+        xQueueSend(q, &value, 0);
+      bugLine: 1
+      fix: QueueHandle_t q = xQueueCreate(4, sizeof(uint32_t));
+      explain: Очередь должна копировать все байты uint32_t.
+    homework:
+      task: Создайте producer и очередь из четырёх uint32_t. Убедитесь, что loop получает счётчик. Объясните, почему
+        очередь безопаснее общей переменной без защиты.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <freertos/FreeRTOS.h>
+        #include <freertos/task.h>
+        #include <freertos/queue.h>
+        QueueHandle_t samples = nullptr;
+        void producer(void*) {
+          uint32_t value = 0;
+          for (;;) {
+            value++;
+            xQueueSend(samples, &value, pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(1000));
+          }
+        }
+        void setup() {
+          Serial.begin(115200);
+          samples = xQueueCreate(4, sizeof(uint32_t));
+          if (!samples) { Serial.println("Queue failed"); return; }
+          if (xTaskCreate(producer, "producer", 2048, nullptr, 1, nullptr) != pdPASS) {
+            Serial.println("Task failed");
+            vQueueDelete(samples);
+            samples = nullptr;
+          }
+        }
+        void loop() {
+          uint32_t value;
+          if (samples && xQueueReceive(samples, &value, pdMS_TO_TICKS(100)) == pdTRUE) {
+            Serial.println(value);
+          }
+          delay(10);
+        }
+    id: esp32-04-02
+  - title: 'Итоговый проект: Wi-Fi панель светодиода'
+    minutes: 40
+    xp: 30
+    theory: |
+      ## Локальная панель управления
+      Объединяем точку доступа, HTTP, LEDC и NVS. Внешний LED подключён к GPIO18 через 330 Ом и GND. Страница даёт кнопки ON/OFF; POST `/on` и `/off` меняют состояние. NVS сохраняет только реальные изменения. При старте состояние восстанавливается.
+
+      POST лучше GET для действий, но **сам по себе не обеспечивает безопасность**. Учебный сервер не использует TLS и авторизацию приложения. Он предназначен только для изолированной точки доступа, не для удалённого управления реальной нагрузкой. Замените пароль AP; не используйте моторы или сетевые приборы.
+
+      Проверяем ошибки NVS, настройки PWM и создания AP. Сохранение может не удаться: сообщаем об этом в Serial, LED продолжает работать в RAM. В реальном устройстве нужны журналирование, ограничения запросов и стратегия восстановления. Итог закрепляет основы IoT, не обещает уровень Middle после 12 уроков.
+
+      ## Пример
+
+      ```cpp
+      #include <WiFi.h>
+      #include <WebServer.h>
+      #include <Preferences.h>
+      WebServer server(80);
+      Preferences prefs;
+      const int LED = 18;
+      bool enabled = false, pwmReady = false, nvsReady = false;
+      void setEnabled(bool value) {
+        if (value != enabled) {
+          enabled = value;
+          if (nvsReady && prefs.putBool("enabled", enabled) == 0) Serial.println("Save failed");
+        }
+        if (pwmReady) ledcWrite(LED, enabled ? 128 : 0);
+      }
+      void setup() {
+        Serial.begin(115200);
+        nvsReady = prefs.begin("lamp", false);
+        if (nvsReady) enabled = prefs.getBool("enabled", false);
+        else Serial.println("NVS failed");
+        pwmReady = ledcAttach(LED, 5000, 8);
+        if (!pwmReady) { Serial.println("PWM failed"); return; }
+        ledcWrite(LED, enabled ? 128 : 0);
+        WiFi.mode(WIFI_AP);
+        if (!WiFi.softAP("CodeLearn-Lamp", "learn-lamp")) {
+          Serial.println("AP failed");
+          return;
+        }
+        Serial.println(WiFi.softAPIP());
+        server.on("/", HTTP_GET, []() {
+          server.send(200, "text/html; charset=utf-8",
+            "<h1>ESP32 Lamp</h1><form method='post' action='/on'><button>ON</button></form>"
+            "<form method='post' action='/off'><button>OFF</button></form>");
+        });
+        server.on("/on", HTTP_POST, []() {
+          setEnabled(true);
+          server.sendHeader("Location", "/");
+          server.send(303, "text/plain", "");
+        });
+        server.on("/off", HTTP_POST, []() {
+          setEnabled(false);
+          server.sendHeader("Location", "/");
+          server.send(303, "text/plain", "");
+        });
+        server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
+        server.begin();
+      }
+      void loop() {
+        server.handleClient();
+        delay(1);
+      }
+      ```
+
+      ## Как практиковаться
+
+      Сначала разберите пример, затем выполните задания. CodeLearn проверяет ответы, но **не компилирует скетчи и не симулирует плату**. Для запуска используйте Arduino IDE и указанную плату; без оборудования можно читать код и проходить все интерактивные задания.
+    practice:
+    - type: choice
+      q: Когда сохранять enabled в NVS?
+      options:
+      - При фактическом изменении
+      - При каждом loop
+      - При каждом открытии страницы
+      - Никогда нельзя
+      answer: 0
+      explain: Сохранение по изменению уменьшает износ flash.
+    - type: choice
+      q: Обеспечивает ли POST авторизацию?
+      options:
+      - Нет, это только HTTP-метод
+      - Да, всегда шифрует запрос
+      - Да, заменяет пароль
+      - Только на GPIO18
+      answer: 0
+      explain: Для защиты нужны отдельные механизмы.
+    - type: fill
+      q: Зарегистрируйте действие включения как POST.
+      code: |
+        server.on("/on", ___, []() { /* изменить состояние */ });
+      answers:
+      - HTTP_POST
+      explain: GET в проекте отдаёт страницу, POST изменяет состояние.
+    - type: output
+      q: Что появится в Serial Monitor при выполнении этого фрагмента? Скорость порта уже настроена.
+      code: |
+        bool enabled = true;
+        Serial.println(enabled ? 128 : 0);
+      answer: '128'
+      explain: Включённому LED задана учебная яркость 128.
+    - type: bug
+      q: Где NVS изнашивается записью на каждой итерации?
+      code: |
+        void loop() {
+          prefs.putBool("enabled", enabled);
+          server.handleClient();
+        }
+      bugLine: 2
+      fix: '  // Сохраняйте в setEnabled только при изменении.'
+      explain: Запись перенесена в обработчик изменения состояния.
+    homework:
+      task: Соберите Wi-Fi панель для одного LED. Проверьте ON/OFF, повторный POST без лишней записи, 404 и восстановление
+        состояния после перезапуска. Не открывайте сервер в Интернет.
+      hints:
+      - Используйте пример из теории как отправную точку; проверьте выбранную плату и порт.
+      - Перед изменением проводов отключите питание. Сначала проверьте скетч кнопкой «Проверить» в Arduino IDE.
+      checklist:
+      - Могу объяснить назначение setup() и loop() в этом скетче.
+      - Скетч скомпилирован для указанной платы; на оборудовании проверено поведение, если плата доступна.
+      - Подключение соответствует напряжению платы; выходы не закорочены.
+      solution: |
+        #include <WiFi.h>
+        #include <WebServer.h>
+        #include <Preferences.h>
+        WebServer server(80);
+        Preferences prefs;
+        const int LED = 18;
+        bool enabled = false, pwmReady = false, nvsReady = false;
+        void setEnabled(bool value) {
+          if (value != enabled) {
+            enabled = value;
+            if (nvsReady && prefs.putBool("enabled", enabled) == 0) Serial.println("Save failed");
+          }
+          if (pwmReady) ledcWrite(LED, enabled ? 128 : 0);
+        }
+        void setup() {
+          Serial.begin(115200);
+          nvsReady = prefs.begin("lamp", false);
+          if (nvsReady) enabled = prefs.getBool("enabled", false);
+          else Serial.println("NVS failed");
+          pwmReady = ledcAttach(LED, 5000, 8);
+          if (!pwmReady) { Serial.println("PWM failed"); return; }
+          ledcWrite(LED, enabled ? 128 : 0);
+          WiFi.mode(WIFI_AP);
+          if (!WiFi.softAP("CodeLearn-Lamp", "learn-lamp")) {
+            Serial.println("AP failed");
+            return;
+          }
+          Serial.println(WiFi.softAPIP());
+          server.on("/", HTTP_GET, []() {
+            server.send(200, "text/html; charset=utf-8",
+              "<h1>ESP32 Lamp</h1><form method='post' action='/on'><button>ON</button></form>"
+              "<form method='post' action='/off'><button>OFF</button></form>");
+          });
+          server.on("/on", HTTP_POST, []() {
+            setEnabled(true);
+            server.sendHeader("Location", "/");
+            server.send(303, "text/plain", "");
+          });
+          server.on("/off", HTTP_POST, []() {
+            setEnabled(false);
+            server.sendHeader("Location", "/");
+            server.send(303, "text/plain", "");
+          });
+          server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
+          server.begin();
+        }
+        void loop() {
+          server.handleClient();
+          delay(1);
+        }
+    id: esp32-04-03

@@ -1,0 +1,692 @@
+id: csharp
+modules:
+  - id: cs-m10
+    title: Тестирование и архитектура
+    level: Middle
+    lessons:
+      - id: cs-10-01
+        title: Модульные тесты xUnit
+        minutes: 30
+        xp: 40
+        theory: |
+          Тесты — страховка при изменениях и документация поведения. **Unit-тест** проверяет один класс/метод изолированно, быстро (миллисекунды), без БД и сети.
+
+          ```bash
+          dotnet new xunit -n Shop.Tests
+          dotnet add Shop.Tests reference Shop.Core
+          dotnet test
+          ```
+
+          ## Структура теста — AAA
+
+          ```csharp
+          public class DiscountCalculatorTests
+          {
+              [Fact]
+              public void Calculate_VipCustomer_Returns20Percent()
+              {
+                  // Arrange — подготовка
+                  var calc = new DiscountCalculator();
+                  var customer = new Customer { IsVip = true };
+
+                  // Act — действие
+                  var discount = calc.Calculate(customer, 1000m);
+
+                  // Assert — проверка
+                  Assert.Equal(200m, discount);
+              }
+
+              [Theory]
+              [InlineData(0, 0)]
+              [InlineData(999, 0)]
+              [InlineData(1000, 50)]
+              [InlineData(5000, 250)]
+              public void Calculate_Regular_DependsOnSum(decimal sum, decimal expected)
+              {
+                  var calc = new DiscountCalculator();
+                  Assert.Equal(expected, calc.Calculate(new Customer(), sum));
+              }
+
+              [Fact]
+              public void Calculate_NegativeSum_Throws()
+              {
+                  var calc = new DiscountCalculator();
+                  Assert.Throws<ArgumentOutOfRangeException>(() => calc.Calculate(new Customer(), -1));
+              }
+          }
+          ```
+
+          ## Основные Assert
+
+          `Equal`, `NotEqual`, `True`, `False`, `Null`, `NotNull`, `Contains`, `Empty`, `Single`, `IsType<T>`, `Throws<T>`, `await Assert.ThrowsAsync<T>(...)`.
+
+          Библиотека **FluentAssertions** / Shouldly — читаемее: `result.Should().Be(200).And.BePositive();`
+
+          ## Жизненный цикл xUnit
+
+          - Новый экземпляр тестового класса **на каждый тест** → изоляция. Подготовку пишите в конструкторе, очистку — в `Dispose`.
+          - Общий дорогой ресурс — `IClassFixture<T>`; на несколько классов — `ICollectionFixture<T>`.
+          - `[Fact(Skip = "причина")]`, `[Trait("Category", "Slow")]`.
+
+          ## Хорошие тесты (FIRST)
+
+          **F**ast, **I**ndependent, **R**epeatable, **S**elf-validating, **T**imely. Имя теста описывает сценарий: `Method_Condition_Expected`. Один тест — одна причина упасть. Не тестируйте приватные методы — тестируйте поведение через публичный API.
+
+          Зависимости от времени, случайности и файлов делайте внедряемыми (`TimeProvider`, `IClock`), иначе тесты станут нестабильными.
+
+          ## Пирамида тестов
+
+          Много unit → меньше интеграционных (`WebApplicationFactory`, Testcontainers) → мало end-to-end. Покрытие: `dotnet test --collect:"XPlat Code Coverage"`.
+        practice:
+          - type: choice
+            q: Какой атрибут для теста с несколькими наборами данных?
+            options: ["[Fact]", "[Theory] + [InlineData]", "[Test]", "[DataRow]"]
+            answer: 1
+          - type: order
+            q: Расставьте части теста по шаблону AAA
+            lines:
+              - var cart = new Cart();
+              - cart.Add(new Item("Чай", 100));
+              - Assert.Equal(100, cart.Total);
+          - type: fill
+            q: Проверьте, что метод бросает исключение
+            code: |
+              Assert.___<InvalidOperationException>(() => stack.Pop());
+            answers: ["Throws"]
+          - type: choice
+            q: Сколько экземпляров тестового класса создаёт xUnit?
+            options: ["Один на класс", "Один на каждый тест", "Один на сборку", "Ни одного — методы статические"]
+            answer: 1
+          - type: choice
+            q: Какой тест — хороший unit-тест?
+            options: ["Обращается к реальной БД", "Зависит от порядка запуска", "Быстрый, изолированный и повторяемый", "Проверяет сразу 10 сценариев"]
+            answer: 2
+        homework:
+          task: |
+            Напишите класс `PasswordValidator` (длина ≥ 8, есть цифра, заглавная, спецсимвол, нет пробелов; возвращает список ошибок) и покройте его тестами xUnit: Theory для валидных/невалидных паролей, отдельные Fact на каждое правило, тест на null. Добейтесь 100% покрытия и прогоните `dotnet test` с отчётом покрытия.
+          checklist:
+            - Тесты названы по схеме Method_Condition_Expected
+            - Используется Theory с InlineData
+            - Все тесты зелёные
+          solution: |
+            public class PasswordValidator
+            {
+                public List<string> Validate(string? p)
+                {
+                    ArgumentNullException.ThrowIfNull(p);
+                    var e = new List<string>();
+                    if (p.Length < 8) e.Add("length");
+                    if (!p.Any(char.IsDigit)) e.Add("digit");
+                    if (!p.Any(char.IsUpper)) e.Add("upper");
+                    if (p.All(char.IsLetterOrDigit)) e.Add("special");
+                    if (p.Any(char.IsWhiteSpace)) e.Add("space");
+                    return e;
+                }
+            }
+
+            public class PasswordValidatorTests
+            {
+                private readonly PasswordValidator v = new();
+
+                [Theory]
+                [InlineData("Qwerty1!")]
+                [InlineData("Str0ng#Pass")]
+                public void Validate_Strong_NoErrors(string p) => Assert.Empty(v.Validate(p));
+
+                [Theory]
+                [InlineData("Qw1!", "length")]
+                [InlineData("Qwertyu!", "digit")]
+                [InlineData("qwerty1!", "upper")]
+                [InlineData("Qwerty12", "special")]
+                [InlineData("Qwer ty1!", "space")]
+                public void Validate_Weak_ReturnsError(string p, string error) => Assert.Contains(error, v.Validate(p));
+
+                [Fact]
+                public void Validate_Null_Throws() => Assert.Throws<ArgumentNullException>(() => v.Validate(null));
+            }
+      - id: cs-10-02
+        title: Моки и Moq
+        minutes: 30
+        xp: 40
+        theory: |
+          Если тестируемый класс зависит от БД, почты или внешнего API, эти зависимости заменяют **тестовыми двойниками**:
+
+          - **Stub** — возвращает заготовленные данные;
+          - **Mock** — позволяет проверить, что метод был вызван с нужными аргументами;
+          - **Fake** — упрощённая рабочая реализация (in-memory репозиторий).
+
+          Это возможно, только если зависимость — интерфейс и внедряется через конструктор (DI).
+
+          ## Moq
+
+          ```bash
+          dotnet add package Moq
+          ```
+
+          ```csharp
+          public class OrderServiceTests
+          {
+              private readonly Mock<IOrderRepository> repo = new();
+              private readonly Mock<IEmailSender> email = new();
+              private readonly OrderService sut;          // system under test
+
+              public OrderServiceTests() => sut = new OrderService(repo.Object, email.Object);
+
+              [Fact]
+              public async Task Place_ValidOrder_SavesAndSendsEmail()
+              {
+                  // stub: настроить возвращаемое значение
+                  repo.Setup(r => r.GetStockAsync(5)).ReturnsAsync(10);
+
+                  await sut.PlaceAsync(new Order { ProductId = 5, Qty = 2, Email = "a@b.ru" });
+
+                  // mock: проверить вызовы
+                  repo.Verify(r => r.AddAsync(It.Is<Order>(o => o.Qty == 2)), Times.Once);
+                  email.Verify(e => e.SendAsync("a@b.ru", It.IsAny<string>()), Times.Once);
+              }
+
+              [Fact]
+              public async Task Place_NoStock_Throws_AndDoesNotSave()
+              {
+                  repo.Setup(r => r.GetStockAsync(It.IsAny<int>())).ReturnsAsync(0);
+
+                  await Assert.ThrowsAsync<OutOfStockException>(() => sut.PlaceAsync(new Order { Qty = 1 }));
+
+                  repo.Verify(r => r.AddAsync(It.IsAny<Order>()), Times.Never);
+                  email.VerifyNoOtherCalls();
+              }
+          }
+          ```
+
+          ## Полезное
+
+          - `Setup(...).Throws<TimeoutException>()` — сымитировать сбой.
+          - `It.IsAny<T>()`, `It.Is<T>(predicate)`, `It.IsInRange(...)`.
+          - `Callback<Order>(o => saved = o)` — захватить аргумент.
+          - `SetupSequence(...).Returns(1).Returns(2)` — разные ответы подряд.
+          - `MockBehavior.Strict` — исключение на любой ненастроенный вызов.
+
+          Альтернативы: **NSubstitute** (`var repo = Substitute.For<IRepo>(); repo.Get(1).Returns(x);`), FakeItEasy.
+
+          ## Меры
+
+          - Мокайте то, чем **не владеете** или что медленно (сеть, БД, время). Не мокайте value-объекты и простые классы.
+          - Слишком много моков и `Verify` → хрупкие тесты, которые ломаются при рефакторинге. Проверяйте результат и важные побочные эффекты.
+          - Время: `TimeProvider` + `FakeTimeProvider` (пакет Microsoft.Extensions.TimeProvider.Testing).
+          - Для EF Core вместо моков DbContext лучше SQLite in-memory или Testcontainers.
+        practice:
+          - type: fill
+            q: Настройте мок, чтобы он вернул значение
+            code: |
+              repo.___(r => r.Find(1)).Returns(new User());
+            answers: ["Setup"]
+          - type: fill
+            q: Проверьте, что метод не вызывался
+            code: |
+              sender.Verify(s => s.Send(It.IsAny<string>()), Times.___);
+            answers: ["Never"]
+          - type: choice
+            q: Как передать мок в конструктор тестируемого класса?
+            options: ["mock", "mock.Object", "mock.Instance", "new mock()"]
+            answer: 1
+          - type: choice
+            q: Что НЕ стоит мокать?
+            options: ["HTTP-клиент внешнего API", "Отправку email", "Простой value-объект Money", "Системное время"]
+            answer: 2
+          - type: choice
+            q: Чем mock отличается от stub?
+            options: ["Ничем", "Mock позволяет проверить вызовы, stub только возвращает данные", "Stub быстрее", "Mock работает только с классами"]
+            answer: 1
+        homework:
+          task: |
+            Сервис `SubscriptionService(IUserRepo, IPaymentGateway, IEmailSender, TimeProvider)` с методом `RenewAsync(userId)`: если подписка истекла — списать оплату, продлить на 30 дней, отправить письмо; при ошибке оплаты — письмо о проблеме и без продления; если подписка активна — ничего не делать. Покройте тестами с Moq все ветки, используйте FakeTimeProvider.
+          checklist:
+            - 3+ теста на разные ветки
+            - Используются Verify с Times
+            - Время не берётся из DateTime.Now
+          solution: |
+            public class SubscriptionService(IUserRepo users, IPaymentGateway pay, IEmailSender mail, TimeProvider time)
+            {
+                public async Task RenewAsync(int id)
+                {
+                    var u = await users.GetAsync(id);
+                    var now = time.GetUtcNow();
+                    if (u.PaidUntil > now) return;
+                    if (!await pay.ChargeAsync(u.Id, 299))
+                    {
+                        await mail.SendAsync(u.Email, "Проблема с оплатой");
+                        return;
+                    }
+                    u.PaidUntil = now.AddDays(30);
+                    await users.SaveAsync(u);
+                    await mail.SendAsync(u.Email, "Подписка продлена");
+                }
+            }
+
+            public class SubscriptionTests
+            {
+                Mock<IUserRepo> users = new(); Mock<IPaymentGateway> pay = new(); Mock<IEmailSender> mail = new();
+                FakeTimeProvider time = new(new DateTimeOffset(2024, 6, 1, 0, 0, 0, TimeSpan.Zero));
+                SubscriptionService Sut() => new(users.Object, pay.Object, mail.Object, time);
+
+                [Fact]
+                public async Task Renew_Expired_ChargesAndExtends()
+                {
+                    var u = new User { Id = 1, Email = "a@b", PaidUntil = time.GetUtcNow().AddDays(-1) };
+                    users.Setup(x => x.GetAsync(1)).ReturnsAsync(u);
+                    pay.Setup(x => x.ChargeAsync(1, 299)).ReturnsAsync(true);
+                    await Sut().RenewAsync(1);
+                    Assert.Equal(time.GetUtcNow().AddDays(30), u.PaidUntil);
+                    users.Verify(x => x.SaveAsync(u), Times.Once);
+                }
+
+                [Fact]
+                public async Task Renew_PaymentFails_NoSave()
+                {
+                    users.Setup(x => x.GetAsync(1)).ReturnsAsync(new User { Id = 1, PaidUntil = DateTimeOffset.MinValue });
+                    pay.Setup(x => x.ChargeAsync(1, 299)).ReturnsAsync(false);
+                    await Sut().RenewAsync(1);
+                    users.Verify(x => x.SaveAsync(It.IsAny<User>()), Times.Never);
+                    mail.Verify(x => x.SendAsync(It.IsAny<string>(), "Проблема с оплатой"), Times.Once);
+                }
+
+                [Fact]
+                public async Task Renew_Active_DoesNothing()
+                {
+                    users.Setup(x => x.GetAsync(1)).ReturnsAsync(new User { PaidUntil = time.GetUtcNow().AddDays(5) });
+                    await Sut().RenewAsync(1);
+                    pay.VerifyNoOtherCalls();
+                }
+            }
+      - id: cs-10-03
+        title: SOLID и чистая архитектура
+        minutes: 35
+        xp: 45
+        theory: |
+          ## SOLID
+
+          **S — Single Responsibility.** У класса одна причина для изменения. `ReportService`, который и считает, и форматирует PDF, и шлёт почту, — три класса.
+
+          **O — Open/Closed.** Открыт для расширения, закрыт для изменения. Новый способ оплаты — новый класс `IPaymentMethod`, а не новый `case` в огромном `switch`.
+
+          **L — Liskov Substitution.** Наследник должен работать везде, где работает базовый тип. Классический анти-пример: `Square : Rectangle`, ломающий `SetWidth`. Если наследник бросает `NotSupportedException` на методе базы — нарушение.
+
+          **I — Interface Segregation.** Много маленьких интерфейсов лучше одного «толстого». `IReadRepository` и `IWriteRepository` вместо `IRepository` на 30 методов.
+
+          **D — Dependency Inversion.** Высокоуровневые модули зависят от абстракций, а не от деталей. `OrderService` зависит от `IOrderRepository`, а реализация на EF живёт в другом слое.
+
+          ```csharp
+          // OCP + DIP
+          public interface IDiscountRule { decimal Apply(Order o); }
+          public class VipRule : IDiscountRule { ... }
+          public class BlackFridayRule : IDiscountRule { ... }
+          public class PriceCalculator(IEnumerable<IDiscountRule> rules)
+          {
+              public decimal Total(Order o) => o.Sum - rules.Sum(r => r.Apply(o));
+          }
+          ```
+
+          ## Чистая (луковая) архитектура
+
+          ```
+          ┌──────────────── Api / Web (контроллеры, DI, middleware) ─────────┐
+          │  ┌──────────── Infrastructure (EF Core, email, HTTP-клиенты) ──┐ │
+          │  │  ┌──────── Application (use cases, DTO, интерфейсы) ─────┐ │ │
+          │  │  │  ┌──── Domain (сущности, value objects, правила) ──┐  │ │ │
+          ```
+
+          **Правило зависимостей**: стрелки только внутрь. Domain ни от чего не зависит (никакого EF, ASP.NET). Application определяет интерфейсы (`IOrderRepository`, `IEmailSender`), Infrastructure их реализует, Api всё связывает через DI.
+
+          ```
+          src/
+            Shop.Domain/          Order.cs, Money.cs, OrderStatus.cs
+            Shop.Application/     Orders/PlaceOrder/PlaceOrderHandler.cs, Abstractions/IOrderRepository.cs
+            Shop.Infrastructure/  Persistence/ShopDbContext.cs, Persistence/OrderRepository.cs
+            Shop.Api/             Program.cs, Endpoints/OrderEndpoints.cs
+          tests/
+            Shop.Domain.Tests/  Shop.Application.Tests/  Shop.Api.IntegrationTests/
+          ```
+
+          ## Богатая доменная модель
+
+          ```csharp
+          public class Order
+          {
+              private readonly List<OrderLine> lines = [];
+              public IReadOnlyList<OrderLine> Lines => lines;
+              public OrderStatus Status { get; private set; }
+
+              public void AddLine(Product p, int qty)
+              {
+                  if (Status != OrderStatus.Draft) throw new DomainException("Заказ уже оформлен");
+                  if (qty <= 0) throw new DomainException("Количество > 0");
+                  lines.Add(new OrderLine(p.Id, p.Price, qty));
+              }
+          }
+          ```
+
+          Инварианты защищены внутри сущности, а не размазаны по сервисам.
+
+          ## Не переусердствуйте
+
+          Для CRUD-сервиса на 5 таблиц достаточно простой структуры или **Vertical Slice** (папка на фичу). Архитектура — инструмент против сложности, а не самоцель. Также помните **KISS**, **DRY**, **YAGNI**.
+        practice:
+          - type: choice
+            q: Класс `UserService` регистрирует пользователей, генерирует PDF-отчёты и шлёт SMS. Какой принцип нарушен?
+            options: ["Single Responsibility", "Liskov Substitution", "Interface Segregation", "Никакой"]
+            answer: 0
+          - type: choice
+            q: Наследник переопределяет метод и бросает NotSupportedException. Что нарушено?
+            options: ["SRP", "OCP", "LSP", "DIP"]
+            answer: 2
+          - type: choice
+            q: От чего может зависеть слой Domain в чистой архитектуре?
+            options: ["От EF Core", "От ASP.NET Core", "Ни от каких других слоёв проекта", "От Infrastructure"]
+            answer: 2
+          - type: choice
+            q: Где объявлять интерфейс IOrderRepository в чистой архитектуре?
+            options: ["В Infrastructure", "В Application (или Domain)", "В Api", "В тестах"]
+            answer: 1
+          - type: bug
+            q: Какая строка нарушает Open/Closed (при добавлении нового способа доставки придётся менять класс)?
+            code: |
+              public decimal Cost(Order o, string type)
+              {
+                  return type switch
+                  {
+                      "courier" => 300, "post" => 200, "pickup" => 0,
+                      _ => throw new ArgumentException()
+                  };
+              }
+            bugLine: 5
+            fix: интерфейс IDeliveryMethod { decimal Cost(Order o); } и реализации
+        homework:
+          task: |
+            Разложите монолитный `Program.cs` интернет-магазина по чистой архитектуре: 4 проекта (Domain, Application, Infrastructure, Api) + тестовые проекты. Domain: `Order` с инвариантами, `Money`. Application: use-case `PlaceOrder` с интерфейсами. Infrastructure: EF Core репозиторий. Api: эндпоинт. Добавьте архитектурный тест (NetArchTest), что Domain не ссылается на EF Core.
+          checklist:
+            - Ссылки проектов только «внутрь»
+            - Инварианты в доменной модели
+            - Архитектурный тест проходит
+          solution: |
+            dotnet new sln -n Shop
+            dotnet new classlib -n Shop.Domain -o src/Shop.Domain
+            dotnet new classlib -n Shop.Application -o src/Shop.Application
+            dotnet new classlib -n Shop.Infrastructure -o src/Shop.Infrastructure
+            dotnet new webapi -n Shop.Api -o src/Shop.Api
+            dotnet add src/Shop.Application reference src/Shop.Domain
+            dotnet add src/Shop.Infrastructure reference src/Shop.Application
+            dotnet add src/Shop.Api reference src/Shop.Infrastructure
+
+            // Application
+            public interface IOrderRepository { Task AddAsync(Order o, CancellationToken ct); }
+            public record PlaceOrderCommand(int CustomerId, List<(int ProductId, int Qty)> Lines);
+            public class PlaceOrderHandler(IOrderRepository orders, IProductRepository products)
+            {
+                public async Task<int> Handle(PlaceOrderCommand c, CancellationToken ct)
+                {
+                    var order = new Order(c.CustomerId);
+                    foreach (var (pid, qty) in c.Lines) order.AddLine(await products.GetAsync(pid, ct), qty);
+                    order.Submit();
+                    await orders.AddAsync(order, ct);
+                    return order.Id;
+                }
+            }
+
+            // архитектурный тест
+            [Fact]
+            public void Domain_DoesNotDependOn_EfCore() =>
+                Assert.True(Types.InAssembly(typeof(Order).Assembly)
+                    .ShouldNot().HaveDependencyOn("Microsoft.EntityFrameworkCore").GetResult().IsSuccessful);
+      - id: cs-10-04
+        title: Паттерны проектирования в .NET
+        minutes: 35
+        xp: 45
+        theory: |
+          Паттерны — типовые решения повторяющихся задач. Знать нужно не UML-диаграммы, а **когда** паттерн полезен. Многие уже встроены в .NET.
+
+          ## Порождающие
+
+          **Singleton** — один экземпляр. В .NET — не через static, а через DI: `AddSingleton<ICache, MemoryCache>()`.
+
+          **Factory** — создание объектов скрыто за методом:
+
+          ```csharp
+          public interface IPaymentFactory { IPayment Create(string method); }
+          public class PaymentFactory(IServiceProvider sp) : IPaymentFactory
+          {
+              public IPayment Create(string m) => m switch
+              {
+                  "card" => sp.GetRequiredService<CardPayment>(),
+                  "sbp"  => sp.GetRequiredService<SbpPayment>(),
+                  _ => throw new NotSupportedException(m)
+              };
+          }
+          ```
+
+          **Builder** — пошаговая сборка сложного объекта: `WebApplication.CreateBuilder()`, `StringBuilder`, `new HostBuilder().ConfigureServices(...)`.
+
+          ## Структурные
+
+          **Adapter** — привести чужой интерфейс к своему (обёртка над SDK платёжки под ваш `IPaymentGateway`).
+
+          **Decorator** — добавить поведение, не меняя класс:
+
+          ```csharp
+          public class CachedProductRepo(IProductRepo inner, IMemoryCache cache) : IProductRepo
+          {
+              public Task<Product?> GetAsync(int id) =>
+                  cache.GetOrCreateAsync($"p:{id}", _ => inner.GetAsync(id));
+          }
+          // Scrutor: services.Decorate<IProductRepo, CachedProductRepo>();
+          ```
+
+          Middleware ASP.NET Core и `DelegatingHandler` у HttpClient — тоже декораторы (цепочка).
+
+          **Facade** — простой интерфейс к сложной подсистеме.
+
+          ## Поведенческие
+
+          **Strategy** — взаимозаменяемые алгоритмы за одним интерфейсом (правила скидок, способы доставки).
+
+          **Observer** — события C#, `IObservable<T>`, MediatR-нотификации.
+
+          **Mediator / CQRS** — MediatR: контроллер отправляет команду, обработчик живёт отдельно:
+
+          ```csharp
+          public record GetOrderQuery(int Id) : IRequest<OrderDto>;
+          public class GetOrderHandler(AppDb db) : IRequestHandler<GetOrderQuery, OrderDto>
+          {
+              public async Task<OrderDto> Handle(GetOrderQuery q, CancellationToken ct) => ...;
+          }
+          app.MapGet("/orders/{id}", (int id, ISender m) => m.Send(new GetOrderQuery(id)));
+          ```
+
+          **Chain of Responsibility** — middleware, пайплайны валидации (MediatR behaviors).
+
+          **Repository + Unit of Work** — абстракция хранения. Помните: `DbContext` уже является UoW, а `DbSet` — репозиторием; лишняя обёртка оправдана, если нужен чистый домен или подмена хранилища.
+
+          **Template Method** — `BackgroundService.ExecuteAsync`, `ControllerBase`.
+
+          **Options, Result, Specification** — популярные в .NET идиомы.
+
+          > 💡 Анти-паттерны: God Object, Service Locator, Anemic Domain Model (когда вся логика в сервисах, а сущности — мешки с полями), копипаст.
+        practice:
+          - type: choice
+            q: Какой паттерн — middleware в ASP.NET Core?
+            options: ["Singleton", "Chain of Responsibility / Decorator", "Factory", "Builder"]
+            answer: 1
+          - type: choice
+            q: Нужно добавить кеширование к репозиторию, не меняя его код. Паттерн?
+            options: ["Adapter", "Decorator", "Facade", "Prototype"]
+            answer: 1
+          - type: choice
+            q: Обёртка над SDK стороннего банка под ваш интерфейс IPaymentGateway — это…
+            options: ["Adapter", "Strategy", "Observer", "Builder"]
+            answer: 0
+          - type: choice
+            q: Какие классы .NET реализуют Builder?
+            options: ["StringBuilder и WebApplicationBuilder", "List<T>", "Task", "Console"]
+            answer: 0
+          - type: choice
+            q: Набор взаимозаменяемых алгоритмов расчёта доставки за одним интерфейсом — это…
+            options: ["Singleton", "Strategy", "Decorator", "Facade"]
+            answer: 1
+        homework:
+          task: |
+            Сервис расчёта доставки: Strategy (`IDeliveryStrategy`: курьер, почта, самовывоз, СДЭК через Adapter к «чужому» классу `CdekClient` с другой сигнатурой), Factory по коду способа, Decorator для логирования времени расчёта и кеширования. Подключите всё через DI. Напишите тесты на фабрику и декоратор.
+          checklist:
+            - Новый способ доставки добавляется без изменения существующих классов (кроме регистрации)
+            - Adapter не меняет CdekClient
+            - Декоратор оборачивает любую стратегию
+          solution: |
+            public interface IDeliveryStrategy { string Code { get; } decimal Calc(Parcel p); }
+
+            public class CourierDelivery : IDeliveryStrategy { public string Code => "courier"; public decimal Calc(Parcel p) => 300 + p.Kg * 50; }
+            public class PickupDelivery : IDeliveryStrategy { public string Code => "pickup"; public decimal Calc(Parcel p) => 0; }
+
+            // чужой класс
+            public class CdekClient { public double GetTariff(int grams, string city) => grams / 1000.0 * 120; }
+            public class CdekAdapter(CdekClient c) : IDeliveryStrategy
+            {
+                public string Code => "cdek";
+                public decimal Calc(Parcel p) => (decimal)c.GetTariff((int)(p.Kg * 1000), p.City);
+            }
+
+            public class LoggingDelivery(IDeliveryStrategy inner, ILogger<LoggingDelivery> log) : IDeliveryStrategy
+            {
+                public string Code => inner.Code;
+                public decimal Calc(Parcel p)
+                {
+                    var sw = Stopwatch.StartNew();
+                    var r = inner.Calc(p);
+                    log.LogInformation("{Code}: {Cost} за {Ms} мс", Code, r, sw.ElapsedMilliseconds);
+                    return r;
+                }
+            }
+
+            public class DeliveryFactory(IEnumerable<IDeliveryStrategy> all)
+            {
+                private readonly Dictionary<string, IDeliveryStrategy> map = all.ToDictionary(s => s.Code);
+                public IDeliveryStrategy Get(string code) =>
+                    map.TryGetValue(code, out var s) ? s : throw new NotSupportedException(code);
+            }
+      - id: cs-10-05
+        title: Логирование Serilog
+        minutes: 25
+        xp: 35
+        theory: |
+          Логи — главный источник информации о том, что происходит в проде. В .NET есть абстракция `ILogger<T>`, а **Serilog** — популярная реализация со структурированным логированием.
+
+          ## Структурированные логи
+
+          ```csharp
+          // ❌ интерполяция: в лог попадает просто строка
+          log.LogInformation($"Заказ {orderId} оплачен на {sum}");
+          // ✅ шаблон: OrderId и Sum сохраняются как отдельные поля — по ним можно искать и строить графики
+          log.LogInformation("Заказ {OrderId} оплачен на {Sum}", orderId, sum);
+          ```
+
+          ## Уровни
+
+          `Trace` → `Debug` → `Information` → `Warning` → `Error` → `Critical`. В проде обычно Information и выше; для библиотек Microsoft — Warning.
+
+          ```csharp
+          try { ... }
+          catch (Exception ex)
+          {
+              log.LogError(ex, "Не удалось списать оплату для {UserId}", userId);  // исключение — первым параметром
+          }
+          ```
+
+          ## Подключение Serilog
+
+          ```bash
+          dotnet add package Serilog.AspNetCore
+          dotnet add package Serilog.Sinks.Seq
+          ```
+
+          ```csharp
+          builder.Host.UseSerilog((ctx, cfg) => cfg
+              .ReadFrom.Configuration(ctx.Configuration)
+              .Enrich.FromLogContext()
+              .Enrich.WithProperty("App", "Shop.Api")
+              .WriteTo.Console()
+              .WriteTo.File("logs/app-.log", rollingInterval: RollingInterval.Day)
+              .WriteTo.Seq("http://localhost:5341"));
+
+          app.UseSerilogRequestLogging();   // одна строка на запрос вместо множества
+          ```
+
+          ```json
+          "Serilog": {
+            "MinimumLevel": { "Default": "Information", "Override": { "Microsoft.AspNetCore": "Warning" } }
+          }
+          ```
+
+          **Sinks** (куда писать): Console, File, Seq, Elasticsearch, Grafana Loki, Application Insights.
+
+          ## Контекст
+
+          ```csharp
+          using (log.BeginScope(new Dictionary<string, object> { ["OrderId"] = id }))
+          {
+              // все логи внутри получат OrderId
+          }
+          using (LogContext.PushProperty("UserId", userId)) { ... }   // Serilog
+          ```
+
+          Добавляйте **CorrelationId/TraceId** — чтобы связать все логи одного запроса через несколько сервисов. Это часть **observability** вместе с метриками и трассировкой (OpenTelemetry).
+
+          ## Правила
+
+          - Никогда не логируйте пароли, токены, номера карт, персональные данные.
+          - Высокочастотные логи — через `[LoggerMessage]` source generator (без аллокаций).
+          - Лог должен отвечать на вопрос «что случилось и с какими данными», а не «я тут был».
+        practice:
+          - type: choice
+            q: Какой вызов правильный для структурированного логирования?
+            options: ['log.LogInformation($"User {id}")', 'log.LogInformation("User {UserId}", id)', 'log.LogInformation("User " + id)', 'Console.WriteLine(id)']
+            answer: 1
+          - type: fill
+            q: Залогируйте исключение
+            code: |
+              log.LogError(___, "Ошибка импорта файла {File}", path);
+            answers: ["ex"]
+          - type: choice
+            q: Какой уровень для ситуации «API платёжки ответило медленно, но запрос прошёл»?
+            options: ["Trace", "Information", "Warning", "Critical"]
+            answer: 2
+          - type: choice
+            q: Что нельзя писать в логи?
+            options: ["Id заказа", "Время выполнения", "Пароли и токены", "Код ответа"]
+            answer: 2
+          - type: fill
+            q: Добавьте одну строку лога на каждый HTTP-запрос
+            code: |
+              app.___();
+            answers: ["UseSerilogRequestLogging"]
+        homework:
+          task: |
+            Подключите Serilog к своему Web API: Console + File (ротация по дням) + Seq (запустите в Docker: `docker run -e ACCEPT_EULA=Y -p 5341:80 datalust/seq`). Конфигурация из appsettings, переопределение уровня для Microsoft, request logging, enrichment CorrelationId из middleware. В Seq найдите все запросы одного пользователя и все ошибки за час.
+          checklist:
+            - Логи структурированные (нет интерполяции)
+            - Секреты не попадают в лог
+            - Поиск в Seq по свойству работает
+          solution: |
+            builder.Host.UseSerilog((ctx, cfg) => cfg
+                .ReadFrom.Configuration(ctx.Configuration)
+                .Enrich.FromLogContext()
+                .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {CorrelationId} {Message:lj}{NewLine}{Exception}")
+                .WriteTo.File("logs/api-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 14)
+                .WriteTo.Seq(ctx.Configuration["Seq:Url"] ?? "http://localhost:5341"));
+
+            app.Use(async (ctx, next) =>
+            {
+                var cid = ctx.Request.Headers["X-Correlation-Id"].FirstOrDefault() ?? Guid.NewGuid().ToString("N");
+                using (LogContext.PushProperty("CorrelationId", cid))
+                using (LogContext.PushProperty("UserId", ctx.User.Identity?.Name ?? "anon"))
+                    await next(ctx);
+            });
+            app.UseSerilogRequestLogging();
+
+            // Seq: UserId = 'anya'   |   @Level = 'Error' and @Timestamp > Now() - 1h

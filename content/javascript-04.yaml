@@ -1,0 +1,741 @@
+id: javascript
+modules:
+  - id: js-m4
+    title: Как устроен JS
+    level: Junior+
+    lessons:
+      - id: js-04-01
+        title: Контекст this, call, apply, bind
+        minutes: 35
+        xp: 40
+        theory: |
+          `this` в обычной функции определяется **в момент вызова**, а не при объявлении.
+
+          | Как вызвали | Чему равен this |
+          |---|---|
+          | `obj.method()` | `obj` — объект «перед точкой» |
+          | `fn()` | `undefined` в строгом режиме (в нестрогом — глобальный объект) |
+          | `new Fn()` | новый создаваемый объект |
+          | `fn.call(ctx, a, b)` / `fn.apply(ctx, [a, b])` | `ctx` |
+          | стрелочная функция | `this` внешней области (своего нет) |
+
+          ```javascript
+          const user = {
+            name: "Анна",
+            hi() { return `Привет, ${this.name}`; },
+          };
+          user.hi();                  // "Привет, Анна"
+
+          const f = user.hi;
+          f();                        // ❌ this потерян: undefined.name → TypeError (strict)
+          ```
+
+          ## Потеря контекста
+
+          Типичная ситуация — передача метода как колбэка:
+
+          ```javascript
+          setTimeout(user.hi, 100);              // this потерян
+          setTimeout(() => user.hi(), 100);      // ✅ обёртка
+          setTimeout(user.hi.bind(user), 100);   // ✅ bind
+          button.addEventListener("click", counter.inc.bind(counter));
+          ```
+
+          ## call, apply, bind
+
+          ```javascript
+          function introduce(greeting, punct) {
+            return `${greeting}, я ${this.name}${punct}`;
+          }
+          const ivan = { name: "Иван" };
+          introduce.call(ivan, "Здравствуйте", "!");     // аргументы списком
+          introduce.apply(ivan, ["Привет", "."]);         // аргументы массивом
+          const bound = introduce.bind(ivan, "Хай");      // новая функция с привязанным this
+          bound("?");                                     // "Хай, я Иван?"
+          ```
+
+          `bind` можно использовать и для частичного применения аргументов. Повторный `bind` уже привязанной функции контекст не меняет.
+
+          ## Стрелочные функции
+
+          У стрелок **нет своего this** — они берут его из окружения. Это удобно внутри методов:
+
+          ```javascript
+          const timer = {
+            seconds: 0,
+            start() {
+              setInterval(() => { this.seconds++; }, 1000);   // this = timer
+            },
+          };
+          ```
+
+          Но **не используйте стрелку как метод объекта**: `{ name: "A", hi: () => this.name }` — `this` будет внешним, а не объектом.
+
+          В классах методы-обработчики часто объявляют полями-стрелками: `handleClick = () => { ... }` — контекст привязан навсегда.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const o = { n: 7, get() { return this.n; } };
+              const p = { n: 3, get: o.get };
+              console.log(o.get(), p.get());
+            answer: 7 3
+          - type: output
+            q: Что выведет код?
+            code: |
+              function sum(a, b) { return this.base + a + b; }
+              const ctx = { base: 10 };
+              console.log(sum.call(ctx, 1, 2), sum.apply(ctx, [3, 4]));
+            answer: 13 17
+          - type: output
+            q: Что выведет код?
+            code: |
+              const a = { x: 1 }, b = { x: 2 };
+              function getX() { return this.x; }
+              const bound = getX.bind(a).bind(b);
+              console.log(bound());
+            answer: "1"
+          - type: bug
+            q: Почему счётчик не увеличивается (NaN)?
+            code: |
+              const counter = {
+                count: 0,
+                inc: () => {
+                  this.count++;
+                },
+              };
+              counter.inc();
+            bugLine: 3
+            fix: inc() { this.count++; }
+            explain: У стрелочной функции нет своего this — он берётся снаружи, а не из counter.
+          - type: fill
+            q: Привяжите метод к объекту, чтобы передать как колбэк
+            code: |
+              button.addEventListener("click", cart.clear.___(cart));
+            answers: ["bind"]
+        homework:
+          task: |
+            Реализуйте свой `myBind(fn, ctx, ...preset)` без использования встроенного `bind` (через `call`/`apply`), поддерживающий частичное применение аргументов. Затем напишите объект `stopwatch` с методами `start`, `stop`, `reset` и полем `elapsed`, где `start` использует `setInterval` со стрелочной функцией. Покажите, что `setTimeout(stopwatch.stop, 1000)` ломается, и почините тремя способами.
+          checklist:
+            - myBind сохраняет контекст и аргументы
+            - В stopwatch правильно используется стрелка
+            - Показаны три способа исправления
+          solution: |
+            function myBind(fn, ctx, ...preset) {
+              return function (...args) {
+                return fn.apply(ctx, [...preset, ...args]);
+              };
+            }
+            function greet(greeting, name) { return `${greeting}, ${name}! (${this.lang})`; }
+            const ru = { lang: "ru" };
+            console.log(myBind(greet, ru, "Привет")("Анна")); // Привет, Анна! (ru)
+
+            const stopwatch = {
+              elapsed: 0,
+              timer: null,
+              start() { this.timer = setInterval(() => { this.elapsed++; }, 100); },
+              stop() { clearInterval(this.timer); console.log("Прошло:", this.elapsed); },
+              reset() { this.elapsed = 0; },
+            };
+            stopwatch.start();
+            // setTimeout(stopwatch.stop, 1000);           // ❌ this === undefined/глобальный объект
+            setTimeout(() => stopwatch.stop(), 1000);      // ✅ 1: обёртка
+            // setTimeout(stopwatch.stop.bind(stopwatch), 1000); // ✅ 2: bind
+            // setTimeout(myBind(stopwatch.stop, stopwatch), 1000); // ✅ 3: свой bind
+      - id: js-04-02
+        title: Прототипы и наследование
+        minutes: 35
+        xp: 40
+        theory: |
+          В JS наследование **прототипное**: у каждого объекта есть скрытая ссылка `[[Prototype]]` на другой объект. Если свойства нет в самом объекте, движок ищет его в прототипе, затем в прототипе прототипа — по **цепочке прототипов** до `null`.
+
+          ```javascript
+          const animal = {
+            eats: true,
+            walk() { return `${this.name} идёт`; },
+          };
+          const rabbit = Object.create(animal);   // прототип rabbit — animal
+          rabbit.name = "Кролик";
+          rabbit.eats;                            // true — из прототипа
+          rabbit.walk();                          // "Кролик идёт" — this = rabbit
+          Object.getPrototypeOf(rabbit) === animal; // true
+          Object.hasOwn(rabbit, "eats");          // false — не собственное
+          ```
+
+          Запись **не идёт** в прототип: `rabbit.eats = false` создаст собственное свойство у rabbit.
+
+          ## Функции-конструкторы и prototype
+
+          До классов объекты создавали так:
+
+          ```javascript
+          function User(name) {
+            this.name = name;                 // собственные поля
+          }
+          User.prototype.hi = function () {   // общие методы — один экземпляр в памяти
+            return `Я ${this.name}`;
+          };
+          const u = new User("Анна");
+          u.hi();                                     // "Я Анна"
+          Object.getPrototypeOf(u) === User.prototype; // true
+          u instanceof User;                           // true
+          ```
+
+          Что делает `new`: создаёт пустой объект с прототипом `User.prototype`, вызывает функцию с `this` = этот объект, возвращает его.
+
+          ## Встроенные прототипы
+
+          ```
+          [1, 2]  →  Array.prototype  →  Object.prototype  →  null
+          ```
+
+          Методы `map`, `filter` живут в `Array.prototype`, `toString` — в `Object.prototype`. **Не расширяйте** встроенные прототипы (`Array.prototype.last = ...`) — конфликты с библиотеками и будущими стандартами.
+
+          ## Наследование «вручную»
+
+          ```javascript
+          function Admin(name) {
+            User.call(this, name);                         // вызвать родительский конструктор
+            this.role = "admin";
+          }
+          Admin.prototype = Object.create(User.prototype); // связать прототипы
+          Admin.prototype.constructor = Admin;
+          ```
+
+          Синтаксис `class ... extends` (следующий урок) делает то же самое, но короче и надёжнее. Понимание прототипов помогает читать старый код и объяснить, как работают классы.
+
+          Объект без прототипа: `Object.create(null)` — удобен как «чистый» словарь без унаследованных ключей вроде `toString`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const base = { greet() { return "hi " + this.name; } };
+              const o = Object.create(base);
+              o.name = "Оля";
+              console.log(o.greet(), Object.hasOwn(o, "greet"));
+            answer: hi Оля false
+          - type: output
+            q: Что выведет код?
+            code: |
+              const proto = { x: 1 };
+              const a = Object.create(proto);
+              a.x = 5;
+              console.log(a.x, proto.x);
+            answer: 5 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              function Dog(name) { this.name = name; }
+              Dog.prototype.bark = function () { return this.name + ": гав"; };
+              const d1 = new Dog("Рекс"), d2 = new Dog("Бим");
+              console.log(d2.bark(), d1.bark === d2.bark);
+            answer: "Бим: гав true"
+          - type: choice
+            q: Чем заканчивается цепочка прототипов обычного объекта?
+            options: ["Object.prototype, затем null", "undefined", "Function.prototype", "window"]
+            answer: 0
+          - type: fill
+            q: Создайте объект с прототипом animal
+            code: |
+              const cat = Object.___(animal);
+            answers: ["create"]
+        homework:
+          task: |
+            Без классов, только через функции-конструкторы и прототипы, реализуйте `Shape(name)` с методом `describe()` («Фигура X площадью S»), наследников `Circle(r)` и `Rect(w, h)` со своими `area()`. `describe` объявлен только в `Shape.prototype` и использует `this.area()`. Проверьте `instanceof`, выведите цепочку прототипов объекта круга. Затем перепишите на `class/extends` и сравните.
+          checklist:
+            - Методы в prototype, а не в конструкторе
+            - Правильно связаны прототипы и constructor
+            - Полиморфный describe
+          solution: |
+            function Shape(name) { this.name = name; }
+            Shape.prototype.area = function () { return 0; };
+            Shape.prototype.describe = function () {
+              return `Фигура ${this.name} площадью ${this.area().toFixed(2)}`;
+            };
+
+            function Circle(r) { Shape.call(this, "круг"); this.r = r; }
+            Circle.prototype = Object.create(Shape.prototype);
+            Circle.prototype.constructor = Circle;
+            Circle.prototype.area = function () { return Math.PI * this.r ** 2; };
+
+            function Rect(w, h) { Shape.call(this, "прямоугольник"); this.w = w; this.h = h; }
+            Rect.prototype = Object.create(Shape.prototype);
+            Rect.prototype.constructor = Rect;
+            Rect.prototype.area = function () { return this.w * this.h; };
+
+            const shapes = [new Circle(1), new Rect(2, 3)];
+            shapes.forEach((s) => console.log(s.describe()));
+            console.log(shapes[0] instanceof Shape, shapes[0] instanceof Rect); // true false
+
+            let p = shapes[0];
+            const chain = [];
+            while ((p = Object.getPrototypeOf(p))) chain.push(p.constructor.name);
+            console.log(chain.join(" → ")); // Circle → Shape → Object
+
+            // То же на классах:
+            class Shape2 { constructor(n) { this.name = n; } area() { return 0; } describe() { return `${this.name}: ${this.area()}`; } }
+            class Rect2 extends Shape2 { constructor(w, h) { super("прямоугольник"); this.w = w; this.h = h; } area() { return this.w * this.h; } }
+            console.log(new Rect2(2, 3).describe());
+      - id: js-04-03
+        title: Классы ES6
+        minutes: 40
+        xp: 40
+        theory: |
+          `class` — удобный синтаксис поверх прототипов.
+
+          ```javascript
+          class BankAccount {
+            #balance = 0;                       // приватное поле (доступно только внутри класса)
+            static #count = 0;                  // приватное статическое
+            owner;                              // публичное поле
+
+            constructor(owner, initial = 0) {
+              this.owner = owner;
+              this.#balance = initial;
+              BankAccount.#count++;
+            }
+
+            deposit(sum) {
+              if (sum <= 0) throw new RangeError("Сумма должна быть > 0");
+              this.#balance += sum;
+              return this;                      // для цепочек вызовов
+            }
+
+            get balance() { return this.#balance; }        // геттер: acc.balance
+            set balance(v) { throw new Error("Только через deposit"); }
+
+            static get count() { return BankAccount.#count; }
+            static fromJSON(json) { const d = JSON.parse(json); return new BankAccount(d.owner, d.balance); }
+
+            toString() { return `${this.owner}: ${this.#balance} ₽`; }
+          }
+
+          const acc = new BankAccount("Анна", 100).deposit(50);
+          acc.balance;            // 150
+          // acc.#balance        // SyntaxError — снаружи недоступно
+          BankAccount.count;      // 1
+          ```
+
+          ## Наследование
+
+          ```javascript
+          class SavingsAccount extends BankAccount {
+            constructor(owner, initial, rate) {
+              super(owner, initial);            // обязательно до обращения к this
+              this.rate = rate;
+            }
+            addInterest() {
+              return this.deposit(this.balance * this.rate);
+            }
+            toString() {
+              return super.toString() + ` (ставка ${this.rate * 100}%)`;  // вызов метода родителя
+            }
+          }
+          ```
+
+          - `super(...)` — вызов конструктора родителя; в наследнике его нужно вызвать **до** `this`.
+          - `super.method()` — метод родителя.
+          - Приватные поля `#x` родителя **недоступны** наследнику — только через публичные методы/геттеры.
+
+          ## Особенности
+
+          - Код класса всегда в **строгом режиме**.
+          - Класс нельзя вызвать без `new`.
+          - Объявления классов не «поднимаются» как функции (TDZ).
+          - `instanceof` проверяет цепочку прототипов.
+          - Поля-стрелки `onClick = () => {...}` создаются на каждом экземпляре и навсегда привязаны к нему.
+
+          ## Композиция вместо наследования
+
+          Глубокие иерархии хрупки. Часто лучше собрать объект из частей: `class Car { constructor(engine, gps) {...} }` или использовать функции-миксины.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Counter {
+                #n = 0;
+                inc() { this.#n++; return this; }
+                get value() { return this.#n; }
+              }
+              console.log(new Counter().inc().inc().inc().value);
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A { hi() { return "A"; } }
+              class B extends A { hi() { return super.hi() + "B"; } }
+              class C extends B { hi() { return super.hi() + "C"; } }
+              console.log(new C().hi(), new C() instanceof A);
+            answer: ABC true
+          - type: bug
+            q: Где ошибка?
+            code: |
+              class Animal { constructor(name) { this.name = name; } }
+              class Dog extends Animal {
+                constructor(name) {
+                  this.sound = "гав";
+                  super(name);
+                }
+              }
+            bugLine: 4
+            fix: вызвать super(name) до обращения к this
+            explain: В конструкторе наследника нельзя обращаться к this до вызова super() — ReferenceError.
+          - type: fill
+            q: Объявите статический метод-фабрику
+            code: |
+              class User {
+                ___ guest() { return new User("Гость"); }
+              }
+            answers: ["static"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              class T { static count = 0; constructor() { T.count++; } }
+              new T(); new T();
+              const t = new T();
+              console.log(T.count, t.count);
+            answer: 3 undefined
+        homework:
+          task: |
+            Спроектируйте классы для интернет-магазина: `Product` (приватные `#price`, геттер `price`, валидация в сеттере), `DiscountedProduct extends Product` (процент скидки, переопределённый геттер цены через `super`), `Cart` (приватный Map товар → количество, методы `add`, `remove`, `total`, итератор `[Symbol.iterator]` по позициям, статический `fromJSON`). Покажите полиморфизм: корзина считает сумму, не зная, со скидкой товар или нет.
+          checklist:
+            - Используются приватные поля
+            - Есть геттер/сеттер с валидацией
+            - Наследник использует super
+            - Cart можно перебирать for...of
+          solution: |
+            class Product {
+              #price;
+              constructor(title, price) { this.title = title; this.price = price; }
+              get price() { return this.#price; }
+              set price(v) {
+                if (typeof v !== "number" || v < 0) throw new RangeError("Некорректная цена");
+                this.#price = v;
+              }
+            }
+            class DiscountedProduct extends Product {
+              constructor(title, price, percent) { super(title, price); this.percent = percent; }
+              get price() { return Math.round(super.price * (1 - this.percent / 100)); }
+              set price(v) { super.price = v; }
+            }
+            class Cart {
+              #items = new Map();
+              add(product, qty = 1) { this.#items.set(product, (this.#items.get(product) ?? 0) + qty); return this; }
+              remove(product) { this.#items.delete(product); return this; }
+              get total() { let s = 0; for (const [p, q] of this.#items) s += p.price * q; return s; }
+              *[Symbol.iterator]() { for (const [p, q] of this.#items) yield { title: p.title, qty: q, sum: p.price * q }; }
+              toJSON() { return [...this].map(({ title, qty, sum }) => ({ title, qty, price: sum / qty })); }
+              static fromJSON(json) {
+                const cart = new Cart();
+                for (const { title, qty, price } of JSON.parse(json)) cart.add(new Product(title, price), qty);
+                return cart;
+              }
+            }
+            const cart = new Cart().add(new Product("Чай", 300), 2).add(new DiscountedProduct("Кофе", 1000, 20));
+            for (const line of cart) console.log(line);
+            console.log(cart.total);                                   // 1400
+            console.log(Cart.fromJSON(JSON.stringify(cart)).total);    // 1400
+      - id: js-04-04
+        title: Область видимости, hoisting, TDZ
+        minutes: 35
+        xp: 40
+        theory: |
+          **Область видимости (scope)** определяет, где доступна переменная. В JS она **лексическая**: зависит от того, где код написан, а не откуда вызван.
+
+          - **Глобальная** — вне функций и блоков.
+          - **Функциональная** — внутри функции.
+          - **Блочная** — внутри `{ }` для `let`, `const`, `class`.
+
+          ## var vs let/const
+
+          ```javascript
+          if (true) {
+            var a = 1;     // функциональная/глобальная область — «протекает» из блока
+            let b = 2;     // только внутри блока
+          }
+          console.log(a);  // 1
+          console.log(b);  // ReferenceError
+          ```
+
+          ## Hoisting (поднятие)
+
+          Объявления обрабатываются **до выполнения** кода своей области:
+
+          ```javascript
+          console.log(x);      // undefined — var поднят и инициализирован undefined
+          var x = 5;
+
+          sayHi();             // работает — function declaration поднимается целиком
+          function sayHi() { console.log("hi"); }
+
+          greet();             // TypeError: greet is not a function (var greet = undefined)
+          var greet = function () {};
+          ```
+
+          ## TDZ — временная мёртвая зона
+
+          `let`, `const` и `class` тоже поднимаются, но **не инициализируются**. От начала блока до строки объявления переменная в TDZ — обращение даёт `ReferenceError`:
+
+          ```javascript
+          {
+            console.log(y);  // ReferenceError: Cannot access 'y' before initialization
+            let y = 1;
+          }
+          ```
+
+          ## Замыкания
+
+          Функция «помнит» переменные области, где была **создана**, даже после завершения внешней функции:
+
+          ```javascript
+          function makeCounter() {
+            let count = 0;
+            return () => ++count;
+          }
+          const c1 = makeCounter(), c2 = makeCounter();
+          c1(); c1();          // 2
+          c2();                // 1 — у каждого своя count
+          ```
+
+          Применение: приватное состояние, фабрики функций, мемоизация, debounce.
+
+          ## Классическая ловушка с циклом
+
+          ```javascript
+          for (var i = 0; i < 3; i++) setTimeout(() => console.log(i));   // 3 3 3 — одна i на всех
+          for (let j = 0; j < 3; j++) setTimeout(() => console.log(j));   // 0 1 2 — новая j на каждой итерации
+          ```
+
+          ## Затенение
+
+          Внутренняя переменная с тем же именем **затеняет** внешнюю. Правила хорошего тона: `const` по умолчанию, `let` если нужно переприсваивать, `var` не использовать.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(typeof a);
+              var a = 10;
+              console.log(a);
+            answer: |
+              undefined
+              10
+          - type: output
+            q: Что выведет код?
+            code: |
+              function make() {
+                let n = 0;
+                return { inc: () => ++n, get: () => n };
+              }
+              const x = make(), y = make();
+              x.inc(); x.inc(); y.inc();
+              console.log(x.get(), y.get());
+            answer: 2 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              const fns = [];
+              for (var i = 0; i < 3; i++) fns.push(() => i);
+              const gs = [];
+              for (let j = 0; j < 3; j++) gs.push(() => j);
+              console.log(fns.map((f) => f()).join(""), gs.map((g) => g()).join(""));
+            answer: 333 012
+          - type: bug
+            q: Какая строка бросит ReferenceError?
+            code: |
+              function total(items) {
+                const sum = items.length ? calc() : 0;
+                const tax = 0.2;
+                function calc() { return items.length * 100 * (1 + tax); }
+                return sum;
+              }
+              total([1]);
+            bugLine: 2
+            fix: объявить const tax до вызова calc()
+            explain: calc() вызывается, пока tax в TDZ — функция поднята, а const ещё не инициализирована.
+          - type: output
+            q: Что выведет код?
+            code: |
+              let v = "global";
+              function show() { return v; }
+              function run() { let v = "local"; return show(); }
+              console.log(run());
+            answer: global
+        homework:
+          task: |
+            Напишите с помощью замыканий: (1) `once(fn)` — функция выполняется только первый раз, далее возвращает сохранённый результат; (2) `memoize(fn)` — кеш результатов по аргументам (Map, ключ — JSON.stringify(args)); (3) `createStore(initial)` с методами `get`, `set`, `subscribe(listener)` → функция отписки; состояние недоступно снаружи. Объясните в комментарии, где здесь замыкания.
+          checklist:
+            - Состояние скрыто в замыкании
+            - memoize не вызывает fn повторно с теми же аргументами
+            - subscribe возвращает функцию отписки
+          solution: |
+            function once(fn) {
+              let called = false, result;
+              return (...args) => {           // замыкание хранит called и result
+                if (!called) { called = true; result = fn(...args); }
+                return result;
+              };
+            }
+            function memoize(fn) {
+              const cache = new Map();        // кеш живёт в замыкании
+              return (...args) => {
+                const key = JSON.stringify(args);
+                if (!cache.has(key)) cache.set(key, fn(...args));
+                return cache.get(key);
+              };
+            }
+            function createStore(initial) {
+              let state = initial;             // приватное состояние
+              const listeners = new Set();
+              return {
+                get: () => state,
+                set(next) { state = typeof next === "function" ? next(state) : next; listeners.forEach((l) => l(state)); },
+                subscribe(l) { listeners.add(l); return () => listeners.delete(l); },
+              };
+            }
+            const init = once(() => { console.log("init!"); return 42; });
+            console.log(init(), init());       // init! 42 42
+            let calls = 0;
+            const slowSquare = memoize((n) => { calls++; return n * n; });
+            slowSquare(9); slowSquare(9);
+            console.log(calls);                // 1
+            const store = createStore({ count: 0 });
+            const off = store.subscribe((s) => console.log("count =", s.count));
+            store.set((s) => ({ count: s.count + 1 }));   // count = 1
+            off();
+            store.set({ count: 5 });                      // без вывода
+            console.log(store.get().count);               // 5
+      - id: js-04-05
+        title: Event loop, микро- и макрозадачи
+        minutes: 40
+        xp: 45
+        theory: |
+          JavaScript **однопоточный**: в каждый момент выполняется один фрагмент кода. Асинхронность обеспечивает **цикл событий (event loop)** вместе с API среды (браузер/Node.js).
+
+          ## Составные части
+
+          - **Call stack** — стек вызовов текущего синхронного кода.
+          - **Web API / libuv** — таймеры, сеть, события работают вне JS-потока.
+          - **Очередь макрозадач** (task queue): колбэки `setTimeout`, `setInterval`, события DOM, I/O.
+          - **Очередь микрозадач** (microtask queue): `.then/.catch/.finally` промисов, `await`-продолжения, `queueMicrotask`, `MutationObserver`.
+
+          ## Алгоритм
+
+          1. Выполнить синхронный код до опустошения стека.
+          2. Выполнить **все** микрозадачи (включая добавленные по ходу).
+          3. (Браузер) при необходимости отрисовать кадр (`requestAnimationFrame` → рендер).
+          4. Взять **одну** макрозадачу, выполнить → снова шаг 2.
+
+          ```javascript
+          console.log("1");
+          setTimeout(() => console.log("2: timeout"), 0);
+          Promise.resolve().then(() => console.log("3: promise"));
+          queueMicrotask(() => console.log("4: microtask"));
+          console.log("5");
+          // 1, 5, 3: promise, 4: microtask, 2: timeout
+          ```
+
+          `setTimeout(fn, 0)` не значит «сейчас» — это «не раньше, чем через 0 мс, после текущего кода и всех микрозадач».
+
+          ## async/await и порядок
+
+          ```javascript
+          async function f() {
+            console.log("A");
+            await null;           // остаток функции — микрозадача
+            console.log("B");
+          }
+          f();
+          console.log("C");       // A, C, B
+          ```
+
+          ## Почему это важно
+
+          - Долгий синхронный код (тяжёлый цикл) **блокирует** страницу: не работают клики, не обновляется экран. Решения: разбить на части (`setTimeout`/`scheduler.yield()`), вынести в **Web Worker**.
+          - Бесконечная цепочка микрозадач тоже «вешает» страницу — рендер ждёт их окончания.
+          - Для анимаций используйте `requestAnimationFrame`, а не `setInterval`.
+
+          ## Node.js
+
+          В Node есть фазы цикла (timers, poll, check...), `process.nextTick` (выполняется даже раньше промисов) и `setImmediate` (фаза check).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log("a");
+              setTimeout(() => console.log("b"), 0);
+              Promise.resolve().then(() => console.log("c"));
+              console.log("d");
+            answer: |
+              a
+              d
+              c
+              b
+          - type: output
+            q: Что выведет код?
+            code: |
+              async function run() {
+                console.log(1);
+                await null;
+                console.log(2);
+              }
+              run();
+              console.log(3);
+            answer: |
+              1
+              3
+              2
+          - type: output
+            q: Что выведет код?
+            code: |
+              setTimeout(() => console.log("t1"), 0);
+              Promise.resolve()
+                .then(() => console.log("p1"))
+                .then(() => console.log("p2"));
+              queueMicrotask(() => console.log("m1"));
+            answer: |
+              p1
+              m1
+              p2
+              t1
+          - type: choice
+            q: К какой очереди относится колбэк .then() промиса?
+            options: ["Макрозадачи", "Микрозадачи", "Очередь рендера", "Выполняется синхронно"]
+            answer: 1
+          - type: choice
+            q: Тяжёлое вычисление на 3 секунды «замораживает» страницу. Лучшее решение?
+            options: ["Обернуть в Promise", "Вынести в Web Worker", "Использовать async функцию", "Поставить setTimeout(fn, 0) один раз"]
+            answer: 1
+        homework:
+          task: |
+            Предскажите порядок вывода для 5 фрагментов (комбинации console.log, setTimeout с разными задержками, Promise.then, async/await, queueMicrotask, вложенные таймеры внутри then), запишите предсказания, затем проверьте в Node.js и браузере. Затем напишите функцию `processInChunks(array, fn, chunkSize)`, которая обрабатывает массив из 1 000 000 элементов частями через `setTimeout`, не блокируя страницу, и возвращает Promise с результатом.
+          checklist:
+            - Предсказания объяснены через микро/макрозадачи
+            - processInChunks не блокирует интерфейс
+            - Возвращается Promise
+          solution: |
+            // Фрагмент: setTimeout внутри then
+            console.log("start");
+            setTimeout(() => console.log("timeout 1"), 0);
+            Promise.resolve().then(() => {
+              console.log("then 1");
+              setTimeout(() => console.log("timeout 2"), 0);
+            });
+            (async () => { await null; console.log("async"); })();
+            console.log("end");
+            // start, end, then 1, async, timeout 1, timeout 2
+
+            function processInChunks(array, fn, chunkSize = 10_000) {
+              return new Promise((resolve) => {
+                const result = [];
+                let i = 0;
+                function chunk() {
+                  const end = Math.min(i + chunkSize, array.length);
+                  for (; i < end; i++) result.push(fn(array[i]));
+                  if (i < array.length) setTimeout(chunk, 0);  // уступить event loop
+                  else resolve(result);
+                }
+                chunk();
+              });
+            }
+            const big = Array.from({ length: 1_000_000 }, (_, k) => k);
+            processInChunks(big, (x) => x * 2).then((r) => console.log("Готово:", r.length));

@@ -1,0 +1,786 @@
+id: javascript
+modules:
+  - id: js-m2
+    title: Объекты и строки
+    level: Junior
+    lessons:
+      - id: js-02-01
+        title: Объекты, свойства и методы
+        minutes: 30
+        xp: 30
+        theory: |
+          **Объект** — набор пар «ключ: значение». Это основа JavaScript: массивы, функции, даты — всё объекты.
+
+          ```javascript
+          const user = {
+            name: "Анна",
+            age: 25,
+            "favorite color": "синий",     // ключ с пробелом — в кавычках
+            greet() {                       // метод (краткая запись)
+              return `Привет, я ${this.name}`;
+            },
+          };
+
+          console.log(user.name);              // Анна — через точку
+          console.log(user["favorite color"]); // через скобки
+          const key = "age";
+          console.log(user[key]);              // 25 — динамический ключ
+          console.log(user.greet());           // Привет, я Анна
+          ```
+
+          ## Изменение
+
+          ```javascript
+          user.city = "Казань";   // добавить
+          user.age = 26;          // изменить
+          delete user.city;       // удалить
+          console.log(user.phone); // undefined — нет такого свойства
+          ```
+
+          `const` запрещает **переприсвоить** переменную, но не менять содержимое объекта.
+
+          ## Проверка и обход
+
+          ```javascript
+          "name" in user;                 // true
+          Object.hasOwn(user, "age");     // true (собственное свойство)
+          Object.keys(user);              // ["name", "age", "favorite color", "greet"]
+          Object.values({ a: 1, b: 2 });  // [1, 2]
+          Object.entries({ a: 1, b: 2 }); // [["a", 1], ["b", 2]]
+
+          for (const [k, v] of Object.entries({ a: 1, b: 2 })) {
+            console.log(k, v);
+          }
+          ```
+
+          ## Сокращения и вычисляемые ключи
+
+          ```javascript
+          const name = "Иван", age = 30;
+          const p = { name, age };              // { name: "Иван", age: 30 }
+          const field = "score";
+          const r = { [field + "1"]: 100 };     // { score1: 100 }
+          ```
+
+          ## Ссылки
+
+          Объекты передаются **по ссылке**: две переменные могут указывать на один объект.
+
+          ```javascript
+          const a = { x: 1 };
+          const b = a;
+          b.x = 2;
+          console.log(a.x);           // 2
+          console.log({} === {});     // false — разные объекты
+          ```
+
+          ## Опциональная цепочка
+
+          `user.address?.city` вернёт `undefined` вместо ошибки, если `address` нет. `user.getInfo?.()` — вызовет метод, только если он существует.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const a = { n: 1 };
+              const b = a;
+              b.n = 5;
+              console.log(a.n);
+            answer: "5"
+          - type: output
+            q: Что выведет код?
+            code: |
+              const o = { x: 1, y: 2, z: 3 };
+              console.log(Object.keys(o).length, Object.values(o).join("+"));
+            answer: 3 1+2+3
+          - type: fill
+            q: Получите свойство по ключу из переменной
+            code: |
+              const key = "price";
+              console.log(product___key___);
+            answers: ["[", "]"]
+          - type: bug
+            q: Где ошибка?
+            code: |
+              const user = { name: "Олег" };
+              console.log(user.address.city);
+            bugLine: 2
+            fix: console.log(user.address?.city);
+            explain: user.address — undefined, обращение к его свойству даёт TypeError. Помогает ?.
+          - type: output
+            q: Что выведет код?
+            code: |
+              const f = "total";
+              const r = { [f]: 10, count: 2 };
+              console.log(r.total * r.count, "count" in r);
+            answer: 20 true
+        homework:
+          task: |
+            Создайте объект `cart` с массивом `items` (каждый — `{ title, price, qty }`) и методами `add(item)`, `remove(title)`, `total()` и `summary()` (строка вида «3 товара на 1500 ₽»). Обойдите товары через `Object.entries` по одному товару и выведите все поля. Используйте опциональную цепочку при поиске товара, которого нет.
+          checklist:
+            - Методы используют this
+            - total считает price * qty
+            - Нет ошибок при поиске отсутствующего товара
+          solution: |
+            const cart = {
+              items: [],
+              add(item) { this.items.push(item); return this; },
+              remove(title) { this.items = this.items.filter((i) => i.title !== title); },
+              total() { return this.items.reduce((s, i) => s + i.price * i.qty, 0); },
+              summary() {
+                const count = this.items.reduce((s, i) => s + i.qty, 0);
+                return `${count} товара на ${this.total()} ₽`;
+              },
+            };
+            cart.add({ title: "Чай", price: 300, qty: 2 }).add({ title: "Мёд", price: 900, qty: 1 });
+            console.log(cart.summary()); // 3 товара на 1500 ₽
+            for (const [k, v] of Object.entries(cart.items[0])) console.log(k, v);
+            const found = cart.items.find((i) => i.title === "Кофе");
+            console.log(found?.price ?? "нет такого товара");
+            cart.remove("Чай");
+            console.log(cart.total()); // 900
+      - id: js-02-02
+        title: Деструктуризация и spread объектов
+        minutes: 30
+        xp: 30
+        theory: |
+          **Деструктуризация** — извлечение значений из объектов и массивов в переменные одной строкой.
+
+          ```javascript
+          const user = { name: "Анна", age: 25, city: "Пермь" };
+          const { name, age } = user;               // name = "Анна", age = 25
+          const { city: town } = user;              // переименование: town = "Пермь"
+          const { phone = "нет" } = user;           // значение по умолчанию
+          const { name: n, ...rest } = user;        // rest = { age: 25, city: "Пермь" }
+
+          const [first, second, ...others] = [10, 20, 30, 40];  // others = [30, 40]
+          const [, , third] = [1, 2, 3];            // пропуск элементов: third = 3
+          let x = 1, y = 2;
+          [x, y] = [y, x];                          // обмен значений
+          ```
+
+          ## Вложенная деструктуризация
+
+          ```javascript
+          const order = { id: 7, customer: { name: "Иван", address: { city: "Омск" } } };
+          const { customer: { address: { city } } } = order;   // city = "Омск"
+          ```
+
+          ## В параметрах функций
+
+          ```javascript
+          function createUser({ name, role = "user", active = true } = {}) {
+            return `${name}: ${role}, ${active}`;
+          }
+          createUser({ name: "Оля" });   // "Оля: user, true"
+          ```
+
+          Удобно для «именованных параметров»: порядок не важен, легко добавить новый.
+
+          ## Spread `...`
+
+          ```javascript
+          const base = { theme: "dark", lang: "ru" };
+          const settings = { ...base, lang: "en" };       // { theme: "dark", lang: "en" }
+          const copy = { ...user };                        // поверхностная копия
+          const merged = { ...a, ...b };                   // при совпадении ключей побеждает последний
+
+          const arr = [1, 2];
+          const more = [0, ...arr, 3];                     // [0, 1, 2, 3]
+          Math.max(...arr);                                // 2
+          ```
+
+          ## Поверхностное копирование
+
+          Spread копирует только **первый уровень**. Вложенные объекты остаются общими:
+
+          ```javascript
+          const a = { inner: { v: 1 } };
+          const b = { ...a };
+          b.inner.v = 99;
+          console.log(a.inner.v);          // 99!
+          const deep = structuredClone(a); // глубокая копия
+          ```
+
+          В React и Redux spread — основной способ **иммутабельного** обновления состояния: `setUser({ ...user, age: 26 })`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const { a, b = 5, ...rest } = { a: 1, c: 3, d: 4 };
+              console.log(a, b, Object.keys(rest).join(""));
+            answer: 1 5 cd
+          - type: output
+            q: Что выведет код?
+            code: |
+              const s = { ...{ x: 1, y: 2 }, ...{ y: 3, z: 4 } };
+              console.log(s.x + s.y + s.z);
+            answer: "8"
+          - type: fill
+            q: Переименуйте свойство при деструктуризации
+            code: |
+              const { title___ heading } = article;
+            answers: [":"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              const a = { inner: { v: 1 }, n: 1 };
+              const b = { ...a };
+              b.inner.v = 2;
+              b.n = 2;
+              console.log(a.inner.v, a.n);
+            answer: 2 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              let [p, q] = [1, 2];
+              [p, q] = [q, p];
+              const [, , t = 9] = [p, q];
+              console.log(p, q, t);
+            answer: 2 1 9
+        homework:
+          task: |
+            Напишите функцию `updateProfile(profile, changes)`, которая возвращает **новый** объект, не изменяя исходный: обновляет поля верхнего уровня и вложенный объект `address` (тоже копией). Напишите функцию `formatUser({ name, age, address: { city } = {} })` с деструктуризацией в параметрах. Проверьте, что исходный профиль не изменился.
+          checklist:
+            - Исходный объект не мутируется
+            - Вложенный address копируется отдельно
+            - Есть значения по умолчанию
+          solution: |
+            function updateProfile(profile, changes) {
+              return {
+                ...profile,
+                ...changes,
+                address: { ...profile.address, ...changes.address },
+              };
+            }
+            function formatUser({ name, age = "?", address: { city = "не указан" } = {} }) {
+              return `${name} (${age}), город: ${city}`;
+            }
+            const p = { name: "Анна", age: 25, address: { city: "Пермь", street: "Ленина" } };
+            const p2 = updateProfile(p, { age: 26, address: { city: "Казань" } });
+            console.log(formatUser(p2));          // Анна (26), город: Казань
+            console.log(p.address.city, p.age);   // Пермь 25 — исходный не изменился
+            console.log(p2.address.street);       // Ленина
+            console.log(formatUser({ name: "Олег" })); // Олег (?), город: не указан
+      - id: js-02-03
+        title: Строки и шаблонные литералы
+        minutes: 30
+        xp: 30
+        theory: |
+          Строки в JS **неизменяемы**: методы возвращают новую строку.
+
+          ```javascript
+          const s = "Привет, мир";
+          s.length;               // 11
+          s[0];                   // "П"
+          s.at(-1);               // "р" — с конца
+          s.toUpperCase();        // "ПРИВЕТ, МИР"
+          s.includes("мир");      // true
+          s.startsWith("При");    // true
+          s.indexOf("мир");       // 8 (-1 если нет)
+          s.slice(0, 6);          // "Привет"
+          s.slice(-3);            // "мир"
+          s.replace("мир", "JS"); // "Привет, JS" — первое вхождение
+          "a-b-c".replaceAll("-", "+"); // "a+b+c"
+          "  hi  ".trim();        // "hi"
+          "5".padStart(3, "0");   // "005"
+          "ab".repeat(3);         // "ababab"
+          "a,b,c".split(",");     // ["a", "b", "c"]
+          ["a", "b"].join(" / "); // "a / b"
+          ```
+
+          ## Шаблонные литералы
+
+          Обратные кавычки `` ` `` позволяют встраивать выражения и писать многострочный текст:
+
+          ```javascript
+          const name = "Анна", items = 3, price = 450;
+          const msg = `Здравствуйте, ${name}!
+          В корзине ${items} товара на ${items * price} ₽.`;
+          ```
+
+          ## Сравнение и сортировка
+
+          ```javascript
+          "a" < "b";                                  // true (по кодам символов)
+          "ё".localeCompare("я", "ru");               // -1
+          ["яблоко", "Банан", "ёж"].sort((a, b) => a.localeCompare(b, "ru"));
+          ```
+
+          ## Регулярные выражения (основы)
+
+          ```javascript
+          /^\d{3}-\d{2}$/.test("123-45");                 // true
+          "Тел: 8-900-123".match(/\d+/g);                 // ["8", "900", "123"]
+          "camelCaseString".replace(/([A-Z])/g, "_$1").toLowerCase(); // "camel_case_string"
+          ```
+
+          ## Числа ↔ строки
+
+          ```javascript
+          String(42); (42).toString();     // "42"
+          Number("3.5"); parseInt("42px"); // 3.5, 42
+          (3.14159).toFixed(2);            // "3.14"
+          (1234567.89).toLocaleString("ru-RU"); // "1 234 567,89"
+          ```
+
+          Unicode: эмодзи может занимать две «ячейки» (`"😀".length === 2`). Для точного разбиения по символам используйте `[..."😀a"]`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const s = "JavaScript";
+              console.log(s.slice(0, 4).toUpperCase() + s.at(-1));
+            answer: JAVAt
+          - type: output
+            q: Что выведет код?
+            code: |
+              const words = "  яблоко,груша ,слива ".split(",").map((w) => w.trim());
+              console.log(words.length, words[1]);
+            answer: 3 груша
+          - type: fill
+            q: Дополните номер нулями до 4 символов
+            code: |
+              const id = String(7).___(4, "0"); // "0007"
+            answers: ["padStart"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              const n = 3;
+              console.log(`${n} * ${n} = ${n * n}`);
+            answer: 3 * 3 = 9
+          - type: bug
+            q: Где ошибка?
+            code: |
+              let s = "hello";
+              s[0] = "H";
+              console.log(s);
+            bugLine: 2
+            fix: s = "H" + s.slice(1);
+            explain: Строки неизменяемы — присваивание по индексу игнорируется (в строгом режиме — TypeError), выведется hello.
+        homework:
+          task: |
+            Напишите набор функций для работы с текстом: `capitalize(s)` (первая буква заглавная), `slugify(s)` («Привет Мир 2024!» → «привет-мир-2024»), `countWords(s)` (объект частот слов без учёта регистра и знаков препинания), `truncate(s, n)` (обрезать до n символов и добавить «…»), `isPalindrome(s)` (игнорируя пробелы и регистр). Протестируйте на русских строках.
+          checklist:
+            - Функции не изменяют исходную строку
+            - Используются методы строк и регулярные выражения
+            - Работают с кириллицей
+          solution: |
+            const capitalize = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+            const slugify = (s) =>
+              s.toLowerCase().trim().replace(/[^a-zа-яё0-9\s-]/g, "").replace(/\s+/g, "-");
+            function countWords(s) {
+              const freq = {};
+              for (const w of s.toLowerCase().match(/[a-zа-яё0-9]+/g) ?? []) {
+                freq[w] = (freq[w] ?? 0) + 1;
+              }
+              return freq;
+            }
+            const truncate = (s, n) => (s.length > n ? s.slice(0, n) + "…" : s);
+            const isPalindrome = (s) => {
+              const clean = s.toLowerCase().replace(/\s/g, "");
+              return clean === [...clean].reverse().join("");
+            };
+            console.log(capitalize("москва"));               // Москва
+            console.log(slugify("Привет Мир 2024!"));        // привет-мир-2024
+            console.log(countWords("Кот и кот, и пёс."));     // { кот: 2, и: 2, пёс: 1 }
+            console.log(truncate("Длинный заголовок", 7));   // Длинный…
+            console.log(isPalindrome("А роза упала на лапу Азора")); // true
+      - id: js-02-04
+        title: Map, Set, WeakMap
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Map — словарь с любыми ключами
+
+          В обычном объекте ключи — только строки и символы. В **Map** ключом может быть что угодно (объект, число, функция), и сохраняется порядок вставки.
+
+          ```javascript
+          const m = new Map();
+          m.set("a", 1).set(42, "число").set({ id: 1 }, "объект");
+          m.get("a");       // 1
+          m.has(42);        // true
+          m.size;           // 3
+          m.delete("a");
+          for (const [key, value] of m) console.log(key, value);
+
+          const fromObj = new Map(Object.entries({ x: 1, y: 2 }));
+          const backToObj = Object.fromEntries(fromObj);
+          ```
+
+          Map быстрее объекта при частых добавлениях/удалениях и удобнее для подсчётов:
+
+          ```javascript
+          const freq = new Map();
+          for (const ch of "банан") freq.set(ch, (freq.get(ch) ?? 0) + 1);
+          // Map { "б" => 1, "а" => 2, "н" => 2 }
+          ```
+
+          ## Set — множество уникальных значений
+
+          ```javascript
+          const s = new Set([1, 2, 2, 3, 3, 3]);
+          s.size;          // 3
+          s.add(4); s.has(2); s.delete(1);
+          const unique = [...new Set(["a", "b", "a"])];   // ["a", "b"]
+
+          const a = new Set([1, 2, 3]), b = new Set([2, 3, 4]);
+          const inter = [...a].filter((x) => b.has(x));   // [2, 3]
+          const union = new Set([...a, ...b]);            // {1, 2, 3, 4}
+          // В современных браузерах: a.intersection(b), a.union(b), a.difference(b)
+          ```
+
+          Сравнение — по `SameValueZero`: два разных объекта `{}` — разные элементы, а `NaN` равен `NaN`.
+
+          ## WeakMap и WeakSet
+
+          Ключи — **только объекты**, хранятся «слабо»: если на объект больше нет ссылок, сборщик мусора удалит его вместе с записью. Нет перебора и `size`.
+
+          ```javascript
+          const cache = new WeakMap();
+          function getMeta(el) {
+            if (!cache.has(el)) cache.set(el, { clicks: 0 });
+            return cache.get(el);
+          }
+          ```
+
+          Применение: кеши и приватные данные, привязанные к объектам (DOM-элементам), без утечек памяти.
+
+          ## Когда что
+
+          | Задача | Структура |
+          |---|---|
+          | Запись с фиксированными полями | объект |
+          | Словарь с динамическими/не строковыми ключами | Map |
+          | Уникальные значения, быстрый `has` | Set |
+          | Данные «при объекте» без утечек | WeakMap |
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const s = new Set([1, 2, 2, 3, 1]);
+              s.add(3).add(4);
+              console.log(s.size);
+            answer: "4"
+          - type: output
+            q: Что выведет код?
+            code: |
+              const m = new Map();
+              m.set("1", "строка").set(1, "число");
+              console.log(m.size, m.get(1));
+            answer: 2 число
+          - type: fill
+            q: Удалите дубликаты из массива
+            code: |
+              const unique = [...new ___(arr)];
+            answers: ["Set"]
+          - type: choice
+            q: Что может быть ключом в WeakMap?
+            options: ["Только строки", "Любое значение", "Только объекты", "Только числа"]
+            answer: 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              const freq = new Map();
+              for (const ch of "мама") freq.set(ch, (freq.get(ch) ?? 0) + 1);
+              console.log([...freq.entries()].map(([k, v]) => k + v).join(","));
+            answer: м2,а2
+        homework:
+          task: |
+            Есть массив заказов `{ id, customer, products: ["чай", "кофе", ...] }`. Напишите: (1) `Map` «клиент → количество заказов»; (2) `Set` всех уникальных товаров; (3) функцию, возвращающую товары, которые заказывали **все** клиенты (пересечение множеств); (4) кеш на `WeakMap` для функции `orderTotal(order)`, чтобы повторный вызов с тем же объектом не пересчитывал сумму (цены — в отдельном объекте).
+          checklist:
+            - Map используется для подсчёта
+            - Set для уникальности и пересечения
+            - WeakMap-кеш работает
+          solution: |
+            const prices = { чай: 300, кофе: 500, сахар: 80 };
+            const orders = [
+              { id: 1, customer: "Анна", products: ["чай", "сахар"] },
+              { id: 2, customer: "Иван", products: ["кофе", "сахар"] },
+              { id: 3, customer: "Анна", products: ["кофе", "сахар", "чай"] },
+            ];
+            const byCustomer = new Map();
+            for (const o of orders) byCustomer.set(o.customer, (byCustomer.get(o.customer) ?? 0) + 1);
+            console.log(byCustomer); // Map { Анна => 2, Иван => 1 }
+
+            const allProducts = new Set(orders.flatMap((o) => o.products));
+            console.log([...allProducts]);
+
+            function commonProducts(orders) {
+              const perCustomer = new Map();
+              for (const o of orders) {
+                const set = perCustomer.get(o.customer) ?? new Set();
+                o.products.forEach((p) => set.add(p));
+                perCustomer.set(o.customer, set);
+              }
+              const sets = [...perCustomer.values()];
+              return [...sets[0]].filter((p) => sets.every((s) => s.has(p)));
+            }
+            console.log(commonProducts(orders)); // ["сахар", "кофе"] или в порядке первого клиента
+
+            const totals = new WeakMap();
+            function orderTotal(order) {
+              if (totals.has(order)) return totals.get(order);
+              const sum = order.products.reduce((s, p) => s + prices[p], 0);
+              totals.set(order, sum);
+              return sum;
+            }
+            console.log(orderTotal(orders[0]), orderTotal(orders[0])); // 380 380 (второй — из кеша)
+      - id: js-02-05
+        title: JSON
+        minutes: 25
+        xp: 30
+        theory: |
+          **JSON** (JavaScript Object Notation) — текстовый формат обмена данными. Его используют REST API, конфиги (`package.json`), хранилища.
+
+          ```json
+          {
+            "id": 7,
+            "title": "Книга",
+            "tags": ["js", "web"],
+            "price": 499.9,
+            "inStock": true,
+            "author": null
+          }
+          ```
+
+          Правила JSON строже, чем у объектов JS: ключи **только в двойных кавычках**, строки — только в двойных, **нет** комментариев, висячих запятых, `undefined`, функций, `NaN`.
+
+          ## stringify и parse
+
+          ```javascript
+          const obj = { name: "Анна", age: 25, skills: ["js"] };
+          const text = JSON.stringify(obj);      // '{"name":"Анна","age":25,"skills":["js"]}'
+          const pretty = JSON.stringify(obj, null, 2);   // с отступами
+          const back = JSON.parse(text);         // снова объект
+          ```
+
+          ## Что теряется при stringify
+
+          ```javascript
+          JSON.stringify({ a: undefined, f() {}, d: new Date(0), n: NaN });
+          // '{"d":"1970-01-01T00:00:00.000Z","n":null}'
+          ```
+
+          - `undefined` и функции в объектах **пропадают**, в массивах становятся `null`.
+          - `Date` превращается в строку ISO и **не восстанавливается** сам.
+          - `Map`/`Set` → `{}`.
+
+          ## replacer и reviver
+
+          ```javascript
+          JSON.stringify(user, ["name", "email"]);   // только перечисленные поля
+          JSON.stringify(user, (k, v) => (k === "password" ? undefined : v));
+
+          const data = JSON.parse(text, (key, value) =>
+            key === "createdAt" ? new Date(value) : value);
+          ```
+
+          Метод `toJSON()` в объекте задаёт своё представление.
+
+          ## Ошибки разбора
+
+          ```javascript
+          try {
+            JSON.parse("{name: 'Анна'}");   // SyntaxError — нет кавычек у ключа
+          } catch (e) {
+            console.log("Невалидный JSON:", e.message);
+          }
+          ```
+
+          Данные извне (API, localStorage, файлы) всегда разбирайте в `try/catch` и проверяйте структуру.
+
+          ## Глубокое копирование
+
+          `JSON.parse(JSON.stringify(obj))` — старый приём с потерями (даты, undefined). Современно: `structuredClone(obj)`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(JSON.stringify({ a: 1, b: undefined, c: [undefined, 2] }));
+            answer: '{"a":1,"c":[null,2]}'
+          - type: choice
+            q: Какая строка — валидный JSON?
+            options: ["{name: \"Анна\"}", "{'name': 'Анна'}", "{\"name\": \"Анна\"}", "{\"name\": \"Анна\",}"]
+            answer: 2
+          - type: fill
+            q: Превратите строку JSON в объект
+            code: |
+              const user = JSON.___(text);
+            answers: ["parse"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              const d = JSON.parse(JSON.stringify({ when: new Date(0) }));
+              console.log(typeof d.when);
+            answer: string
+          - type: output
+            q: Что выведет код?
+            code: |
+              const u = { name: "Ия", password: "123", age: 20 };
+              console.log(JSON.stringify(u, ["name", "age"]));
+            answer: '{"name":"Ия","age":20}'
+        homework:
+          task: |
+            Напишите функции `saveState(state)` → строка JSON и `loadState(text)` → объект. Состояние: `{ user: { name, registeredAt: Date }, todos: [{ text, done, tags: Set }] }`. Сериализуйте `Date` и `Set` корректно (Set → массив, обратно через reviver), не сохраняйте поле `user.token`. `loadState` при невалидном JSON возвращает состояние по умолчанию и пишет предупреждение.
+          checklist:
+            - Даты и Set восстанавливаются
+            - Секретное поле не попадает в JSON
+            - Невалидный JSON не роняет программу
+          solution: |
+            const DEFAULT = { user: null, todos: [] };
+            function saveState(state) {
+              return JSON.stringify(state, (key, value) => {
+                if (key === "token") return undefined;
+                if (value instanceof Set) return { __set: [...value] };
+                return value;
+              });
+            }
+            function loadState(text) {
+              try {
+                return JSON.parse(text, (key, value) => {
+                  if (key === "registeredAt") return new Date(value);
+                  if (value && Array.isArray(value.__set)) return new Set(value.__set);
+                  return value;
+                });
+              } catch (e) {
+                console.warn("Не удалось загрузить состояние:", e.message);
+                return structuredClone(DEFAULT);
+              }
+            }
+            const state = {
+              user: { name: "Анна", registeredAt: new Date("2024-01-15"), token: "secret" },
+              todos: [{ text: "Учить JSON", done: false, tags: new Set(["js", "учёба"]) }],
+            };
+            const text = saveState(state);
+            console.log(text.includes("secret"));          // false
+            const restored = loadState(text);
+            console.log(restored.user.registeredAt.getFullYear(), restored.todos[0].tags.has("js")); // 2024 true
+            console.log(loadState("{битый json"));          // предупреждение + { user: null, todos: [] }
+      - id: js-02-06
+        title: Дата и время
+        minutes: 30
+        xp: 30
+        theory: |
+          Встроенный объект **Date** хранит момент времени как число миллисекунд от 1 января 1970 UTC.
+
+          ```javascript
+          const now = new Date();                      // сейчас
+          const d = new Date(2024, 0, 15, 10, 30);     // 15 января 2024, 10:30 (месяцы с 0!)
+          const iso = new Date("2024-01-15T10:30:00Z"); // из ISO-строки (UTC)
+          const ts = Date.now();                       // миллисекунды — удобно для замеров
+          ```
+
+          ⚠️ **Месяцы нумеруются с 0**: январь — 0, декабрь — 11. А дни месяца — с 1.
+
+          ## Компоненты
+
+          ```javascript
+          d.getFullYear();  // 2024
+          d.getMonth();     // 0
+          d.getDate();      // 15 — день месяца
+          d.getDay();       // 1 — день недели (0 = воскресенье)
+          d.getHours(); d.getMinutes();
+          d.setDate(d.getDate() + 30);   // +30 дней, переполнение переносит месяц
+          ```
+
+          ## Разница дат
+
+          ```javascript
+          const a = new Date(2024, 0, 1), b = new Date(2024, 0, 31);
+          const days = (b - a) / (1000 * 60 * 60 * 24);   // 30 — вычитание даёт миллисекунды
+          ```
+
+          ## Форматирование
+
+          ```javascript
+          d.toISOString();                          // "2024-01-15T07:30:00.000Z" — для API
+          d.toLocaleDateString("ru-RU");            // "15.01.2024"
+          d.toLocaleString("ru-RU", { dateStyle: "long", timeStyle: "short" }); // "15 января 2024 г. в 10:30"
+
+          const fmt = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+          fmt.format(d);                            // "понедельник, 15 января"
+
+          const rtf = new Intl.RelativeTimeFormat("ru", { numeric: "auto" });
+          rtf.format(-1, "day");                    // "вчера"
+          ```
+
+          ## Часовые пояса
+
+          `Date` всегда хранит UTC, а методы `getHours()` и т.п. показывают **локальное** время устройства. Методы `getUTCHours()` — в UTC. Правило: храните и передавайте время в UTC (ISO-строка), показывайте пользователю — в его поясе.
+
+          Строка `"2024-01-15"` разбирается как UTC, а `"2024-01-15T10:00"` — как локальное время. Это частый источник ошибок «съехал день».
+
+          ## Библиотеки
+
+          Для сложных расчётов используют **date-fns**, **Day.js** или **Luxon**. В будущем стандартом станет **Temporal API** (`Temporal.PlainDate`, `Temporal.ZonedDateTime`).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const d = new Date(2024, 0, 31);
+              console.log(d.getMonth(), d.getDate());
+            answer: 0 31
+          - type: output
+            q: Что выведет код?
+            code: |
+              const d = new Date(2024, 0, 31);
+              d.setDate(d.getDate() + 1);
+              console.log(d.getMonth() + 1, d.getDate());
+            answer: 2 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              const a = new Date(2024, 2, 1), b = new Date(2024, 2, 11);
+              console.log((b - a) / 86400000);
+            answer: "10"
+          - type: bug
+            q: Нужно создать дату 1 декабря 2024. Где ошибка?
+            code: |
+              const year = 2024;
+              const newYearEve = new Date(year, 12, 1);
+              console.log(newYearEve.toLocaleDateString("ru-RU"));
+            bugLine: 2
+            fix: const newYearEve = new Date(year, 11, 1);
+            explain: Месяцы считаются с 0, поэтому декабрь — 11. Месяц 12 — это январь следующего года.
+          - type: choice
+            q: В каком формате лучше передавать дату в API?
+            options: ["toLocaleString()", "ISO-строка в UTC (toISOString)", "Количество дней с начала года", "Строка вида 15.01.2024"]
+            answer: 1
+        homework:
+          task: |
+            Напишите утилиты: `daysUntil(date)` — сколько дней осталось до даты (округление вверх); `addWorkingDays(date, n)` — прибавить n рабочих дней (пропуская субботу и воскресенье); `age(birthDate)` — полных лет; `humanize(date)` — «сегодня», «вчера», «3 дня назад» через `Intl.RelativeTimeFormat`; `formatRu(date)` — «понедельник, 15 января 2024». Не мутируйте входные даты.
+          checklist:
+            - Учтено, что месяцы с 0
+            - Входные даты не изменяются
+            - Используется Intl для форматирования
+          solution: |
+            const DAY = 86400000;
+            const daysUntil = (date) => Math.ceil((date - Date.now()) / DAY);
+            function addWorkingDays(date, n) {
+              const d = new Date(date);
+              while (n > 0) {
+                d.setDate(d.getDate() + 1);
+                if (d.getDay() !== 0 && d.getDay() !== 6) n--;
+              }
+              return d;
+            }
+            function age(birth, today = new Date()) {
+              let years = today.getFullYear() - birth.getFullYear();
+              const hadBirthday =
+                today.getMonth() > birth.getMonth() ||
+                (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+              return hadBirthday ? years : years - 1;
+            }
+            const rtf = new Intl.RelativeTimeFormat("ru", { numeric: "auto" });
+            function humanize(date) {
+              const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+              const diff = Math.round((startOf(date) - startOf(new Date())) / DAY);
+              return rtf.format(diff, "day");
+            }
+            const formatRu = (date) =>
+              new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+                .format(date).replace(" г.", "");
+            console.log(addWorkingDays(new Date(2024, 0, 12), 1).getDate()); // пятница 12 → понедельник 15
+            console.log(age(new Date(2000, 5, 1), new Date(2024, 4, 31)));   // 23
+            console.log(humanize(new Date(Date.now() - 3 * DAY)));           // 3 дня назад
+            console.log(formatRu(new Date(2024, 0, 15)));                    // понедельник, 15 января 2024

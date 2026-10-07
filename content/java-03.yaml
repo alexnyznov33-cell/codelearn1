@@ -1,0 +1,857 @@
+id: java
+modules:
+  - id: java-m3
+    title: Коллекции и generics
+    level: Junior
+    lessons:
+      - id: java-03-01
+        title: ArrayList и LinkedList
+        minutes: 25
+        xp: 30
+        theory: |
+          Java Collections Framework: интерфейсы `Collection` → `List`, `Set`, `Queue`; отдельно `Map`.
+
+          ## ArrayList — динамический массив
+
+          ```java
+          List<String> names = new ArrayList<>();
+          names.add("Аня");
+          names.add("Боб");
+          names.add(0, "Вика");        // вставка по индексу (сдвиг — O(n))
+          names.get(1);                // O(1)
+          names.set(1, "Гена");
+          names.remove("Боб");         // по значению (первое вхождение)
+          names.remove(0);             // по индексу
+          names.size();
+          names.contains("Аня");       // O(n)
+          names.indexOf("Аня");
+          Collections.sort(names);     // или names.sort(null)
+
+          for (String n : names) System.out.println(n);
+          ```
+
+          Хранит **объекты**, не примитивы: `List<Integer>`, а не `List<int>` (автоупаковка `int ↔ Integer`).
+
+          ⚠️ Ловушка `List<Integer>`: `list.remove(1)` удаляет **по индексу 1**, а `list.remove(Integer.valueOf(1))` — значение 1.
+
+          ## LinkedList — двусвязный список
+
+          Реализует и `List`, и `Deque`. Вставка/удаление в начале/конце — O(1), доступ по индексу — O(n).
+
+          ```java
+          LinkedList<Integer> q = new LinkedList<>();
+          q.addFirst(1); q.addLast(2);
+          q.removeFirst();
+          ```
+
+          На практике `ArrayList` почти всегда быстрее (кэш процессора), а для очереди/стека лучше `ArrayDeque`.
+
+          | Операция | ArrayList | LinkedList |
+          |---|---|---|
+          | get(i) | O(1) | O(n) |
+          | add в конец | O(1) аморт. | O(1) |
+          | add/remove в начало | O(n) | O(1) |
+          | память | компактно | +2 ссылки на узел |
+
+          ## Неизменяемые списки
+
+          ```java
+          List<String> fixed = List.of("a", "b");     // Java 9+, add → UnsupportedOperationException
+          List<String> copy = List.copyOf(names);
+          List<Integer> fromArray = Arrays.asList(1, 2, 3);  // фиксированного размера (set можно, add нельзя)
+          ```
+
+          ## Удаление во время обхода
+
+          ```java
+          for (String n : names) if (n.isEmpty()) names.remove(n);   // ❌ ConcurrentModificationException
+          names.removeIf(String::isEmpty);                              // ✅
+          ```
+
+          ## Полезное
+
+          `subList`, `addAll`, `retainAll`, `toArray(new String[0])`, `Collections.unmodifiableList`, `Collections.reverse/shuffle/frequency/max`.
+
+          Задавайте начальную ёмкость, если размер известен: `new ArrayList<>(10_000)`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              List<Integer> list = new ArrayList<>(List.of(10, 20, 30));
+              list.remove(1);
+              System.out.println(list);
+            answer: "[10, 30]"
+            explain: remove(int) удаляет по индексу.
+          - type: output
+            q: Что выведет код?
+            code: |
+              List<String> l = new ArrayList<>();
+              l.add("b"); l.add(0, "a"); l.add("c");
+              System.out.println(l.get(1) + l.size());
+            answer: b3
+          - type: choice
+            q: Что произойдёт при List.of("a").add("b")?
+            options: ["Список станет [a, b]", "UnsupportedOperationException", "Ошибка компиляции", "Ничего"]
+            answer: 1
+          - type: fill
+            q: Удалите все пустые строки без ConcurrentModificationException
+            code: |
+              names.___(String::isEmpty);
+            answers: ["removeIf"]
+          - type: choice
+            q: Какая операция у LinkedList медленнее, чем у ArrayList?
+            options: ["addFirst", "get(index)", "removeFirst", "addLast"]
+            answer: 1
+        homework:
+          task: |
+            Напишите консольный «список покупок»: команды `add <товар>`, `remove <номер>`, `move <откуда> <куда>`, `sort`, `undo` (отмена последнего действия — храните снимки в `ArrayDeque<List<String>>`), `print` (с нумерацией с 1). Обработайте неверные индексы.
+          checklist:
+            - Используется ArrayList
+            - Неверный индекс не роняет программу
+            - undo работает многократно
+          solution: |
+            import java.util.*;
+
+            public class Shopping {
+                public static void main(String[] args) {
+                    List<String> list = new ArrayList<>();
+                    Deque<List<String>> history = new ArrayDeque<>();
+                    Scanner in = new Scanner(System.in);
+                    while (in.hasNextLine()) {
+                        String[] p = in.nextLine().trim().split(" ", 2);
+                        try {
+                            switch (p[0]) {
+                                case "add" -> { history.push(new ArrayList<>(list)); list.add(p[1]); }
+                                case "remove" -> { history.push(new ArrayList<>(list)); list.remove(Integer.parseInt(p[1]) - 1); }
+                                case "move" -> {
+                                    String[] ij = p[1].split(" ");
+                                    history.push(new ArrayList<>(list));
+                                    String item = list.remove(Integer.parseInt(ij[0]) - 1);
+                                    list.add(Integer.parseInt(ij[1]) - 1, item);
+                                }
+                                case "sort" -> { history.push(new ArrayList<>(list)); Collections.sort(list); }
+                                case "undo" -> { if (!history.isEmpty()) list = history.pop(); }
+                                case "print" -> { for (int i = 0; i < list.size(); i++) System.out.println((i + 1) + ". " + list.get(i)); }
+                                case "exit" -> { return; }
+                                default -> System.out.println("Неизвестная команда");
+                            }
+                        } catch (IndexOutOfBoundsException | NumberFormatException e) {
+                            if (!history.isEmpty()) list = history.pop();
+                            System.out.println("Неверный номер");
+                        }
+                    }
+                }
+            }
+      - id: java-03-02
+        title: HashMap и TreeMap
+        minutes: 30
+        xp: 35
+        theory: |
+          `Map<K, V>` — словарь «ключ → значение». Ключи уникальны.
+
+          ## HashMap
+
+          ```java
+          Map<String, Integer> ages = new HashMap<>();
+          ages.put("Аня", 25);
+          ages.put("Боб", 30);
+          ages.put("Аня", 26);                     // перезапишет, вернёт старое 25
+          ages.get("Аня");                          // 26
+          ages.get("Петя");                         // null
+          ages.getOrDefault("Петя", 0);             // 0
+          ages.containsKey("Боб");
+          ages.remove("Боб");
+          ages.putIfAbsent("Вика", 22);
+
+          for (Map.Entry<String, Integer> e : ages.entrySet())
+              System.out.println(e.getKey() + " = " + e.getValue());
+          ages.forEach((k, v) -> System.out.println(k + " " + v));
+          ```
+
+          ## Удобные методы (Java 8)
+
+          ```java
+          Map<String, Integer> freq = new HashMap<>();
+          for (String w : words) freq.merge(w, 1, Integer::sum);          // подсчёт частоты
+
+          Map<Character, List<String>> byLetter = new HashMap<>();
+          for (String w : words) byLetter.computeIfAbsent(w.charAt(0), k -> new ArrayList<>()).add(w);
+
+          ages.compute("Аня", (k, v) -> v == null ? 1 : v + 1);
+          ages.replaceAll((k, v) -> v + 1);
+          ```
+
+          ## Как устроен HashMap
+
+          Массив «корзин». Индекс корзины = `hashCode()` ключа (перемешанный) & (размер − 1). При коллизиях — список, а при > 8 элементах в корзине — красно-чёрное дерево. При заполнении > 75% (load factor) массив удваивается (rehash). Поиск O(1) в среднем.
+
+          Поэтому для ключей важны корректные `equals`/`hashCode` и неизменяемость. Порядок обхода HashMap **не гарантирован**.
+
+          ## LinkedHashMap
+
+          Сохраняет порядок вставки (или доступа — основа LRU-кеша):
+
+          ```java
+          class Lru<K, V> extends LinkedHashMap<K, V> {
+              private final int cap;
+              Lru(int cap) { super(16, 0.75f, true); this.cap = cap; }
+              @Override protected boolean removeEldestEntry(Map.Entry<K, V> e) { return size() > cap; }
+          }
+          ```
+
+          ## TreeMap
+
+          Красно-чёрное дерево: ключи **отсортированы**, операции O(log n). Ключи должны быть `Comparable` или передан `Comparator`.
+
+          ```java
+          TreeMap<Integer, String> grades = new TreeMap<>(Map.of(90, "A", 75, "B", 50, "C"));
+          grades.firstKey();               // 50
+          grades.floorEntry(80);           // 75=B — ближайший ключ ≤ 80
+          grades.ceilingKey(76);           // 90
+          grades.headMap(75);              // ключи < 75
+          grades.descendingMap();
+          ```
+
+          `Map.of(...)` — неизменяемая карта (до 10 пар; больше — `Map.ofEntries`). `null`-ключи: HashMap разрешает один, TreeMap и Map.of — нет.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              Map<String, Integer> m = new HashMap<>();
+              m.put("a", 1);
+              m.put("a", 2);
+              System.out.println(m.size() + " " + m.get("a"));
+            answer: 1 2
+          - type: fill
+            q: Посчитайте частоту слов
+            code: |
+              freq.___(word, 1, Integer::sum);
+            answers: ["merge"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              TreeMap<Integer, String> t = new TreeMap<>();
+              t.put(30, "c"); t.put(10, "a"); t.put(20, "b");
+              System.out.println(t.firstKey() + " " + t.floorKey(25));
+            answer: 10 20
+          - type: choice
+            q: Какая Map сохраняет порядок вставки?
+            options: ["HashMap", "TreeMap", "LinkedHashMap", "Hashtable"]
+            answer: 2
+          - type: choice
+            q: Что вернёт map.get(key), если ключа нет?
+            options: ["0", "null", "Исключение", "Optional.empty()"]
+            answer: 1
+        homework:
+          task: |
+            Программа анализирует текст: (1) частота слов через `merge`, топ-10 по убыванию; (2) группировка слов по длине в `TreeMap<Integer, TreeSet<String>>`; (3) LRU-кеш на 3 элемента на базе LinkedHashMap и демонстрация вытеснения; (4) поиск «ближайшей оценки» по таблице баллов через `floorEntry`.
+          checklist:
+            - Используются merge и computeIfAbsent
+            - LRU корректно вытесняет давно неиспользуемые
+            - TreeMap для отсортированного вывода
+          solution: |
+            import java.util.*;
+
+            public class TextStats {
+                static class Lru<K, V> extends LinkedHashMap<K, V> {
+                    private final int cap;
+                    Lru(int cap) { super(16, 0.75f, true); this.cap = cap; }
+                    @Override protected boolean removeEldestEntry(Map.Entry<K, V> e) { return size() > cap; }
+                }
+
+                public static void main(String[] args) {
+                    String text = "мама мыла раму а рама мыла маму мама рада";
+                    Map<String, Integer> freq = new HashMap<>();
+                    TreeMap<Integer, TreeSet<String>> byLen = new TreeMap<>();
+                    for (String w : text.toLowerCase().split("\\W+")) {
+                        if (w.isEmpty()) continue;
+                        freq.merge(w, 1, Integer::sum);
+                        byLen.computeIfAbsent(w.length(), k -> new TreeSet<>()).add(w);
+                    }
+                    List<Map.Entry<String, Integer>> top = new ArrayList<>(freq.entrySet());
+                    top.sort(Map.Entry.<String, Integer>comparingByValue().reversed());
+                    System.out.println(top.subList(0, Math.min(10, top.size())));
+                    System.out.println(byLen);
+
+                    Lru<String, Integer> cache = new Lru<>(3);
+                    cache.put("a", 1); cache.put("b", 2); cache.put("c", 3);
+                    cache.get("a"); cache.put("d", 4);
+                    System.out.println(cache.keySet());   // [c, a, d]
+
+                    TreeMap<Integer, String> scale = new TreeMap<>(Map.of(0, "F", 50, "C", 75, "B", 90, "A"));
+                    System.out.println(scale.floorEntry(82).getValue());   // B
+                }
+            }
+      - id: java-03-03
+        title: HashSet и TreeSet
+        minutes: 20
+        xp: 25
+        theory: |
+          `Set<E>` — коллекция **уникальных** элементов.
+
+          | Реализация | Устройство | Порядок | Операции |
+          |---|---|---|---|
+          | `HashSet` | на HashMap | не гарантирован | O(1) |
+          | `LinkedHashSet` | + связный список | порядок вставки | O(1) |
+          | `TreeSet` | красно-чёрное дерево | отсортирован | O(log n) |
+          | `EnumSet` | битовая маска | порядок enum | очень быстро |
+
+          ```java
+          Set<String> tags = new HashSet<>();
+          tags.add("java");
+          tags.add("spring");
+          boolean added = tags.add("java");     // false — уже есть
+          tags.contains("java");                 // true — O(1)
+          tags.remove("spring");
+          tags.size();
+          ```
+
+          ## Удаление дубликатов
+
+          ```java
+          List<Integer> nums = List.of(3, 1, 3, 2, 1);
+          Set<Integer> unique = new LinkedHashSet<>(nums);   // [3, 1, 2] — порядок сохранён
+          List<Integer> back = new ArrayList<>(unique);
+          ```
+
+          ## Операции над множествами
+
+          ```java
+          Set<String> a = new HashSet<>(Set.of("java", "sql", "git"));
+          Set<String> b = Set.of("git", "docker");
+
+          Set<String> union = new HashSet<>(a);     union.addAll(b);      // объединение
+          Set<String> inter = new HashSet<>(a);     inter.retainAll(b);   // пересечение [git]
+          Set<String> diff  = new HashSet<>(a);     diff.removeAll(b);    // разность [java, sql]
+          boolean sub = a.containsAll(b);                                 // подмножество?
+          ```
+
+          `addAll`/`retainAll`/`removeAll` изменяют исходное множество — поэтому сначала копия.
+
+          ## TreeSet — навигация
+
+          ```java
+          TreeSet<Integer> s = new TreeSet<>(List.of(10, 5, 20, 15));
+          s.first();          // 5
+          s.last();           // 20
+          s.floor(12);        // 10 — наибольший ≤ 12
+          s.ceiling(12);      // 15
+          s.headSet(15);      // [5, 10]
+          s.tailSet(15);      // [15, 20]
+          s.descendingSet();
+          new TreeSet<>(Comparator.comparing(String::length));   // свой порядок
+          ```
+
+          ⚠️ TreeSet считает элементы равными, если `compareTo == 0`, а не по `equals`. Компаратор по длине строки «потеряет» разные строки одинаковой длины.
+
+          Элементы HashSet должны корректно реализовывать `equals`/`hashCode` и не изменяться после добавления.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              Set<Integer> s = new HashSet<>(List.of(1, 2, 2, 3, 3, 3));
+              System.out.println(s.size());
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              TreeSet<Integer> t = new TreeSet<>(List.of(8, 3, 5, 1));
+              System.out.println(t.first() + " " + t.ceiling(4) + " " + t);
+            answer: 1 5 [1, 3, 5, 8]
+          - type: fill
+            q: Оставьте только общие элементы (пересечение)
+            code: |
+              Set<String> common = new HashSet<>(a);
+              common.___(b);
+            answers: ["retainAll"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              Set<String> s = new TreeSet<>(Comparator.comparing(String::length));
+              s.addAll(List.of("cat", "dog", "mouse"));
+              System.out.println(s.size());
+            answer: "2"
+            explain: cat и dog одинаковой длины — для TreeSet они «равны».
+          - type: choice
+            q: Какой Set удалит дубликаты и сохранит порядок вставки?
+            options: ["HashSet", "TreeSet", "LinkedHashSet", "EnumSet"]
+            answer: 2
+        homework:
+          task: |
+            Сервис навыков: у каждого кандидата `Set<String>` навыков. Найдите: кандидатов, у которых есть все требуемые навыки вакансии; недостающие навыки для каждого; навыки, которые есть у всех кандидатов; общий отсортированный список уникальных навыков. Для «похожих» кандидатов посчитайте коэффициент Жаккара |A∩B| / |A∪B|.
+          checklist:
+            - Операции через addAll/retainAll/removeAll на копиях
+            - TreeSet для сортированного вывода
+            - Коэффициент Жаккара считается для каждой пары
+          solution: |
+            import java.util.*;
+
+            public class Skills {
+                static double jaccard(Set<String> a, Set<String> b) {
+                    Set<String> i = new HashSet<>(a); i.retainAll(b);
+                    Set<String> u = new HashSet<>(a); u.addAll(b);
+                    return u.isEmpty() ? 0 : (double) i.size() / u.size();
+                }
+                public static void main(String[] args) {
+                    Map<String, Set<String>> cands = Map.of(
+                        "Аня", Set.of("java", "spring", "sql", "git"),
+                        "Боб", Set.of("java", "git"),
+                        "Вика", Set.of("java", "spring", "sql", "docker", "git"));
+                    Set<String> required = Set.of("java", "spring", "sql");
+
+                    Set<String> common = null; Set<String> all = new TreeSet<>();
+                    for (var e : cands.entrySet()) {
+                        Set<String> missing = new TreeSet<>(required); missing.removeAll(e.getValue());
+                        System.out.println(e.getKey() + (missing.isEmpty() ? " подходит" : " не хватает " + missing));
+                        all.addAll(e.getValue());
+                        if (common == null) common = new HashSet<>(e.getValue()); else common.retainAll(e.getValue());
+                    }
+                    System.out.println("У всех: " + common + ", всего: " + all);
+                    List<String> names = new ArrayList<>(cands.keySet());
+                    for (int i = 0; i < names.size(); i++)
+                        for (int j = i + 1; j < names.size(); j++)
+                            System.out.printf("%s-%s: %.2f%n", names.get(i), names.get(j), jaccard(cands.get(names.get(i)), cands.get(names.get(j))));
+                }
+            }
+      - id: java-03-04
+        title: Comparable и Comparator
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Comparable — естественный порядок
+
+          Класс сам определяет, как сравнивать свои объекты:
+
+          ```java
+          public record Version(int major, int minor) implements Comparable<Version> {
+              @Override
+              public int compareTo(Version o) {
+                  int c = Integer.compare(major, o.major);
+                  return c != 0 ? c : Integer.compare(minor, o.minor);
+              }
+          }
+
+          List<Version> vs = new ArrayList<>(List.of(new Version(1, 10), new Version(1, 2)));
+          Collections.sort(vs);      // по compareTo
+          ```
+
+          `compareTo` возвращает отрицательное (меньше), 0 (равно), положительное (больше). `String`, `Integer`, `LocalDate` уже Comparable.
+
+          ⚠️ Не пишите `return a - b;` — переполнение int при больших значениях. Используйте `Integer.compare(a, b)`.
+
+          ## Comparator — внешний порядок
+
+          Когда нужно несколько разных сортировок или класс чужой.
+
+          ```java
+          record User(String name, int age, double salary) {}
+
+          List<User> users = ...;
+          users.sort(Comparator.comparing(User::name));                         // по имени
+          users.sort(Comparator.comparingInt(User::age).reversed());            // по возрасту убыв.
+          users.sort(Comparator.comparing(User::age)
+                               .thenComparing(User::name)                       // при равном возрасте
+                               .thenComparing(User::salary, Comparator.reverseOrder()));
+
+          users.sort(Comparator.comparing(User::name, String.CASE_INSENSITIVE_ORDER));
+          users.sort(Comparator.comparing(User::nickname, Comparator.nullsLast(Comparator.naturalOrder())));
+
+          User oldest = Collections.max(users, Comparator.comparingInt(User::age));
+          ```
+
+          Лямбда-вариант: `(a, b) -> Double.compare(a.salary(), b.salary())`.
+
+          ## Где используются
+
+          - `List.sort`, `Collections.sort`, `Arrays.sort` (стабильная сортировка для объектов — TimSort).
+          - `TreeMap`/`TreeSet`/`PriorityQueue` с компаратором.
+          - `stream().sorted(...)`, `max/min(...)`.
+
+          ```java
+          PriorityQueue<Task> pq = new PriorityQueue<>(Comparator.comparingInt(Task::priority).reversed());
+          ```
+
+          ## Согласованность с equals
+
+          Желательно: `compareTo == 0` ⇔ `equals == true`. Иначе `TreeSet` и `HashSet` поведут себя по-разному (пример: `BigDecimal("1.0")` и `"1.00"`).
+        practice:
+          - type: fill
+            q: Отсортируйте по возрасту, затем по имени
+            code: |
+              users.sort(Comparator.comparing(User::age).___(User::name));
+            answers: ["thenComparing"]
+          - type: choice
+            q: Почему плохо писать `return this.value - other.value;` в compareTo?
+            options: ["Медленно", "Возможно переполнение int", "Не компилируется", "Нарушает стиль"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              List<String> l = new ArrayList<>(List.of("ccc", "a", "bb"));
+              l.sort(Comparator.comparing(String::length).reversed());
+              System.out.println(l);
+            answer: "[ccc, bb, a]"
+          - type: output
+            q: Что выведет код?
+            code: |
+              System.out.println(Integer.compare(3, 7) < 0);
+              System.out.println("b".compareTo("a") > 0);
+            answer: |
+              true
+              true
+          - type: choice
+            q: Какой интерфейс реализует сам класс для «естественного» порядка?
+            options: ["Comparator", "Comparable", "Iterable", "Sortable"]
+            answer: 1
+        homework:
+          task: |
+            Таблица лидеров игры: `record Player(String nick, int score, Duration time, LocalDate registered)`. Реализуйте: естественный порядок (Comparable) — по score убыв., при равенстве по time возр.; компараторы «по нику без учёта регистра», «новички первыми»; топ-3 через `PriorityQueue` с компаратором; поиск игрока с максимальным временем через `Collections.max`.
+          checklist:
+            - compareTo без вычитания
+            - Цепочки comparing/thenComparing
+            - PriorityQueue с компаратором
+          solution: |
+            import java.time.*;
+            import java.util.*;
+
+            record Player(String nick, int score, Duration time, LocalDate registered) implements Comparable<Player> {
+                @Override public int compareTo(Player o) {
+                    int c = Integer.compare(o.score, score);
+                    return c != 0 ? c : time.compareTo(o.time);
+                }
+            }
+
+            public class Leaderboard {
+                public static void main(String[] args) {
+                    List<Player> ps = new ArrayList<>(List.of(
+                        new Player("Neo", 900, Duration.ofMinutes(12), LocalDate.of(2023, 1, 5)),
+                        new Player("trinity", 900, Duration.ofMinutes(10), LocalDate.of(2024, 3, 1)),
+                        new Player("Morpheus", 1200, Duration.ofMinutes(20), LocalDate.of(2022, 7, 9)),
+                        new Player("smith", 300, Duration.ofMinutes(5), LocalDate.of(2024, 5, 2))));
+                    Collections.sort(ps);
+                    System.out.println(ps);
+                    ps.sort(Comparator.comparing(Player::nick, String.CASE_INSENSITIVE_ORDER));
+                    ps.sort(Comparator.comparing(Player::registered).reversed());
+
+                    PriorityQueue<Player> top = new PriorityQueue<>(Comparator.comparingInt(Player::score));
+                    for (Player p : ps) { top.offer(p); if (top.size() > 3) top.poll(); }
+                    System.out.println(top);
+                    System.out.println(Collections.max(ps, Comparator.comparing(Player::time)).nick());
+                }
+            }
+      - id: java-03-05
+        title: Generics и wildcards
+        minutes: 35
+        xp: 40
+        theory: |
+          **Generics** — параметризация типов. Ошибки типов ловятся при компиляции, без приведений.
+
+          ```java
+          public class Box<T> {
+              private T value;
+              public Box(T value) { this.value = value; }
+              public T get() { return value; }
+          }
+
+          Box<String> b = new Box<>("hi");   // diamond <>
+          String s = b.get();                // без приведения
+
+          public static <T> T firstOrDefault(List<T> list, T def) {
+              return list.isEmpty() ? def : list.get(0);
+          }
+
+          public record Pair<A, B>(A first, B second) {}
+          ```
+
+          ## Ограниченные типы
+
+          ```java
+          public static <T extends Comparable<T>> T max(List<T> list) {
+              T best = list.get(0);
+              for (T x : list) if (x.compareTo(best) > 0) best = x;
+              return best;
+          }
+          public static double sum(List<? extends Number> nums) { ... }
+          ```
+
+          ## Инвариантность
+
+          `List<Integer>` **не является** `List<Number>`, хотя `Integer` — подтип `Number`. Иначе можно было бы положить `Double` в список целых.
+
+          ## Wildcards и PECS
+
+          **P**roducer **E**xtends, **C**onsumer **S**uper:
+
+          ```java
+          // читаем из коллекции (она «производит» T) → ? extends T
+          double total(Collection<? extends Number> src) {
+              double s = 0;
+              for (Number n : src) s += n.doubleValue();
+              // src.add(1);   // ❌ нельзя добавить — неизвестен точный тип
+              return s;
+          }
+
+          // пишем в коллекцию (она «потребляет» T) → ? super T
+          void fillInts(List<? super Integer> dst) {
+              dst.add(1); dst.add(2);           // ✅
+              Object o = dst.get(0);            // читать — только как Object
+          }
+
+          // оба
+          static <T> void copy(List<? super T> dst, List<? extends T> src) { for (T x : src) dst.add(x); }
+          ```
+
+          `List<?>` — список неизвестного типа (только чтение как Object).
+
+          ## Стирание типов (type erasure)
+
+          В runtime generics **стираются** до `Object` (или границы). Следствия:
+          - нельзя `new T()`, `new T[10]`, `instanceof List<String>`;
+          - нельзя перегрузить `void f(List<String>)` и `void f(List<Integer>)`;
+          - примитивы нельзя: `List<int>` ❌ → `List<Integer>` (или `IntStream`, специальные коллекции).
+
+          Обходной путь — передать `Class<T>`: `<T> T create(Class<T> cls) throws Exception { return cls.getDeclaredConstructor().newInstance(); }`
+
+          ## Сырые типы
+
+          `List list = new ArrayList();` — устаревший «raw type» без проверок. Никогда не используйте в новом коде.
+        practice:
+          - type: choice
+            q: Можно ли присвоить List<Integer> переменной типа List<Number>?
+            options: ["Да", "Нет, generics инвариантны", "Только с cast", "Только для final"]
+            answer: 1
+          - type: fill
+            q: Метод читает числа из любого списка подтипов Number
+            code: |
+              double sum(List<? ___ Number> nums)
+            answers: ["extends"]
+          - type: fill
+            q: Метод добавляет Integer в список Integer, Number или Object
+            code: |
+              void addNumbers(List<? ___ Integer> dst)
+            answers: ["super"]
+          - type: choice
+            q: Почему нельзя написать `new T()` в generic-классе?
+            options: ["Это запрещено стилем", "Из-за стирания типов T неизвестен в runtime", "T всегда абстрактный", "Можно"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              List<String> a = new ArrayList<>();
+              List<Integer> b = new ArrayList<>();
+              System.out.println(a.getClass() == b.getClass());
+            answer: "true"
+            explain: После стирания типов это один и тот же класс ArrayList.
+        homework:
+          task: |
+            Реализуйте: (1) `class Cache<K, V>` с методом `V getOrCompute(K key, Function<? super K, ? extends V> fn)`; (2) `static <T extends Comparable<? super T>> List<T> topN(Collection<? extends T> items, int n)`; (3) `static <T> void copyIf(Collection<? extends T> src, Collection<? super T> dst, Predicate<? super T> p)`; (4) `record Result<T>(T value, String error)` с фабриками `ok`/`fail`. Продемонстрируйте работу с Integer → Number → Object.
+          checklist:
+            - Соблюдается PECS
+            - Нет raw types
+            - Нет непроверенных приведений
+          solution: |
+            import java.util.*;
+            import java.util.function.*;
+
+            class Cache<K, V> {
+                private final Map<K, V> map = new HashMap<>();
+                V getOrCompute(K key, Function<? super K, ? extends V> fn) { return map.computeIfAbsent(key, fn); }
+            }
+
+            record Result<T>(T value, String error) {
+                static <T> Result<T> ok(T v) { return new Result<>(v, null); }
+                static <T> Result<T> fail(String e) { return new Result<>(null, e); }
+                boolean isOk() { return error == null; }
+            }
+
+            public class Generics {
+                static <T extends Comparable<? super T>> List<T> topN(Collection<? extends T> items, int n) {
+                    List<T> l = new ArrayList<>(items);
+                    l.sort(Comparator.reverseOrder());
+                    return l.subList(0, Math.min(n, l.size()));
+                }
+                static <T> void copyIf(Collection<? extends T> src, Collection<? super T> dst, Predicate<? super T> p) {
+                    for (T x : src) if (p.test(x)) dst.add(x);
+                }
+                public static void main(String[] args) {
+                    List<Integer> ints = List.of(5, 1, 9, 3);
+                    List<Number> nums = new ArrayList<>();
+                    Predicate<Object> notNull = Objects::nonNull;
+                    copyIf(ints, nums, notNull);
+                    System.out.println(topN(ints, 2) + " " + nums);
+                    System.out.println(new Cache<String, Integer>().getOrCompute("hello", String::length));
+                    System.out.println(Result.ok(42).isOk() + " " + Result.<Integer>fail("нет").error());
+                }
+            }
+      - id: java-03-06
+        title: Iterator и утилиты Collections
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Iterator
+
+          Любая `Collection` — это `Iterable`: умеет выдать `Iterator` для последовательного обхода. for-each — синтаксический сахар над ним.
+
+          ```java
+          Iterator<String> it = names.iterator();
+          while (it.hasNext()) {
+              String n = it.next();
+              if (n.startsWith("_")) it.remove();    // ✅ безопасное удаление во время обхода
+          }
+          ```
+
+          `ListIterator` — двунаправленный, умеет `set`, `add`, `previous`.
+
+          ## Fail-fast
+
+          Если коллекцию изменили во время обхода не через итератор, следующий `next()` бросит `ConcurrentModificationException`. Это защита от непредсказуемого поведения (а не механизм потокобезопасности).
+
+          ## Свой Iterable
+
+          ```java
+          public class Range implements Iterable<Integer> {
+              private final int from, to;
+              public Range(int from, int to) { this.from = from; this.to = to; }
+
+              @Override
+              public Iterator<Integer> iterator() {
+                  return new Iterator<>() {
+                      private int cur = from;
+                      @Override public boolean hasNext() { return cur < to; }
+                      @Override public Integer next() {
+                          if (!hasNext()) throw new NoSuchElementException();
+                          return cur++;
+                      }
+                  };
+              }
+          }
+
+          for (int i : new Range(0, 5)) System.out.print(i);   // 01234
+          ```
+
+          ## Очереди и стеки
+
+          ```java
+          Deque<Integer> stack = new ArrayDeque<>();
+          stack.push(1); stack.push(2); stack.pop();      // 2 — LIFO (Stack — устаревший класс)
+
+          Queue<String> q = new ArrayDeque<>();
+          q.offer("a"); q.offer("b"); q.poll();           // a — FIFO
+          q.peek();                                       // посмотреть без удаления
+
+          PriorityQueue<Integer> pq = new PriorityQueue<>(List.of(5, 1, 3));
+          pq.poll();                                      // 1 — минимальный
+          ```
+
+          ## Утилиты Collections и Arrays
+
+          ```java
+          Collections.sort(list); Collections.reverse(list); Collections.shuffle(list);
+          Collections.max(list); Collections.min(list, cmp);
+          Collections.frequency(list, "a");
+          Collections.nCopies(3, "x");                  // [x, x, x]
+          Collections.swap(list, 0, 1);
+          Collections.unmodifiableList(list);           // обёртка-«только чтение»
+          Collections.synchronizedList(list);           // примитивная потокобезопасность
+          Collections.emptyList();
+          Collections.binarySearch(sortedList, key);
+
+          int[] arr = {3, 1, 2};
+          Arrays.sort(arr);
+          Arrays.toString(arr);                         // "[1, 2, 3]"
+          Arrays.fill(arr, 0);
+          int[] copy = Arrays.copyOf(arr, 5);
+          Arrays.equals(a, b);
+          List<Integer> l = Arrays.asList(1, 2, 3);
+          ```
+
+          ## Какую коллекцию выбрать
+
+          Список — `ArrayList`; уникальность — `HashSet`; словарь — `HashMap`; отсортировано — `TreeMap/TreeSet`; очередь/стек — `ArrayDeque`; по приоритету — `PriorityQueue`; многопоточность — `java.util.concurrent` (модуль 6).
+        practice:
+          - type: fill
+            q: Безопасно удалите текущий элемент во время обхода итератором
+            code: |
+              while (it.hasNext()) {
+                  if (it.next() < 0) it.___();
+              }
+            answers: ["remove"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              Deque<Integer> st = new ArrayDeque<>();
+              st.push(1); st.push(2); st.push(3);
+              st.pop();
+              System.out.println(st.peek());
+            answer: "2"
+          - type: output
+            q: Что выведет код?
+            code: |
+              PriorityQueue<Integer> pq = new PriorityQueue<>(List.of(7, 2, 9, 4));
+              System.out.println(pq.poll() + " " + pq.poll());
+            answer: 2 4
+          - type: output
+            q: Что выведет код?
+            code: |
+              int[] a = {5, 3, 1};
+              Arrays.sort(a);
+              System.out.println(Arrays.toString(a));
+            answer: "[1, 3, 5]"
+          - type: choice
+            q: Что бросит for-each, если внутри цикла вызвать list.add()?
+            options: ["Ничего", "ConcurrentModificationException", "NullPointerException", "IndexOutOfBoundsException"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте: (1) `class Fibonacci implements Iterable<Long>` с ограничением количества; (2) `class Matrix implements Iterable<int[]>` (обход по строкам); (3) свою обёртку `ReadOnlyIterator<T>`, запрещающую remove; (4) задачу «проверка скобок» на ArrayDeque; (5) слияние K отсортированных списков через PriorityQueue.
+          checklist:
+            - next() бросает NoSuchElementException в конце
+            - Используется ArrayDeque, а не Stack
+            - Слияние K списков за O(N log K)
+          solution: |
+            import java.util.*;
+
+            class Fibonacci implements Iterable<Long> {
+                private final int count;
+                Fibonacci(int count) { this.count = count; }
+                public Iterator<Long> iterator() {
+                    return new Iterator<>() {
+                        long a = 0, b = 1; int i = 0;
+                        public boolean hasNext() { return i < count; }
+                        public Long next() {
+                            if (!hasNext()) throw new NoSuchElementException();
+                            long r = a; a = b; b = r + b; i++; return r;
+                        }
+                    };
+                }
+            }
+
+            public class Iter {
+                static boolean balanced(String s) {
+                    Deque<Character> st = new ArrayDeque<>();
+                    for (char c : s.toCharArray()) {
+                        if ("([{".indexOf(c) >= 0) st.push(c);
+                        else if (")]}".indexOf(c) >= 0) {
+                            if (st.isEmpty() || "([{".indexOf(st.pop()) != ")]}".indexOf(c)) return false;
+                        }
+                    }
+                    return st.isEmpty();
+                }
+                static List<Integer> mergeK(List<List<Integer>> lists) {
+                    record Cur(int val, int list, int idx) {}
+                    PriorityQueue<Cur> pq = new PriorityQueue<>(Comparator.comparingInt(Cur::val));
+                    for (int i = 0; i < lists.size(); i++) if (!lists.get(i).isEmpty()) pq.add(new Cur(lists.get(i).get(0), i, 0));
+                    List<Integer> out = new ArrayList<>();
+                    while (!pq.isEmpty()) {
+                        Cur c = pq.poll(); out.add(c.val());
+                        List<Integer> l = lists.get(c.list());
+                        if (c.idx() + 1 < l.size()) pq.add(new Cur(l.get(c.idx() + 1), c.list(), c.idx() + 1));
+                    }
+                    return out;
+                }
+                public static void main(String[] args) {
+                    for (long f : new Fibonacci(10)) System.out.print(f + " ");
+                    System.out.println("\n" + balanced("{[()()]}") + " " + balanced("(]"));
+                    System.out.println(mergeK(List.of(List.of(1, 4, 9), List.of(2, 3), List.of(5, 6, 7))));
+                }
+            }

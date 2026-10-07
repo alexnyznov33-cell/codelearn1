@@ -1,0 +1,736 @@
+id: python
+modules:
+  - id: py-m6
+    title: Продвинутые возможности
+    level: Junior+
+    lessons:
+      - id: py-06-01
+        title: Итераторы и протокол итерации
+        minutes: 20
+        xp: 30
+        theory: |
+          Цикл `for` работает с любым **итерируемым** объектом. Под капотом:
+
+          ```python
+          nums = [1, 2, 3]
+          it = iter(nums)      # вызывает nums.__iter__() → итератор
+          next(it)             # 1 — вызывает it.__next__()
+          next(it)             # 2
+          next(it)             # 3
+          next(it)             # StopIteration — сигнал «элементы кончились»
+          ```
+
+          - **Итерируемый** (iterable) — объект с `__iter__` (список, строка, dict, файл);
+          - **Итератор** — объект с `__next__` (и `__iter__`, возвращающим себя). Он «одноразовый»: после исчерпания пуст.
+
+          ## Свой итератор
+
+          ```python
+          class Countdown:
+              def __init__(self, start):
+                  self.current = start
+              def __iter__(self):
+                  return self
+              def __next__(self):
+                  if self.current <= 0:
+                      raise StopIteration
+                  self.current -= 1
+                  return self.current + 1
+
+          for n in Countdown(3):
+              print(n)        # 3 2 1
+          ```
+
+          ## Ленивость
+
+          `range`, `map`, `filter`, `zip`, `enumerate`, файлы — ленивые: значения создаются по одному при запросе. Это позволяет обрабатывать огромные данные, не загружая их в память.
+
+          ```python
+          m = map(str.upper, ["a", "b"])
+          list(m)    # ['A', 'B']
+          list(m)    # [] — итератор уже исчерпан
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              it = iter([10, 20, 30])
+              next(it)
+              print(next(it))
+            answer: "20"
+          - type: output
+            q: Что выведет код?
+            code: |
+              z = zip([1, 2], [3, 4])
+              print(len(list(z)), len(list(z)))
+            answer: 2 0
+            explain: Итератор одноразовый — второй раз он пуст.
+          - type: choice
+            q: Какое исключение сигнализирует об окончании итерации?
+            options: ["`IndexError`", "`StopIteration`", "`EOFError`", "`KeyError`"]
+            answer: 1
+          - type: fill
+            q: Получите итератор и первый элемент
+            code: |
+              it = ___(data)
+              first = ___(it)
+            answers: [iter, next]
+        homework:
+          task: |
+            Напишите класс-итератор `Fibonacci(limit)`, выдающий числа Фибоначчи, не превышающие limit, и класс `Cycle(items, times)`, который проходит по списку указанное число раз. Проверьте в `for` и через `list()`.
+          checklist:
+            - Реализованы __iter__ и __next__
+            - Корректно бросается StopIteration
+          solution: |
+            class Fibonacci:
+                def __init__(self, limit):
+                    self.limit, self.a, self.b = limit, 0, 1
+                def __iter__(self):
+                    return self
+                def __next__(self):
+                    if self.a > self.limit:
+                        raise StopIteration
+                    value = self.a
+                    self.a, self.b = self.b, self.a + self.b
+                    return value
+
+            class Cycle:
+                def __init__(self, items, times):
+                    self.items, self.total, self.i = list(items), len(items) * times, 0
+                def __iter__(self):
+                    return self
+                def __next__(self):
+                    if self.i >= self.total:
+                        raise StopIteration
+                    value = self.items[self.i % len(self.items)]
+                    self.i += 1
+                    return value
+
+            print(list(Fibonacci(100)), list(Cycle("ab", 3)))
+
+      - id: py-06-02
+        title: Генераторы и yield
+        minutes: 25
+        xp: 30
+        theory: |
+          **Генератор** — простой способ создать итератор. Функция с `yield` при вызове возвращает генератор, а выполнение «замораживается» на каждом `yield`.
+
+          ```python
+          def countdown(n):
+              while n > 0:
+                  yield n        # отдать значение и приостановиться
+                  n -= 1
+
+          for x in countdown(3):
+              print(x)           # 3 2 1
+
+          g = countdown(2)
+          next(g)  # 2
+          next(g)  # 1
+          next(g)  # StopIteration
+          ```
+
+          Сравните с классом `Countdown` из прошлого урока — в 3 раза короче.
+
+          ## Генераторные выражения
+
+          ```python
+          squares = (x * x for x in range(10**9))   # круглые скобки — ничего не вычислено
+          total = sum(x * x for x in range(1000))   # скобки можно опустить в вызове
+          ```
+
+          Список `[...]` хранит все элементы в памяти, генератор `(...)` — вычисляет по одному.
+
+          ## Конвейеры обработки данных
+
+          ```python
+          def read_lines(path):
+              with open(path, encoding="utf-8") as f:
+                  for line in f:
+                      yield line.rstrip("\n")
+
+          def only_errors(lines):
+              return (l for l in lines if "ERROR" in l)
+
+          for line in only_errors(read_lines("huge.log")):   # файл 10 ГБ — память почти не расходуется
+              print(line)
+          ```
+
+          ## yield from
+
+          ```python
+          def flatten(items):
+              for x in items:
+                  if isinstance(x, list):
+                      yield from flatten(x)   # делегировать вложенному генератору
+                  else:
+                      yield x
+          ```
+
+          Бесконечные генераторы тоже возможны: `while True: yield ...` — главное не вызывать для них `list()`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              def gen():
+                  yield 1
+                  yield 2
+                  yield 3
+              print(sum(gen()))
+            answer: "6"
+          - type: output
+            q: Что выведет код?
+            code: |
+              def g():
+                  print("start")
+                  yield 1
+              x = g()
+              print("created")
+              print(next(x))
+            answer: |
+              created
+              start
+              1
+            explain: Тело генератора начинает выполняться только при первом `next()`.
+          - type: choice
+            q: Чем `(x*x for x in data)` отличается от `[x*x for x in data]`?
+            options: ["Ничем", "Генератор вычисляет значения лениво и не хранит их все", "Генератор быстрее сортирует", "Список ленивый"]
+            answer: 1
+          - type: fill
+            q: Делегируйте вложенному генератору
+            code: |
+              def chain(a, b):
+                  yield ___ a
+                  yield ___ b
+            answers: [from, from]
+          - type: output
+            q: Что выведет код?
+            code: |
+              def evens():
+                  n = 0
+                  while True:
+                      yield n
+                      n += 2
+              g = evens()
+              print([next(g) for _ in range(4)])
+            answer: "[0, 2, 4, 6]"
+        homework:
+          task: |
+            Напишите генераторы: `chunks(items, size)` — разбивает последовательность на части по size; `read_csv_rows(path)` — построчно отдаёт словари из CSV; `running_total(nums)` — накопительная сумма. Соберите конвейер: прочитать CSV продаж, отфильтровать по региону, посчитать накопительную сумму.
+          checklist:
+            - Все функции используют yield
+            - Нигде не создаётся полный список данных
+          solution: |
+            import csv
+
+            def chunks(items, size):
+                batch = []
+                for x in items:
+                    batch.append(x)
+                    if len(batch) == size:
+                        yield batch
+                        batch = []
+                if batch:
+                    yield batch
+
+            def read_csv_rows(path):
+                with open(path, encoding="utf-8") as f:
+                    yield from csv.DictReader(f)
+
+            def running_total(nums):
+                total = 0
+                for n in nums:
+                    total += n
+                    yield total
+
+            print(list(chunks(range(7), 3)))
+            # rows = read_csv_rows("sales.csv")
+            # moscow = (float(r["amount"]) for r in rows if r["region"] == "Москва")
+            # for t in running_total(moscow): print(t)
+
+      - id: py-06-03
+        title: Декораторы
+        minutes: 30
+        xp: 35
+        theory: |
+          **Декоратор** — функция, которая принимает функцию и возвращает новую функцию с дополнительным поведением. Основан на том, что функции — объекты, и на замыканиях.
+
+          ```python
+          import functools, time
+
+          def timer(func):
+              @functools.wraps(func)               # сохраняет имя и docstring оригинала
+              def wrapper(*args, **kwargs):
+                  start = time.perf_counter()
+                  result = func(*args, **kwargs)
+                  print(f"{func.__name__}: {time.perf_counter() - start:.3f} с")
+                  return result
+              return wrapper
+
+          @timer                 # то же, что slow = timer(slow)
+          def slow(n):
+              time.sleep(n)
+              return "готово"
+          ```
+
+          ## Декоратор с параметрами
+
+          Нужен ещё один уровень вложенности:
+
+          ```python
+          def retry(times=3):
+              def decorator(func):
+                  @functools.wraps(func)
+                  def wrapper(*args, **kwargs):
+                      for attempt in range(1, times + 1):
+                          try:
+                              return func(*args, **kwargs)
+                          except Exception:
+                              if attempt == times:
+                                  raise
+                  return wrapper
+              return decorator
+
+          @retry(times=5)
+          def fetch(): ...
+          ```
+
+          ## Несколько декораторов
+
+          ```python
+          @a
+          @b
+          def f(): ...     # f = a(b(f)) — применяются снизу вверх
+          ```
+
+          ## Где встречаются
+
+          `@property`, `@staticmethod`, `@dataclass`, `@functools.lru_cache`, маршруты во фреймворках (`@app.get("/")` в FastAPI), проверка прав, логирование, кэширование, повторные попытки.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              def shout(f):
+                  def w(*a):
+                      return f(*a).upper()
+                  return w
+              @shout
+              def hi(name):
+                  return "hi " + name
+              print(hi("bob"))
+            answer: HI BOB
+          - type: output
+            q: Что выведет код?
+            code: |
+              def add1(f):
+                  return lambda: f() + 1
+              def dbl(f):
+                  return lambda: f() * 2
+              @add1
+              @dbl
+              def five():
+                  return 5
+              print(five())
+            answer: "11"
+            explain: "`five = add1(dbl(five))` → (5 * 2) + 1."
+          - type: choice
+            q: Зачем `@functools.wraps(func)` внутри декоратора?
+            options: ["Ускоряет функцию", "Сохраняет имя, docstring и другие метаданные оригинала", "Обязателен синтаксически", "Кэширует результат"]
+            answer: 1
+          - type: fill
+            q: Обёртка должна принимать любые аргументы
+            code: |
+              def log(func):
+                  def wrapper(___args, ___kwargs):
+                      print("вызов", func.__name__)
+                      return func(*args, **kwargs)
+                  return wrapper
+            answers: ["*", "**"]
+          - type: bug
+            q: Почему декорированная функция всегда возвращает None?
+            code: |
+              def log(func):
+                  def wrapper(*args, **kwargs):
+                      print("call")
+                      func(*args, **kwargs)
+                  return wrapper
+            bugLine: 4
+            fix: "        return func(*args, **kwargs)"
+        homework:
+          task: |
+            Напишите декораторы:
+            1. `@cache` — запоминает результаты по аргументам (свой, без lru_cache);
+            2. `@validate_positive` — бросает ValueError, если любой числовой аргумент < 0;
+            3. `@rate_limit(calls, seconds)` — не даёт вызывать функцию чаще, чем calls раз за seconds секунд.
+          checklist:
+            - Все используют functools.wraps
+            - rate_limit принимает параметры
+          solution: |
+            import functools, time
+
+            def cache(func):
+                memo = {}
+                @functools.wraps(func)
+                def wrapper(*args):
+                    if args not in memo:
+                        memo[args] = func(*args)
+                    return memo[args]
+                return wrapper
+
+            def validate_positive(func):
+                @functools.wraps(func)
+                def wrapper(*args, **kwargs):
+                    for v in [*args, *kwargs.values()]:
+                        if isinstance(v, (int, float)) and v < 0:
+                            raise ValueError(f"Отрицательный аргумент: {v}")
+                    return func(*args, **kwargs)
+                return wrapper
+
+            def rate_limit(calls, seconds):
+                def decorator(func):
+                    history = []
+                    @functools.wraps(func)
+                    def wrapper(*args, **kwargs):
+                        now = time.monotonic()
+                        history[:] = [t for t in history if now - t < seconds]
+                        if len(history) >= calls:
+                            raise RuntimeError("Слишком много вызовов")
+                        history.append(now)
+                        return func(*args, **kwargs)
+                    return wrapper
+                return decorator
+
+      - id: py-06-04
+        title: Контекстные менеджеры своими руками
+        minutes: 20
+        xp: 30
+        theory: |
+          `with` гарантирует, что действия «до» и «после» выполнятся, даже если внутри произошла ошибка. Это паттерн управления ресурсами: файлы, соединения с БД, блокировки, транзакции.
+
+          ## Через класс
+
+          ```python
+          import time
+
+          class Timer:
+              def __enter__(self):                 # выполняется при входе в with
+                  self.start = time.perf_counter()
+                  return self                      # значение после as
+              def __exit__(self, exc_type, exc, tb):   # при выходе, даже при исключении
+                  self.elapsed = time.perf_counter() - self.start
+                  print(f"{self.elapsed:.3f} с")
+                  return False                     # False — не подавлять исключение
+
+          with Timer() as t:
+              sum(range(10**6))
+          ```
+
+          Если `__exit__` вернёт `True`, исключение будет подавлено.
+
+          ## Через генератор — contextlib
+
+          ```python
+          from contextlib import contextmanager
+
+          @contextmanager
+          def transaction(conn):
+              try:
+                  yield conn            # тело with выполняется здесь
+                  conn.commit()
+              except Exception:
+                  conn.rollback()
+                  raise
+
+          @contextmanager
+          def cd(path):
+              import os
+              old = os.getcwd()
+              os.chdir(path)
+              try:
+                  yield
+              finally:
+                  os.chdir(old)
+          ```
+
+          ## Полезное из contextlib
+
+          ```python
+          from contextlib import suppress
+          with suppress(FileNotFoundError):    # игнорировать конкретную ошибку
+              os.remove("tmp.txt")
+          ```
+
+          Несколько менеджеров в одном `with`: `with open(a) as f1, open(b) as f2:`.
+        practice:
+          - type: choice
+            q: Какие методы нужны классу для работы в `with`?
+            options: ["`__init__` и `__del__`", "`__enter__` и `__exit__`", "`__open__` и `__close__`", "`__start__` и `__stop__`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              class C:
+                  def __enter__(self):
+                      print("in"); return 42
+                  def __exit__(self, *a):
+                      print("out")
+              with C() as x:
+                  print(x)
+            answer: |
+              in
+              42
+              out
+          - type: fill
+            q: Контекстный менеджер на генераторе
+            code: |
+              from contextlib import contextmanager
+              @___
+              def tag(name):
+                  print(f"<{name}>")
+                  ___
+                  print(f"</{name}>")
+            answers: [contextmanager, yield]
+          - type: choice
+            q: Что произойдёт, если `__exit__` вернёт `True`?
+            options: ["Исключение будет подавлено", "Программа завершится", "with повторится", "Ничего"]
+            answer: 0
+        homework:
+          task: |
+            Напишите контекстные менеджеры: `Timer` (класс), `temp_file(content)` через `@contextmanager` — создаёт временный файл, отдаёт путь и удаляет его после выхода, `ignore_errors(*types)` — аналог suppress. Проверьте, что временный файл удаляется даже при исключении.
+          checklist:
+            - Удаление файла в finally
+            - Timer работает при исключении внутри with
+          solution: |
+            import os, tempfile, time
+            from contextlib import contextmanager
+
+            class Timer:
+                def __enter__(self):
+                    self.t = time.perf_counter(); return self
+                def __exit__(self, *exc):
+                    print(f"{time.perf_counter() - self.t:.4f} с"); return False
+
+            @contextmanager
+            def temp_file(content):
+                fd, path = tempfile.mkstemp(text=True)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    yield path
+                finally:
+                    os.remove(path)
+
+            @contextmanager
+            def ignore_errors(*types):
+                try:
+                    yield
+                except types:
+                    pass
+
+            with ignore_errors(ValueError), temp_file("hi") as p:
+                print(open(p, encoding="utf-8").read())
+                raise ValueError
+            print(os.path.exists(p))   # False
+
+      - id: py-06-05
+        title: Модули itertools и functools
+        minutes: 25
+        xp: 30
+        theory: |
+          ## itertools — инструменты для итераторов
+
+          ```python
+          from itertools import (count, cycle, repeat, chain, islice, groupby,
+                                 product, permutations, combinations, accumulate, pairwise)
+
+          list(islice(count(10, 5), 3))        # [10, 15, 20] — срез бесконечного итератора
+          list(chain([1, 2], (3, 4)))          # [1, 2, 3, 4]
+          list(accumulate([1, 2, 3, 4]))       # [1, 3, 6, 10]
+          list(pairwise([1, 2, 3]))            # [(1, 2), (2, 3)]
+          list(product("ab", repeat=2))        # aa ab ba bb — декартово произведение
+          list(permutations("abc", 2))         # 6 перестановок
+          list(combinations([1, 2, 3], 2))     # [(1, 2), (1, 3), (2, 3)]
+          ```
+
+          ## groupby
+
+          Группирует **подряд идущие** элементы — поэтому данные сначала сортируют:
+
+          ```python
+          words = sorted(["кот", "кит", "дом", "дуб"], key=lambda w: w[0])
+          for letter, group in groupby(words, key=lambda w: w[0]):
+              print(letter, list(group))     # д ['дом', 'дуб'] / к ['кот', 'кит']
+          ```
+
+          ## functools
+
+          ```python
+          from functools import lru_cache, cache, partial, reduce, cached_property
+
+          @cache                               # бесконечный кэш (3.9+)
+          def fib(n): return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+          int_from_bin = partial(int, base=2)  # частичное применение аргументов
+          int_from_bin("1010")                 # 10
+
+          reduce(lambda a, b: a * b, [1, 2, 3, 4])   # 24
+
+          class Report:
+              @cached_property                 # вычисляется один раз при первом обращении
+              def data(self): return load_heavy_data()
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              from itertools import accumulate
+              print(list(accumulate([2, 3, 5])))
+            answer: "[2, 5, 10]"
+          - type: output
+            q: Сколько комбинаций по 2 из 4 элементов? Введите число.
+            code: |
+              from itertools import combinations
+              print(len(list(combinations("abcd", 2))))
+            answer: "6"
+          - type: output
+            q: Что выведет код?
+            code: |
+              from functools import partial
+              power = lambda base, exp: base ** exp
+              square = partial(power, exp=2)
+              print(square(7))
+            answer: "49"
+          - type: choice
+            q: Почему перед `groupby` данные обычно сортируют?
+            options: ["groupby требует отсортированный список, иначе ошибка", "groupby объединяет только подряд идущие одинаковые ключи", "Для скорости", "Не нужно сортировать"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              from itertools import islice, cycle
+              print("".join(islice(cycle("ab"), 5)))
+            answer: ababa
+        homework:
+          task: |
+            С помощью itertools: 1) сгенерируйте все пин-коды из 3 цифр, где цифры не повторяются (`permutations`), и посчитайте их количество; 2) сгруппируйте список транзакций по дате и посчитайте сумму по каждой (`groupby`); 3) найдите все пары товаров, сумма цен которых не превышает бюджет (`combinations`).
+          checklist:
+            - Использованы permutations, groupby, combinations
+            - Для groupby данные отсортированы
+          solution: |
+            from itertools import permutations, groupby, combinations
+
+            pins = ["".join(p) for p in permutations("0123456789", 3)]
+            print(len(pins))   # 720
+
+            tx = [("2026-10-02", 300), ("2026-10-01", 100), ("2026-10-02", 50)]
+            for date, group in groupby(sorted(tx), key=lambda t: t[0]):
+                print(date, sum(a for _, a in group))
+
+            goods = {"мышь": 900, "коврик": 400, "наушники": 3000, "кабель": 300}
+            budget = 1300
+            print([(a, b) for a, b in combinations(goods, 2) if goods[a] + goods[b] <= budget])
+
+      - id: py-06-06
+        title: Регулярные выражения
+        minutes: 30
+        xp: 35
+        theory: |
+          **Регулярные выражения** — язык шаблонов для поиска и разбора текста. Модуль `re`.
+
+          ```python
+          import re
+
+          re.search(r"\d+", "Заказ 123 от 45")       # первое совпадение: '123'
+          re.findall(r"\d+", "Заказ 123 от 45")      # все: ['123', '45']
+          re.sub(r"\s+", " ", "много   пробелов")    # замена
+          re.split(r"[,;]\s*", "a, b;c")             # ['a', 'b', 'c']
+          re.fullmatch(r"\d{6}", "123456")           # строка целиком соответствует
+          ```
+
+          Всегда пишите шаблоны в **сырых строках** `r"..."`, чтобы `\` не обрабатывался Python.
+
+          ## Основной синтаксис
+
+          | Шаблон | Значение |
+          |---|---|
+          | `.` | любой символ, кроме `\n` |
+          | `\d` `\w` `\s` | цифра, буква/цифра/_, пробельный символ |
+          | `\D` `\W` `\S` | отрицания |
+          | `[abc]` `[^abc]` `[а-я]` | набор символов / не из набора / диапазон |
+          | `*` `+` `?` | 0+, 1+, 0 или 1 раз |
+          | `{3}` `{2,5}` | ровно 3 / от 2 до 5 |
+          | `^` `$` | начало / конец строки |
+          | `\b` | граница слова |
+          | `a\|b` | или |
+          | `( )` | группа |
+
+          ## Группы
+
+          ```python
+          m = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", "Дата: 06.10.2026")
+          m.group(0)    # '06.10.2026'
+          m.groups()    # ('06', '10', '2026')
+
+          m = re.search(r"(?P<user>\w+)@(?P<domain>[\w.]+)", "mail: anna@test.ru")
+          m["user"], m["domain"]    # 'anna', 'test.ru'
+          ```
+
+          ## Жадность и компиляция
+
+          `.*` жадный — захватывает максимум; `.*?` — минимум. Для повторного использования: `pattern = re.compile(r"...")`, флаги: `re.IGNORECASE`, `re.MULTILINE`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              import re
+              print(re.findall(r"\d+", "a1b22c333"))
+            answer: "['1', '22', '333']"
+          - type: output
+            q: Что выведет код?
+            code: |
+              import re
+              print(re.sub(r"\d", "#", "pin 1234"))
+            answer: "pin ####"
+          - type: choice
+            q: Какой шаблон проверяет ровно 6 цифр целиком?
+            options: ["`\\d6`", "`^\\d{6}$`", "`[0-9]+`", "`\\d*6`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              import re
+              print(re.findall(r"<.+?>", "<a><b>"))
+            answer: "['<a>', '<b>']"
+            explain: "`+?` — нежадный квантификатор. Жадный `<.+>` захватил бы всю строку."
+          - type: fill
+            q: Достаньте год из даты ДД.ММ.ГГГГ
+            code: |
+              m = re.search(r"\d{2}\.\d{2}\.(\d{___})", text)
+              year = m.___(1)
+            answers: ["4", group]
+        homework:
+          task: |
+            Напишите функции: `is_valid_email(s)`, `normalize_phone(s)` — приводит `8 (999) 123-45-67`, `+7 999 1234567` к `+79991234567` (или None), `extract_hashtags(text)` и `mask_cards(text)` — заменяет номера карт из 16 цифр (возможно с пробелами по 4) на `**** **** **** 1234`.
+          checklist:
+            - Шаблоны в сырых строках
+            - Используются группы
+          solution: |
+            import re
+
+            def is_valid_email(s):
+                return re.fullmatch(r"[\w.+-]+@[\w-]+(\.[\w-]+)+", s) is not None
+
+            def normalize_phone(s):
+                digits = re.sub(r"\D", "", s)
+                if len(digits) == 11 and digits[0] in "78":
+                    return "+7" + digits[1:]
+                return None
+
+            def extract_hashtags(text):
+                return re.findall(r"#(\w+)", text)
+
+            def mask_cards(text):
+                return re.sub(r"\b(?:\d{4}[ ]?){3}(\d{4})\b", r"**** **** **** \1", text)
+
+            print(is_valid_email("a.b@mail.ru"), normalize_phone("8 (999) 123-45-67"))
+            print(extract_hashtags("Учу #python и #regex"), mask_cards("Карта 1234 5678 9012 3456"))

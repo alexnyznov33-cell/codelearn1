@@ -1,0 +1,548 @@
+id: python
+modules:
+  - id: py-m7
+    title: Алгоритмы и структуры данных
+    level: Junior+
+    lessons:
+      - id: py-07-01
+        title: Сложность алгоритмов, O-нотация
+        minutes: 25
+        xp: 30
+        theory: |
+          **O-нотация** описывает, как растёт время (или память) работы алгоритма при увеличении входных данных `n`. Константы и младшие члены отбрасываются: `3n² + 5n + 100` → `O(n²)`.
+
+          | Сложность | Название | Пример |
+          |---|---|---|
+          | O(1) | константная | доступ по индексу `a[i]`, `dict[key]` |
+          | O(log n) | логарифмическая | бинарный поиск |
+          | O(n) | линейная | один проход по списку, `x in list` |
+          | O(n log n) | линейно-логарифмическая | `sorted()` |
+          | O(n²) | квадратичная | вложенные циклы по тем же данным |
+          | O(2ⁿ) | экспоненциальная | перебор всех подмножеств, наивный fib |
+
+          При n = 1 000 000: O(n) ≈ миллион операций, O(n²) — триллион (часы работы).
+
+          ## Сложность операций Python
+
+          | Операция | list | dict / set |
+          |---|---|---|
+          | доступ по индексу/ключу | O(1) | O(1) |
+          | `x in ...` | **O(n)** | **O(1)** |
+          | append / add | O(1) | O(1) |
+          | insert(0) / pop(0) | O(n) | — |
+
+          ## Пример оптимизации
+
+          ```python
+          # O(n²): для каждого элемента ищем в списке
+          def has_duplicates(items):
+              for i in range(len(items)):
+                  if items[i] in items[i + 1:]:
+                      return True
+              return False
+
+          # O(n): множество
+          def has_duplicates(items):
+              return len(set(items)) != len(items)
+          ```
+
+          ## Память
+
+          Тоже оценивается в O: создание копии списка — O(n) памяти, генератор — O(1).
+
+          > 💡 На собеседовании всегда называйте сложность своего решения по времени и памяти.
+        practice:
+          - type: choice
+            q: Какова сложность проверки `x in my_set`?
+            options: ["O(n)", "O(1) в среднем", "O(log n)", "O(n²)"]
+            answer: 1
+          - type: choice
+            q: Какая сложность у двух вложенных циклов по одному списку длины n?
+            options: ["O(n)", "O(2n)", "O(n²)", "O(log n)"]
+            answer: 2
+          - type: choice
+            q: Упростите O(5n + n² + 100)
+            options: ["O(5n)", "O(n²)", "O(n² + n)", "O(100)"]
+            answer: 1
+          - type: choice
+            q: Сложность встроенной сортировки `sorted()`?
+            options: ["O(n)", "O(n log n)", "O(n²)", "O(1)"]
+            answer: 1
+          - type: choice
+            q: Что быстрее для частых проверок вхождения в коллекцию из 1 млн элементов?
+            options: ["list", "set", "tuple", "Одинаково"]
+            answer: 1
+        homework:
+          task: |
+            Даны два списка по 100 000 чисел. Найдите их пересечение двумя способами: вложенными циклами / `in list` и через множества. Замерьте время (`time.perf_counter`) и запишите в комментарии сложность каждого решения.
+          checklist:
+            - Указана сложность обоих решений
+            - Решение через set на порядки быстрее
+          solution: |
+            import random, time
+
+            a = [random.randint(0, 10**6) for _ in range(100_000)]
+            b = [random.randint(0, 10**6) for _ in range(100_000)]
+
+            t = time.perf_counter()
+            slow = [x for x in a[:2000] if x in b]   # O(n*m), берём часть, иначе очень долго
+            print("list:", time.perf_counter() - t)
+
+            t = time.perf_counter()
+            fast = set(a) & set(b)                    # O(n + m)
+            print("set:", time.perf_counter() - t, len(fast))
+
+      - id: py-07-02
+        title: Сортировки и бинарный поиск
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Бинарный поиск — O(log n)
+
+          Работает только на **отсортированных** данных: на каждом шаге отбрасываем половину.
+
+          ```python
+          def binary_search(arr, target):
+              lo, hi = 0, len(arr) - 1
+              while lo <= hi:
+                  mid = (lo + hi) // 2
+                  if arr[mid] == target:
+                      return mid
+                  if arr[mid] < target:
+                      lo = mid + 1
+                  else:
+                      hi = mid - 1
+              return -1
+          ```
+
+          Для 1 млрд элементов — не более 30 шагов. В стандартной библиотеке: `bisect.bisect_left(arr, x)`, `bisect.insort(arr, x)`.
+
+          ## Простые сортировки — O(n²)
+
+          ```python
+          def bubble_sort(a):
+              a = a[:]
+              for i in range(len(a)):
+                  for j in range(len(a) - 1 - i):
+                      if a[j] > a[j + 1]:
+                          a[j], a[j + 1] = a[j + 1], a[j]
+              return a
+          ```
+
+          Также сортировка выбором и вставками (вставки хороша для почти отсортированных данных).
+
+          ## Быстрые сортировки — O(n log n)
+
+          **Сортировка слиянием** (merge sort): делим пополам, сортируем рекурсивно, сливаем.
+
+          ```python
+          def merge_sort(a):
+              if len(a) <= 1:
+                  return a
+              mid = len(a) // 2
+              left, right = merge_sort(a[:mid]), merge_sort(a[mid:])
+              result, i, j = [], 0, 0
+              while i < len(left) and j < len(right):
+                  if left[i] <= right[j]:
+                      result.append(left[i]); i += 1
+                  else:
+                      result.append(right[j]); j += 1
+              return result + left[i:] + right[j:]
+          ```
+
+          **Быстрая сортировка** (quicksort): выбираем опорный элемент, делим на меньшие и большие. В среднем O(n log n), в худшем O(n²).
+
+          Встроенная `sorted()` использует **Timsort** — гибрид слияния и вставок, стабильный, O(n log n). В реальном коде используйте её.
+        practice:
+          - type: choice
+            q: Обязательное условие для бинарного поиска?
+            options: ["Список без повторов", "Отсортированные данные", "Только числа", "Чётная длина"]
+            answer: 1
+          - type: choice
+            q: Сколько максимум шагов бинарного поиска для 1 000 000 элементов?
+            options: ["~20", "~1000", "~500 000", "~100"]
+            answer: 0
+          - type: fill
+            q: Сдвиг границы в бинарном поиске
+            code: |
+              if arr[mid] < target:
+                  lo = mid ___ 1
+              else:
+                  hi = mid ___ 1
+            answers: ["+", "-"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              import bisect
+              print(bisect.bisect_left([1, 3, 5, 7], 5))
+            answer: "2"
+          - type: choice
+            q: Какой алгоритм использует встроенная `sorted()`?
+            options: ["Quicksort", "Bubble sort", "Timsort", "Heapsort"]
+            answer: 2
+        homework:
+          task: |
+            Реализуйте быструю сортировку (quicksort) и сортировку вставками. Сравните время работы bubble, insertion, merge, quick и `sorted()` на списках из 5000 случайных чисел и на уже отсортированном списке. Сделайте выводы.
+          checklist:
+            - Все реализации проверены assert'ом против sorted()
+            - Есть таблица времени
+          solution: |
+            import random, time
+
+            def quick_sort(a):
+                if len(a) <= 1:
+                    return a
+                pivot = random.choice(a)
+                return (quick_sort([x for x in a if x < pivot]) + [x for x in a if x == pivot]
+                        + quick_sort([x for x in a if x > pivot]))
+
+            def insertion_sort(a):
+                a = a[:]
+                for i in range(1, len(a)):
+                    key, j = a[i], i - 1
+                    while j >= 0 and a[j] > key:
+                        a[j + 1] = a[j]; j -= 1
+                    a[j + 1] = key
+                return a
+
+            data = [random.randint(0, 10**6) for _ in range(5000)]
+            for f in (quick_sort, insertion_sort, sorted):
+                t = time.perf_counter()
+                assert f(data) == sorted(data)
+                print(f.__name__, round(time.perf_counter() - t, 4))
+
+      - id: py-07-03
+        title: Хеш-таблицы, стеки, очереди, heapq
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Хеш-таблица
+
+          `dict` и `set` — хеш-таблицы. Ключ превращается функцией `hash()` в число, которое определяет «ячейку». Отсюда O(1) на поиск, вставку и удаление в среднем. Ключи должны быть **хешируемыми** (неизменяемыми).
+
+          Классический приём — «словарь вместо вложенного цикла»:
+
+          ```python
+          def two_sum(nums, target):           # O(n) вместо O(n²)
+              seen = {}
+              for i, x in enumerate(nums):
+                  if target - x in seen:
+                      return seen[target - x], i
+                  seen[x] = i
+          ```
+
+          ## Стек и очередь
+
+          Стек — `list` (`append`/`pop`), очередь — `collections.deque` (`append`/`popleft`). Стек применяют для отмены действий, проверки скобок, обхода в глубину; очередь — для обхода в ширину, планировщиков задач.
+
+          ## Куча (heapq) — приоритетная очередь
+
+          Двоичная куча даёт минимальный элемент за O(1), вставку и извлечение — за O(log n).
+
+          ```python
+          import heapq
+
+          h = []
+          heapq.heappush(h, 5)
+          heapq.heappush(h, 1)
+          heapq.heappush(h, 3)
+          heapq.heappop(h)            # 1 — всегда минимальный
+
+          heapq.nlargest(3, nums)     # 3 наибольших за O(n log k)
+          heapq.nsmallest(2, users, key=lambda u: u["age"])
+
+          tasks = []
+          heapq.heappush(tasks, (2, "написать тесты"))   # (приоритет, задача)
+          heapq.heappush(tasks, (1, "починить прод"))
+          heapq.heappop(tasks)        # (1, 'починить прод')
+          ```
+
+          Для max-кучи кладут значения со знаком минус: `heappush(h, -x)`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              import heapq
+              h = [5, 1, 8, 3]
+              heapq.heapify(h)
+              heapq.heappop(h)
+              print(heapq.heappop(h))
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              import heapq
+              print(heapq.nlargest(2, [4, 9, 1, 7]))
+            answer: "[9, 7]"
+          - type: choice
+            q: Почему список нельзя использовать как ключ словаря?
+            options: ["Он слишком большой", "Он изменяемый и не хешируется", "Ключи могут быть только строками", "Можно, ограничений нет"]
+            answer: 1
+          - type: choice
+            q: Какая структура подходит для «отменить последнее действие»?
+            options: ["Очередь", "Стек", "Куча", "Множество"]
+            answer: 1
+        homework:
+          task: |
+            1. Найдите k самых частых слов в тексте (Counter + heapq или most_common).
+            2. Реализуйте класс `TaskQueue` с методами `add(task, priority)` и `next()` на heapq; при равном приоритете задачи выполняются в порядке добавления.
+            3. Решите задачу «первый неповторяющийся символ строки» за O(n).
+          checklist:
+            - Приоритетная очередь стабильна при равных приоритетах
+            - Все решения O(n) или O(n log k)
+          solution: |
+            import heapq, itertools
+            from collections import Counter
+
+            def top_words(text, k):
+                return Counter(text.lower().split()).most_common(k)
+
+            class TaskQueue:
+                def __init__(self):
+                    self._h, self._cnt = [], itertools.count()
+                def add(self, task, priority):
+                    heapq.heappush(self._h, (priority, next(self._cnt), task))
+                def next(self):
+                    return heapq.heappop(self._h)[2]
+
+            def first_unique(s):
+                c = Counter(s)
+                return next((ch for ch in s if c[ch] == 1), None)
+
+            q = TaskQueue(); q.add("б", 2); q.add("а", 1); q.add("в", 2)
+            print(q.next(), q.next(), q.next(), first_unique("swiss"))
+
+      - id: py-07-04
+        title: Графы, BFS и DFS
+        minutes: 30
+        xp: 35
+        theory: |
+          **Граф** — вершины, соединённые рёбрами: дороги между городами, друзья в соцсети, зависимости пакетов.
+
+          ## Представление — список смежности
+
+          ```python
+          graph = {
+              "A": ["B", "C"],
+              "B": ["D"],
+              "C": ["D", "E"],
+              "D": ["F"],
+              "E": ["F"],
+              "F": [],
+          }
+          ```
+
+          ## Обход в ширину (BFS) — очередь
+
+          Посещает вершины «слоями» по расстоянию. Находит **кратчайший путь** в невзвешенном графе.
+
+          ```python
+          from collections import deque
+
+          def bfs_path(graph, start, goal):
+              queue = deque([[start]])
+              visited = {start}
+              while queue:
+                  path = queue.popleft()
+                  node = path[-1]
+                  if node == goal:
+                      return path
+                  for nxt in graph[node]:
+                      if nxt not in visited:
+                          visited.add(nxt)
+                          queue.append(path + [nxt])
+              return None
+
+          bfs_path(graph, "A", "F")   # ['A', 'B', 'D', 'F']
+          ```
+
+          ## Обход в глубину (DFS) — стек / рекурсия
+
+          Идёт вглубь до упора, затем возвращается. Применяется для поиска компонент связности, циклов, топологической сортировки.
+
+          ```python
+          def dfs(graph, node, visited=None):
+              if visited is None:
+                  visited = set()
+              visited.add(node)
+              for nxt in graph[node]:
+                  if nxt not in visited:
+                      dfs(graph, nxt, visited)
+              return visited
+          ```
+
+          Сложность обоих — **O(V + E)** (вершины + рёбра). Множество `visited` обязательно — иначе в графе с циклами обход зациклится.
+
+          Для взвешенных графов (дороги с расстояниями) используют **алгоритм Дейкстры** на `heapq`.
+        practice:
+          - type: choice
+            q: Какой обход находит кратчайший путь в невзвешенном графе?
+            options: ["DFS", "BFS", "Оба одинаково", "Ни один"]
+            answer: 1
+          - type: choice
+            q: Какую структуру использует BFS?
+            options: ["Стек", "Очередь", "Куча", "Словарь"]
+            answer: 1
+          - type: choice
+            q: Зачем нужно множество visited?
+            options: ["Для сортировки", "Чтобы не зациклиться и не обходить вершины повторно", "Для хранения весов", "Не нужно"]
+            answer: 1
+          - type: choice
+            q: Сложность BFS/DFS?
+            options: ["O(V·E)", "O(V + E)", "O(V²) всегда", "O(log V)"]
+            answer: 1
+        homework:
+          task: |
+            1. Посчитайте количество островов на карте `grid` из `"1"` (суша) и `"0"` (вода) — соседи по 4 направлениям (DFS или BFS).
+            2. Найдите кратчайший путь в лабиринте (BFS по клеткам).
+            3. Реализуйте Дейкстру для взвешенного графа `{"A": {"B": 4, "C": 1}, ...}`.
+          checklist:
+            - Нет повторного посещения клеток
+            - Дейкстра на heapq
+          solution: |
+            import heapq
+
+            def islands(grid):
+                rows, cols, seen, count = len(grid), len(grid[0]), set(), 0
+                def dfs(r, c):
+                    if not (0 <= r < rows and 0 <= c < cols) or grid[r][c] != "1" or (r, c) in seen:
+                        return
+                    seen.add((r, c))
+                    for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        dfs(r + dr, c + dc)
+                for r in range(rows):
+                    for c in range(cols):
+                        if grid[r][c] == "1" and (r, c) not in seen:
+                            dfs(r, c); count += 1
+                return count
+
+            def dijkstra(graph, start):
+                dist = {start: 0}
+                pq = [(0, start)]
+                while pq:
+                    d, node = heapq.heappop(pq)
+                    if d > dist.get(node, float("inf")):
+                        continue
+                    for nxt, w in graph[node].items():
+                        if d + w < dist.get(nxt, float("inf")):
+                            dist[nxt] = d + w
+                            heapq.heappush(pq, (d + w, nxt))
+                return dist
+
+            print(islands(["110", "010", "001"]))
+            print(dijkstra({"A": {"B": 4, "C": 1}, "C": {"B": 2}, "B": {}}, "A"))
+
+      - id: py-07-05
+        title: Динамическое программирование
+        minutes: 30
+        xp: 35
+        theory: |
+          **Динамическое программирование (ДП)** — решение задачи через решения перекрывающихся подзадач, каждая из которых считается **один раз**.
+
+          Признаки задачи на ДП: «сколько способов», «минимальная/максимальная стоимость», «можно ли», а решение большой задачи строится из меньших.
+
+          ## Два подхода
+
+          **Сверху вниз (мемоизация):** рекурсия + кэш.
+
+          ```python
+          from functools import cache
+
+          @cache
+          def climb(n):            # сколько способов подняться на n ступенек шагами 1 или 2
+              if n <= 2:
+                  return n
+              return climb(n - 1) + climb(n - 2)
+          ```
+
+          **Снизу вверх (табуляция):** заполняем таблицу от маленьких задач к большим.
+
+          ```python
+          def climb(n):
+              dp = [0, 1, 2] + [0] * n
+              for i in range(3, n + 1):
+                  dp[i] = dp[i - 1] + dp[i - 2]
+              return dp[n]
+          ```
+
+          ## Алгоритм решения
+
+          1. Определить **состояние**: что означает `dp[i]` (или `dp[i][j]`).
+          2. Найти **переход**: как `dp[i]` выражается через предыдущие.
+          3. Задать **базовые случаи**.
+          4. Определить порядок вычисления и где ответ.
+
+          ## Пример: размен монет
+
+          Минимальное число монет для суммы `amount`:
+
+          ```python
+          def min_coins(coins, amount):
+              dp = [0] + [float("inf")] * amount        # dp[s] — минимум монет для суммы s
+              for s in range(1, amount + 1):
+                  for c in coins:
+                      if c <= s:
+                          dp[s] = min(dp[s], dp[s - c] + 1)
+              return dp[amount] if dp[amount] != float("inf") else -1
+
+          min_coins([1, 5, 10, 25], 63)   # 6: 25+25+10+1+1+1
+          ```
+
+          Классика: рюкзак, наибольшая общая подпоследовательность (LCS), расстояние Левенштейна, максимальная сумма подмассива.
+        practice:
+          - type: choice
+            q: Главная идея динамического программирования?
+            options: ["Перебрать все варианты", "Решать каждую подзадачу один раз и переиспользовать результат", "Использовать только рекурсию", "Сортировать данные"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              dp = [1, 1]
+              for i in range(2, 6):
+                  dp.append(dp[-1] + dp[-2])
+              print(dp[5])
+            answer: "8"
+          - type: choice
+            q: Что такое мемоизация?
+            options: ["Сохранение результатов вызовов функции для повторного использования", "Удаление памяти", "Сортировка", "Запись в файл"]
+            answer: 0
+          - type: fill
+            q: Переход для задачи о ступеньках
+            code: |
+              for i in range(3, n + 1):
+                  dp[i] = dp[i - ___] + dp[i - ___]
+            answers: [["1", "2"], ["2", "1"]]
+        homework:
+          task: |
+            Решите через ДП:
+            1. Максимальная сумма непрерывного подмассива (алгоритм Кадане).
+            2. Расстояние Левенштейна между двумя словами.
+            3. Рюкзак 0/1: предметы с весом и ценой, вместимость W — максимальная ценность.
+          checklist:
+            - Описано состояние dp для каждой задачи
+            - Сложности указаны в комментариях
+          solution: |
+            def max_subarray(a):                     # O(n)
+                best = cur = a[0]
+                for x in a[1:]:
+                    cur = max(x, cur + x)
+                    best = max(best, cur)
+                return best
+
+            def levenshtein(s, t):                   # O(n*m)
+                dp = list(range(len(t) + 1))
+                for i, cs in enumerate(s, 1):
+                    prev, dp[0] = dp[0], i
+                    for j, ct in enumerate(t, 1):
+                        prev, dp[j] = dp[j], min(dp[j] + 1, dp[j - 1] + 1, prev + (cs != ct))
+                return dp[-1]
+
+            def knapsack(items, W):                  # O(n*W), items = [(вес, цена)]
+                dp = [0] * (W + 1)
+                for w, v in items:
+                    for cap in range(W, w - 1, -1):
+                        dp[cap] = max(dp[cap], dp[cap - w] + v)
+                return dp[W]
+
+            print(max_subarray([-2, 1, -3, 4, -1, 2, 1, -5, 4]), levenshtein("кот", "скот"),
+                  knapsack([(1, 1), (3, 4), (4, 5), (5, 7)], 7))

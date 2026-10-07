@@ -1,0 +1,586 @@
+id: java
+modules:
+  - id: java-m8
+    title: Инструменты и тестирование
+    level: Middle
+    lessons:
+      - id: java-08-01
+        title: Maven и Gradle
+        minutes: 35
+        xp: 45
+        theory: |
+          Системы сборки скачивают зависимости, компилируют, запускают тесты и собирают артефакты (jar).
+
+          ## Maven: pom.xml
+
+          ```xml
+          <project>
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>ru.example</groupId>
+            <artifactId>shop</artifactId>
+            <version>1.0.0</version>
+            <properties>
+              <maven.compiler.release>21</maven.compiler.release>
+            </properties>
+            <dependencies>
+              <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>5.10.2</version>
+                <scope>test</scope>
+              </dependency>
+            </dependencies>
+          </project>
+          ```
+
+          Координаты артефакта: **groupId:artifactId:version** (GAV). Стандартная структура: `src/main/java`, `src/main/resources`, `src/test/java`.
+
+          **Жизненный цикл**: `validate → compile → test → package → verify → install → deploy`. Вызов фазы выполняет все предыдущие:
+
+          ```bash
+          mvn clean package      # собрать jar в target/
+          mvn test               # только тесты
+          mvn dependency:tree    # дерево зависимостей
+          ```
+
+          **Scope**: `compile` (по умолчанию), `test`, `provided` (даёт сервер), `runtime` (нужен только при запуске, например JDBC-драйвер).
+
+          ## Gradle: build.gradle.kts
+
+          ```kotlin
+          plugins { java; application }
+          java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+          repositories { mavenCentral() }
+          dependencies {
+              implementation("com.google.guava:guava:33.0.0-jre")
+              testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+          }
+          tasks.test { useJUnitPlatform() }
+          application { mainClass = "ru.example.Main" }
+          ```
+
+          ```bash
+          ./gradlew build     # компиляция + тесты + jar (build/libs)
+          ./gradlew run
+          ```
+
+          ## Maven или Gradle?
+
+          Maven — декларативный XML, единообразие, проще для старта. Gradle — гибкий DSL, инкрементальная сборка и кеш, быстрее на больших проектах, стандарт Android. Всегда коммитьте **wrapper** (`mvnw`, `gradlew`) — сборка пойдёт с нужной версией инструмента без установки.
+
+          Конфликты версий транзитивных зависимостей решайте через `dependencyManagement` (Maven, BOM) или `platform(...)` (Gradle).
+        practice:
+          - type: choice
+            q: Что выполнит mvn package?
+            options: ["Только упаковку", "validate, compile, test и package", "Только компиляцию", "deploy в репозиторий"]
+            answer: 1
+          - type: fill
+            q: Подключите JUnit только для тестов (Maven)
+            code: |
+              <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>5.10.2</version>
+                <scope>___</scope>
+              </dependency>
+            answers: ["test"]
+          - type: choice
+            q: В какой папке по соглашению лежат тесты?
+            options: ["src/test/java", "test/", "src/main/test", "tests/java"]
+            answer: 0
+          - type: fill
+            q: Подключите библиотеку в Gradle (Kotlin DSL) для основного кода
+            code: |
+              dependencies {
+                  ___("com.google.guava:guava:33.0.0-jre")
+              }
+            answers: ["implementation"]
+          - type: choice
+            q: Какой scope подходит для JDBC-драйвера, который не нужен при компиляции?
+            options: ["compile", "provided", "runtime", "system"]
+            answer: 2
+        homework:
+          task: |
+            Создайте Maven-проект `calc` (groupId `ru.learn`) с классом `Calculator` (add, divide с проверкой деления на ноль) и JUnit-тестом. Соберите `mvn package`, запустите jar (`java -cp target/calc-1.0.jar ...`). Затем создайте аналогичный проект на Gradle (Kotlin DSL) с плагином `application` и запустите `./gradlew run`. Выведите дерево зависимостей в обоих.
+          checklist:
+            - Структура каталогов по соглашению
+            - Тесты запускаются при сборке
+            - Есть wrapper
+          solution: |
+            <!-- pom.xml -->
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>ru.learn</groupId>
+              <artifactId>calc</artifactId>
+              <version>1.0</version>
+              <properties>
+                <maven.compiler.release>21</maven.compiler.release>
+                <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+              </properties>
+              <dependencies>
+                <dependency>
+                  <groupId>org.junit.jupiter</groupId>
+                  <artifactId>junit-jupiter</artifactId>
+                  <version>5.10.2</version>
+                  <scope>test</scope>
+                </dependency>
+              </dependencies>
+              <build><plugins><plugin>
+                <artifactId>maven-surefire-plugin</artifactId><version>3.2.5</version>
+              </plugin></plugins></build>
+            </project>
+
+            // src/main/java/ru/learn/Calculator.java
+            package ru.learn;
+            public class Calculator {
+                public int add(int a, int b) { return a + b; }
+                public double divide(double a, double b) {
+                    if (b == 0) throw new IllegalArgumentException("Деление на ноль");
+                    return a / b;
+                }
+                public static void main(String[] args) { System.out.println(new Calculator().add(2, 3)); }
+            }
+
+            // build.gradle.kts
+            // plugins { application }
+            // repositories { mavenCentral() }
+            // dependencies { testImplementation("org.junit.jupiter:junit-jupiter:5.10.2"); testRuntimeOnly("org.junit.platform:junit-platform-launcher") }
+            // tasks.test { useJUnitPlatform() }
+            // application { mainClass = "ru.learn.Calculator" }
+
+            // mvn package && java -cp target/calc-1.0.jar ru.learn.Calculator
+            // mvn dependency:tree ; ./gradlew dependencies
+      - id: java-08-02
+        title: JUnit 5
+        minutes: 40
+        xp: 45
+        theory: |
+          **JUnit 5 (Jupiter)** — стандарт модульного тестирования в Java.
+
+          ```java
+          import org.junit.jupiter.api.*;
+          import static org.junit.jupiter.api.Assertions.*;
+
+          class CalculatorTest {
+              Calculator calc;
+
+              @BeforeEach
+              void setUp() { calc = new Calculator(); }
+
+              @Test
+              @DisplayName("Сложение двух чисел")
+              void addsNumbers() {
+                  assertEquals(5, calc.add(2, 3));
+              }
+
+              @Test
+              void divideByZeroThrows() {
+                  var ex = assertThrows(IllegalArgumentException.class, () -> calc.divide(1, 0));
+                  assertEquals("Деление на ноль", ex.getMessage());
+              }
+          }
+          ```
+
+          ## Жизненный цикл
+
+          `@BeforeAll` (static, один раз) → для каждого теста `@BeforeEach` → `@Test` → `@AfterEach` → в конце `@AfterAll`. Для каждого теста создаётся **новый экземпляр** класса — тесты независимы.
+
+          ## Полезные утверждения
+
+          ```java
+          assertTrue(list.isEmpty());
+          assertNull(user.getEmail());
+          assertArrayEquals(new int[]{1, 2}, arr);
+          assertAll("user",
+              () -> assertEquals("Иван", u.name()),
+              () -> assertEquals(30, u.age()));
+          assertTimeout(Duration.ofMillis(100), () -> service.fast());
+          ```
+
+          ## Параметризованные тесты
+
+          ```java
+          @ParameterizedTest
+          @CsvSource({"2, 3, 5", "-1, 1, 0", "0, 0, 0"})
+          void add(int a, int b, int expected) {
+              assertEquals(expected, calc.add(a, b));
+          }
+
+          @ParameterizedTest
+          @ValueSource(strings = {"", "  "})
+          void blank(String s) { assertTrue(s.isBlank()); }
+          ```
+
+          Также: `@MethodSource`, `@EnumSource`, `@Disabled`, `@Tag("slow")`, `@Nested` для группировки.
+
+          ## AssertJ
+
+          Популярная библиотека «текучих» проверок с понятными сообщениями:
+
+          ```java
+          assertThat(users).hasSize(3).extracting(User::name).contains("Анна");
+          ```
+
+          ## Хороший тест
+
+          Структура **Arrange–Act–Assert** (Given–When–Then), одно поведение на тест, понятное имя, никакой зависимости от порядка запуска и внешних сервисов. Покрытие измеряют JaCoCo.
+        practice:
+          - type: fill
+            q: Проверьте, что метод бросает исключение
+            code: |
+              ___(IllegalArgumentException.class, () -> calc.divide(1, 0));
+            answers: ["assertThrows"]
+          - type: choice
+            q: Какая аннотация выполняет метод перед каждым тестом?
+            options: ["@BeforeAll", "@BeforeEach", "@Setup", "@Before"]
+            answer: 1
+          - type: bug
+            q: Какая строка ошибочна?
+            code: |
+              class RepoTest {
+                  @BeforeAll
+                  void initDb() { db = Db.start(); }
+                  @Test
+                  void saves() { assertTrue(repo.save(x)); }
+              }
+            bugLine: 3
+            fix: static void initDb() { db = Db.start(); }
+            explain: Метод @BeforeAll по умолчанию должен быть static (если не указан @TestInstance(PER_CLASS)).
+          - type: choice
+            q: Чем подставить несколько наборов входных данных в один тест?
+            options: ["@RepeatedTest", "@ParameterizedTest с @CsvSource", "@Nested", "@Tag"]
+            answer: 1
+          - type: order
+            q: Расставьте части теста по схеме AAA
+            lines:
+              - var cart = new Cart();
+              - cart.add(new Item("Книга", 500));
+              - assertEquals(500, cart.total());
+        homework:
+          task: |
+            Напишите класс `PasswordValidator` с методом `List<String> validate(String pwd)` (длина ≥ 8, есть цифра, есть заглавная буква, нет пробелов) и покройте его тестами JUnit 5: параметризованный тест для валидных паролей (`@ValueSource`), `@CsvSource` с невалидным паролем и ожидаемой ошибкой, тест на `null` (`assertThrows`), группировку через `@Nested`. Подключите JaCoCo и добейтесь 100% покрытия.
+          checklist:
+            - Есть параметризованные тесты
+            - Проверяются и позитивные, и негативные сценарии
+            - Имена тестов описывают поведение
+          solution: |
+            // PasswordValidator.java
+            import java.util.*;
+            public class PasswordValidator {
+                public List<String> validate(String pwd) {
+                    Objects.requireNonNull(pwd, "pwd");
+                    List<String> errors = new ArrayList<>();
+                    if (pwd.length() < 8) errors.add("короткий");
+                    if (pwd.chars().noneMatch(Character::isDigit)) errors.add("нет цифры");
+                    if (pwd.chars().noneMatch(Character::isUpperCase)) errors.add("нет заглавной");
+                    if (pwd.contains(" ")) errors.add("пробел");
+                    return errors;
+                }
+            }
+
+            // PasswordValidatorTest.java
+            import org.junit.jupiter.api.*;
+            import org.junit.jupiter.params.ParameterizedTest;
+            import org.junit.jupiter.params.provider.*;
+            import static org.junit.jupiter.api.Assertions.*;
+
+            class PasswordValidatorTest {
+                PasswordValidator v = new PasswordValidator();
+
+                @Nested class Valid {
+                    @ParameterizedTest
+                    @ValueSource(strings = {"Secret123", "Abcdefg1", "QWErty789"})
+                    void acceptsStrongPasswords(String p) { assertTrue(v.validate(p).isEmpty()); }
+                }
+                @Nested class Invalid {
+                    @ParameterizedTest
+                    @CsvSource({"Ab1, короткий", "Abcdefgh, нет цифры", "abcdefg1, нет заглавной", "'Abc def1', пробел"})
+                    void reportsError(String p, String error) { assertTrue(v.validate(p).contains(error)); }
+
+                    @Test
+                    void nullThrows() { assertThrows(NullPointerException.class, () -> v.validate(null)); }
+                }
+            }
+      - id: java-08-03
+        title: Mockito
+        minutes: 40
+        xp: 45
+        theory: |
+          Модульный тест проверяет **один класс**. Его зависимости (БД, HTTP, почта) заменяют **моками** — объектами-имитаторами.
+
+          ```java
+          @ExtendWith(MockitoExtension.class)
+          class OrderServiceTest {
+              @Mock OrderRepository repo;
+              @Mock EmailSender email;
+              @InjectMocks OrderService service;   // моки внедрятся через конструктор
+
+              @Test
+              void placesOrderAndSendsEmail() {
+                  // Arrange: задаём поведение (стаб)
+                  when(repo.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+                  // Act
+                  Order o = service.place("anna@mail.ru", 1500);
+
+                  // Assert: результат и взаимодействия
+                  assertEquals(1500, o.sum());
+                  verify(email).send(eq("anna@mail.ru"), contains("принят"));
+                  verify(repo, times(1)).save(any());
+                  verifyNoMoreInteractions(email);
+              }
+          }
+          ```
+
+          ## Стабы
+
+          ```java
+          when(repo.findById(1L)).thenReturn(Optional.of(user));
+          when(repo.findById(99L)).thenReturn(Optional.empty());
+          when(api.call()).thenThrow(new IOException("timeout"));
+          when(dice.roll()).thenReturn(1, 6);       // 1 при первом вызове, 6 — далее
+          doThrow(new RuntimeException()).when(email).send(any(), any()); // для void
+          ```
+
+          Метод мока без настройки возвращает «пустое» значение: `null`, `0`, `false`, пустую коллекцию, `Optional.empty()`.
+
+          ## Матчеры и захват аргументов
+
+          `any()`, `anyLong()`, `eq(x)`, `argThat(o -> o.sum() > 100)`. Если в вызове используется хоть один матчер — **все** аргументы должны быть матчерами.
+
+          ```java
+          ArgumentCaptor<Order> captor = ArgumentCaptor.forClass(Order.class);
+          verify(repo).save(captor.capture());
+          assertEquals("NEW", captor.getValue().status());
+          ```
+
+          ## Spy
+
+          `@Spy` — обёртка над **реальным** объектом: вызывает настоящие методы, кроме застабленных.
+
+          ## Чего не мокать
+
+          Value-объекты, коллекции, сам тестируемый класс. Слишком много моков и `verify` — признак сильной связанности кода. Для работы с настоящей БД — интеграционные тесты (Testcontainers).
+        practice:
+          - type: fill
+            q: Настройте мок, чтобы он вернул пользователя
+            code: |
+              ___(repo.findById(1L)).___(Optional.of(user));
+            answers: ["when", "thenReturn"]
+          - type: choice
+            q: Что вернёт не настроенный метод мока, возвращающий int?
+            options: ["Исключение", "0", "null", "Случайное число"]
+            answer: 1
+          - type: bug
+            q: Какая строка вызовет ошибку Mockito?
+            code: |
+              when(calc.sum(anyInt(), 5)).thenReturn(10);
+              int r = calc.sum(1, 5);
+              assertEquals(10, r);
+            bugLine: 1
+            fix: when(calc.sum(anyInt(), eq(5))).thenReturn(10);
+            explain: Нельзя смешивать матчеры и обычные значения — нужно обернуть 5 в eq().
+          - type: choice
+            q: Как проверить, что метод send был вызван ровно дважды?
+            options: ["verify(email, times(2)).send(any(), any())", "assertEquals(2, email.send())", "when(email.send()).times(2)", "verifyTwice(email)"]
+            answer: 0
+          - type: choice
+            q: Чем @Spy отличается от @Mock?
+            options: ["Ничем", "Spy вызывает реальные методы, если они не застаблены", "Spy работает только со статическими методами", "Spy нельзя проверять через verify"]
+            answer: 1
+        homework:
+          task: |
+            Есть `PaymentService(PaymentGateway gateway, AuditLog audit)` с методом `Receipt pay(String user, long amount)`: при amount ≤ 0 — `IllegalArgumentException`; вызывает `gateway.charge(user, amount)`, который возвращает id транзакции или бросает `GatewayException`; при успехе — `audit.log("OK " + id)`, при ошибке — `audit.log("FAIL ...")` и проброс исключения. Реализуйте сервис и напишите 4 теста на Mockito: успех, ошибка шлюза, неверная сумма (шлюз не вызывается — `verifyNoInteractions`), проверка текста аудита через `ArgumentCaptor`.
+          checklist:
+            - Используются @Mock и @InjectMocks
+            - Есть verify и verifyNoInteractions
+            - Используется ArgumentCaptor
+          solution: |
+            // PaymentService.java
+            public class PaymentService {
+                private final PaymentGateway gateway;
+                private final AuditLog audit;
+                public PaymentService(PaymentGateway g, AuditLog a) { gateway = g; audit = a; }
+                public Receipt pay(String user, long amount) {
+                    if (amount <= 0) throw new IllegalArgumentException("amount");
+                    try {
+                        String id = gateway.charge(user, amount);
+                        audit.log("OK " + id);
+                        return new Receipt(id, amount);
+                    } catch (GatewayException e) {
+                        audit.log("FAIL " + user + " " + e.getMessage());
+                        throw e;
+                    }
+                }
+            }
+
+            // PaymentServiceTest.java
+            @ExtendWith(MockitoExtension.class)
+            class PaymentServiceTest {
+                @Mock PaymentGateway gateway;
+                @Mock AuditLog audit;
+                @InjectMocks PaymentService service;
+
+                @Test void success() {
+                    when(gateway.charge("ann", 100)).thenReturn("tx1");
+                    Receipt r = service.pay("ann", 100);
+                    assertEquals("tx1", r.id());
+                    verify(audit).log("OK tx1");
+                }
+                @Test void gatewayFails() {
+                    when(gateway.charge(any(), anyLong())).thenThrow(new GatewayException("down"));
+                    assertThrows(GatewayException.class, () -> service.pay("ann", 100));
+                    ArgumentCaptor<String> msg = ArgumentCaptor.forClass(String.class);
+                    verify(audit).log(msg.capture());
+                    assertTrue(msg.getValue().startsWith("FAIL"));
+                }
+                @Test void invalidAmount() {
+                    assertThrows(IllegalArgumentException.class, () -> service.pay("ann", 0));
+                    verifyNoInteractions(gateway, audit);
+                }
+            }
+      - id: java-08-04
+        title: Логирование SLF4J/Logback
+        minutes: 30
+        xp: 40
+        theory: |
+          `System.out.println` не годится для продакшена: нет уровней, времени, потоков, ротации файлов. Стандарт — **SLF4J** (фасад, API) + **Logback** или Log4j2 (реализация). В Spring Boot всё уже подключено.
+
+          ```java
+          import org.slf4j.Logger;
+          import org.slf4j.LoggerFactory;
+
+          public class OrderService {
+              private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
+              public void place(Order o) {
+                  log.debug("Начинаем оформление {}", o);
+                  log.info("Заказ {} на сумму {} оформлен", o.id(), o.sum());
+                  try { pay(o); }
+                  catch (PaymentException e) {
+                      log.error("Оплата заказа {} не прошла", o.id(), e);  // исключение — последним
+                  }
+              }
+          }
+          ```
+
+          (С Lombok — просто аннотация `@Slf4j`.)
+
+          ## Уровни
+
+          `TRACE < DEBUG < INFO < WARN < ERROR`. Если уровень логгера INFO, сообщения DEBUG и TRACE отбрасываются.
+
+          - **ERROR** — операция не выполнена, нужно вмешательство.
+          - **WARN** — что-то странное, но работа продолжается.
+          - **INFO** — ключевые бизнес-события.
+          - **DEBUG/TRACE** — детали для отладки.
+
+          ## Плейсхолдеры `{}`
+
+          `log.debug("user " + user)` склеивает строку **всегда**, даже если DEBUG выключен. `log.debug("user {}", user)` форматирует только при необходимости.
+
+          ## logback.xml
+
+          ```xml
+          <configuration>
+            <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+              <encoder><pattern>%d{HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n</pattern></encoder>
+            </appender>
+            <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+              <file>logs/app.log</file>
+              <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>logs/app.%d{yyyy-MM-dd}.log</fileNamePattern>
+                <maxHistory>30</maxHistory>
+              </rollingPolicy>
+              <encoder><pattern>%d %-5level %logger - %msg%n</pattern></encoder>
+            </appender>
+            <logger name="ru.shop" level="DEBUG"/>
+            <root level="INFO">
+              <appender-ref ref="CONSOLE"/>
+              <appender-ref ref="FILE"/>
+            </root>
+          </configuration>
+          ```
+
+          ## MDC и практики
+
+          `MDC.put("requestId", id)` добавляет контекст ко всем записям потока (`%X{requestId}` в шаблоне) — удобно для трассировки запросов. Не логируйте пароли, токены и персональные данные. В облаке часто пишут **структурированные JSON-логи** для ELK/Loki.
+        practice:
+          - type: choice
+            q: Какой уровень логирования самый подробный?
+            options: ["DEBUG", "INFO", "TRACE", "WARN"]
+            answer: 2
+          - type: bug
+            q: Какая строка — неэффективная практика?
+            code: |
+              private static final Logger log = LoggerFactory.getLogger(App.class);
+              void handle(Request r) {
+                  log.debug("Запрос: " + r.toString() + " от " + r.user());
+                  process(r);
+              }
+            bugLine: 3
+            fix: "log.debug(\"Запрос: {} от {}\", r, r.user());"
+            explain: Конкатенация выполняется всегда, даже если DEBUG выключен; плейсхолдеры откладывают форматирование.
+          - type: fill
+            q: Получите логгер для класса
+            code: |
+              private static final Logger log = LoggerFactory.___(PaymentService.class);
+            answers: ["getLogger"]
+          - type: choice
+            q: Уровень root = WARN. Какие сообщения попадут в лог?
+            options: ["Все", "WARN и ERROR", "Только ERROR", "INFO и выше"]
+            answer: 1
+          - type: choice
+            q: Как передать исключение в лог, чтобы сохранился стек-трейс?
+            options: ["log.error(\"ошибка \" + e)", "log.error(\"ошибка {}\", id, e) — исключение последним аргументом", "e.printStackTrace()", "log.error(e.getMessage())"]
+            answer: 1
+        homework:
+          task: |
+            Добавьте логирование в консольное приложение «Банк» (или любое своё): SLF4J + Logback, логгер в каждом классе, уровни по смыслу (INFO — операции, WARN — отказ в снятии, ERROR — исключения со стеком). Настройте `logback.xml`: консоль с цветным шаблоном и файл с ежедневной ротацией и хранением 7 дней; для пакета вашего приложения уровень DEBUG. Добавьте MDC с id клиента.
+          checklist:
+            - Используются плейсхолдеры {}
+            - Исключения логируются со стеком
+            - Есть ротация файлов
+            - Нет вывода секретов
+          solution: |
+            // pom.xml: ch.qos.logback:logback-classic:1.5.6
+            import org.slf4j.*;
+
+            public class Bank {
+                private static final Logger log = LoggerFactory.getLogger(Bank.class);
+                private long balance = 1000;
+
+                void withdraw(String client, long sum) {
+                    MDC.put("client", client);
+                    try {
+                        log.debug("Запрос на снятие {}", sum);
+                        if (sum > balance) { log.warn("Отказ: запрошено {}, доступно {}", sum, balance); return; }
+                        balance -= sum;
+                        log.info("Снято {}, остаток {}", sum, balance);
+                    } catch (RuntimeException e) {
+                        log.error("Сбой операции", e);
+                    } finally { MDC.remove("client"); }
+                }
+                public static void main(String[] args) {
+                    Bank b = new Bank();
+                    b.withdraw("c-1", 300);
+                    b.withdraw("c-2", 5000);
+                }
+            }
+
+            <!-- src/main/resources/logback.xml -->
+            <configuration>
+              <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+                <encoder><pattern>%d{HH:mm:ss} %highlight(%-5level) [%X{client}] %logger{20} - %msg%n</pattern></encoder>
+              </appender>
+              <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <file>logs/bank.log</file>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                  <fileNamePattern>logs/bank.%d{yyyy-MM-dd}.log</fileNamePattern>
+                  <maxHistory>7</maxHistory>
+                </rollingPolicy>
+                <encoder><pattern>%d %-5level [%X{client}] %logger - %msg%n</pattern></encoder>
+              </appender>
+              <logger name="Bank" level="DEBUG"/>
+              <root level="INFO"><appender-ref ref="CONSOLE"/><appender-ref ref="FILE"/></root>
+            </configuration>

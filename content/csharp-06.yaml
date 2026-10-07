@@ -1,0 +1,626 @@
+id: csharp
+modules:
+  - id: cs-m6
+    title: Асинхронность и многопоточность
+    level: Middle
+    lessons:
+      - id: cs-06-01
+        title: Потоки и TPL
+        minutes: 30
+        xp: 40
+        theory: |
+          **Поток** (thread) — единица выполнения внутри процесса. Потоки разделяют общую память, поэтому могут работать параллельно с одними данными.
+
+          ```csharp
+          var t = new Thread(() => Console.WriteLine($"Поток {Environment.CurrentManagedThreadId}"));
+          t.Start();
+          t.Join();          // дождаться завершения
+          ```
+
+          Создавать `Thread` вручную дорого (~1 МБ стека, системный вызов). Поэтому в .NET есть **пул потоков** и поверх него — **TPL** (Task Parallel Library).
+
+          ## Task
+
+          `Task` — «операция, которая завершится в будущем». `Task<T>` — с результатом.
+
+          ```csharp
+          Task<int> task = Task.Run(() => HeavyCompute());   // выполнить в пуле потоков
+          int result = task.Result;     // блокирует поток — в async-коде используйте await
+
+          Task[] all = { Task.Run(A), Task.Run(B) };
+          Task.WaitAll(all);
+          ```
+
+          ## Parallel — параллелизм данных
+
+          ```csharp
+          Parallel.For(0, 100, i => Process(i));
+
+          Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 4 }, file =>
+          {
+              Resize(file);
+          });
+
+          var sum = Enumerable.Range(1, 1_000_000).AsParallel().Where(IsPrime).Count(); // PLINQ
+          ```
+
+          ## CPU-bound vs I/O-bound
+
+          | Тип работы | Пример | Инструмент |
+          |---|---|---|
+          | CPU-bound | вычисления, сжатие | `Parallel`, `Task.Run`, PLINQ |
+          | I/O-bound | HTTP, БД, файлы | `async/await` **без** Task.Run |
+
+          Для I/O поток не нужен: пока ждём ответ сети, поток должен быть свободен.
+
+          ## Исключения в задачах
+
+          Исключение внутри `Task` сохраняется и выбрасывается при `await` (или как `AggregateException` при `.Wait()`/`.Result`).
+
+          > ⚠️ Параллельный код не всегда быстрее: накладные расходы на маленьких задачах и общие данные (блокировки) могут сделать его медленнее последовательного.
+        practice:
+          - type: choice
+            q: Что лучше для параллельной обработки 10 000 изображений (CPU)?
+            options: ["async/await без Task.Run", "Parallel.ForEach", "Thread.Sleep", "Один поток"]
+            answer: 1
+          - type: choice
+            q: Какое исключение бросает `task.Wait()`, если внутри задачи ошибка?
+            options: ["Исходное исключение", "AggregateException", "TaskCanceledException", "Никакое"]
+            answer: 1
+          - type: fill
+            q: Запустите вычисление в пуле потоков
+            code: |
+              Task<long> t = Task.___(() => Factorial(20));
+            answers: ["Run"]
+          - type: choice
+            q: Зачем нужен пул потоков?
+            options: ["Чтобы не создавать дорогие потоки на каждую задачу", "Чтобы потоки не делили память", "Чтобы код был однопоточным", "Для работы с UI"]
+            answer: 0
+        homework:
+          task: |
+            Посчитайте количество простых чисел до 5 000 000 тремя способами: последовательно, через `Parallel.For` с локальными счётчиками (`localInit/localFinally` + `Interlocked.Add`) и через PLINQ. Замерьте время `Stopwatch` и выведите ускорение относительно последовательной версии.
+          checklist:
+            - Результаты всех трёх способов совпадают
+            - В Parallel.For нет гонки данных
+            - Выведено время каждого способа
+          solution: |
+            using System.Diagnostics;
+
+            static bool IsPrime(int n)
+            {
+                if (n < 2) return false;
+                for (int d = 2; d * d <= n; d++) if (n % d == 0) return false;
+                return true;
+            }
+            const int N = 5_000_000;
+
+            var sw = Stopwatch.StartNew();
+            int seq = 0;
+            for (int i = 0; i < N; i++) if (IsPrime(i)) seq++;
+            var tSeq = sw.ElapsedMilliseconds;
+
+            sw.Restart();
+            int par = 0;
+            Parallel.For(0, N, () => 0,
+                (i, _, local) => IsPrime(i) ? local + 1 : local,
+                local => Interlocked.Add(ref par, local));
+            var tPar = sw.ElapsedMilliseconds;
+
+            sw.Restart();
+            int plinq = Enumerable.Range(0, N).AsParallel().Count(IsPrime);
+            var tPl = sw.ElapsedMilliseconds;
+
+            Console.WriteLine($"{seq}/{par}/{plinq}  seq={tSeq} par={tPar} ({(double)tSeq / tPar:F1}x) plinq={tPl}");
+      - id: cs-06-02
+        title: async/await
+        minutes: 35
+        xp: 40
+        theory: |
+          `async/await` позволяет писать асинхронный код как обычный последовательный.
+
+          ```csharp
+          static async Task<string> LoadAsync(string url)
+          {
+              using var http = new HttpClient();
+              string html = await http.GetStringAsync(url);  // поток освобождается на время ожидания
+              return html[..100];
+          }
+
+          string text = await LoadAsync("https://example.com");
+          ```
+
+          ## Как это работает
+
+          Компилятор превращает async-метод в **машину состояний**. На `await` незавершённой задачи метод «приостанавливается» и возвращает управление вызывающему, а продолжение регистрируется как колбэк. Когда операция завершится, выполнение продолжится (возможно, на другом потоке пула).
+
+          `await` **не создаёт поток**. Асинхронный I/O вообще не занимает потоки во время ожидания.
+
+          ## Параллельный запуск
+
+          ```csharp
+          // ❌ последовательно: 3 секунды
+          var a = await GetAsync(1); var b = await GetAsync(2); var c = await GetAsync(3);
+
+          // ✅ параллельно: ~1 секунда
+          Task<User> t1 = GetAsync(1), t2 = GetAsync(2), t3 = GetAsync(3);
+          User[] users = await Task.WhenAll(t1, t2, t3);
+
+          Task first = await Task.WhenAny(t1, t2);   // первая завершившаяся
+          ```
+
+          ## Правила
+
+          - Возвращайте `Task`/`Task<T>`. `async void` — **только** для обработчиков событий (исключения из него роняют процесс).
+          - **Не блокируйте**: `.Result`, `.Wait()` в async-коде ведут к deadlock (в UI/старом ASP.NET) и истощению пула. Async «всю дорогу вверх».
+          - Суффикс `Async` в имени метода.
+          - В библиотеках — `await x.ConfigureAwait(false)`, чтобы не возвращаться в контекст синхронизации UI.
+          - `ValueTask<T>` — для горячих путей, где результат часто готов синхронно.
+
+          ```csharp
+          public async Task<int> GetCountAsync()
+          {
+              if (cache is not null) return cache.Count;   // без await — тоже ок
+              var data = await repo.LoadAsync();
+              return data.Count;
+          }
+          ```
+
+          ## Async-потоки
+
+          ```csharp
+          await foreach (var row in db.StreamRowsAsync()) Console.WriteLine(row);
+          ```
+        practice:
+          - type: output
+            q: В каком порядке выведутся буквы?
+            code: |
+              static async Task F()
+              {
+                  Console.Write("B");
+                  await Task.Delay(100);
+                  Console.Write("D");
+              }
+              Console.Write("A");
+              var t = F();
+              Console.Write("C");
+              await t;
+            answer: ABCD
+            explain: До первого await метод выполняется синхронно, затем управление возвращается вызывающему.
+          - type: choice
+            q: Когда допустимо `async void`?
+            options: ["Всегда", "Только в обработчиках событий", "В библиотеках", "В конструкторах"]
+            answer: 1
+          - type: fill
+            q: Дождитесь завершения всех задач
+            code: |
+              var results = await Task.___(t1, t2, t3);
+            answers: ["WhenAll"]
+          - type: bug
+            q: Какая строка может вызвать deadlock в UI-приложении?
+            code: |
+              private void Button_Click(object s, EventArgs e)
+              {
+                  var data = LoadAsync().Result;
+                  label.Text = data;
+              }
+            bugLine: 3
+            fix: "private async void Button_Click(...) { var data = await LoadAsync(); ... }"
+            explain: .Result блокирует UI-поток, а продолжение LoadAsync ждёт этот же поток.
+          - type: choice
+            q: Создаёт ли `await` новый поток?
+            options: ["Да, всегда", "Нет", "Только для Task.Delay", "Только в консольных приложениях"]
+            answer: 1
+        homework:
+          task: |
+            Напишите `async Task<Dictionary<string, int>> GetPageSizesAsync(IEnumerable<string> urls)`, которая параллельно скачивает страницы (не более 3 одновременно через `SemaphoreSlim`), возвращает размер каждой, а ошибки (недоступный сайт) записывает как -1, не роняя остальные загрузки.
+          checklist:
+            - Один HttpClient на всё
+            - Ограничение параллелизма SemaphoreSlim(3)
+            - Используется Task.WhenAll
+            - Release в finally
+          solution: |
+            static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(10) };
+
+            static async Task<Dictionary<string, int>> GetPageSizesAsync(IEnumerable<string> urls)
+            {
+                using var gate = new SemaphoreSlim(3);
+                var tasks = urls.Select(async url =>
+                {
+                    await gate.WaitAsync();
+                    try
+                    {
+                        var s = await http.GetStringAsync(url);
+                        return (url, s.Length);
+                    }
+                    catch (HttpRequestException) { return (url, -1); }
+                    catch (TaskCanceledException) { return (url, -1); }
+                    finally { gate.Release(); }
+                });
+                var results = await Task.WhenAll(tasks);
+                return results.ToDictionary(r => r.url, r => r.Item2);
+            }
+      - id: cs-06-03
+        title: CancellationToken и тайм-ауты
+        minutes: 25
+        xp: 35
+        theory: |
+          Долгие операции нужно уметь **отменять**: пользователь закрыл окно, HTTP-запрос клиента оборвался, истёк тайм-аут. В .NET это кооперативная отмена через `CancellationToken`.
+
+          ```csharp
+          using var cts = new CancellationTokenSource();
+          cts.CancelAfter(TimeSpan.FromSeconds(5));        // авто-отмена через 5 с
+
+          try
+          {
+              await ProcessAsync(cts.Token);
+          }
+          catch (OperationCanceledException)
+          {
+              Console.WriteLine("Отменено");
+          }
+
+          static async Task ProcessAsync(CancellationToken ct)
+          {
+              for (int i = 0; i < 100; i++)
+              {
+                  ct.ThrowIfCancellationRequested();       // проверка в цикле
+                  await Task.Delay(200, ct);                // передаём токен дальше
+              }
+          }
+          ```
+
+          «Кооперативная» значит: токен лишь **сигнализирует**, а код сам должен проверять его и передавать во все async-API (`HttpClient`, EF Core, `Stream.ReadAsync`).
+
+          ## Правила
+
+          - Последний параметр async-метода: `CancellationToken ct = default`.
+          - Передавайте токен **во все** вложенные вызовы.
+          - Отмена — не ошибка: ловите `OperationCanceledException` (базовый класс для `TaskCanceledException`) отдельно и не логируйте как error.
+          - `CancellationTokenSource` — `IDisposable`.
+
+          ## Связанные токены
+
+          ```csharp
+          // отмена либо пользователем, либо по тайм-ауту
+          using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+          using var linked = CancellationTokenSource.CreateLinkedTokenSource(userToken, timeout.Token);
+          await http.GetAsync(url, linked.Token);
+          ```
+
+          ## Тайм-аут для любой задачи (.NET 6+)
+
+          ```csharp
+          var data = await LoadAsync().WaitAsync(TimeSpan.FromSeconds(2)); // TimeoutException
+          ```
+
+          ## В ASP.NET Core
+
+          ```csharp
+          app.MapGet("/report", async (ReportService s, CancellationToken ct) => await s.BuildAsync(ct));
+          ```
+
+          Токен отменится, если клиент закрыл соединение, — сервер не тратит ресурсы впустую.
+
+          `ct.Register(() => ...)` — колбэк при отмене.
+        practice:
+          - type: fill
+            q: Отмените операцию автоматически через 10 секунд
+            code: |
+              using var cts = new CancellationTokenSource();
+              cts.___(TimeSpan.FromSeconds(10));
+            answers: ["CancelAfter"]
+          - type: choice
+            q: Что значит «кооперативная отмена»?
+            options: ["Поток убивается принудительно", "Код сам проверяет токен и завершает работу", "Отмена работает только в UI", "Отменяются все задачи процесса"]
+            answer: 1
+          - type: choice
+            q: Какое исключение ловить для отмены?
+            options: ["TimeoutException", "OperationCanceledException", "AbortException", "ThreadInterruptedException"]
+            answer: 1
+          - type: fill
+            q: Объедините токен пользователя и тайм-аут
+            code: |
+              using var linked = CancellationTokenSource.___(userCt, timeoutCts.Token);
+            answers: ["CreateLinkedTokenSource"]
+          - type: bug
+            q: Какая строка делает отмену неработающей?
+            code: |
+              async Task DownloadAllAsync(string[] urls, CancellationToken ct)
+              {
+                  foreach (var url in urls)
+                  {
+                      ct.ThrowIfCancellationRequested();
+                      var data = await http.GetByteArrayAsync(url);
+                      await File.WriteAllBytesAsync(Name(url), data, ct);
+                  }
+              }
+            bugLine: 6
+            fix: await http.GetByteArrayAsync(url, ct);
+            explain: Токен не передан в долгий HTTP-запрос — скачивание большого файла не прервётся.
+        homework:
+          task: |
+            Консольная программа: запускает «долгую обработку» 20 файлов (каждый — `Task.Delay(500, ct)`), показывает прогресс через `IProgress<int>`, отменяется по нажатию любой клавиши или через 6 секунд — что наступит раньше. В конце выводит, сколько файлов успели обработать.
+          checklist:
+            - Используется linked token source
+            - Отмена обрабатывается отдельно от ошибок
+            - Все CTS освобождаются (using)
+          solution: |
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            using var user = new CancellationTokenSource();
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, user.Token);
+
+            _ = Task.Run(() => { Console.ReadKey(true); user.Cancel(); });
+
+            var progress = new Progress<int>(n => Console.WriteLine($"Готово {n}/20"));
+            int done = 0;
+            try
+            {
+                done = await ProcessAsync(progress, linked.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine(timeout.IsCancellationRequested ? "Тайм-аут" : "Отменено пользователем");
+            }
+
+            static async Task<int> ProcessAsync(IProgress<int> p, CancellationToken ct)
+            {
+                for (int i = 1; i <= 20; i++)
+                {
+                    await Task.Delay(500, ct);
+                    p.Report(i);
+                }
+                return 20;
+            }
+      - id: cs-06-04
+        title: Синхронизация, lock, ConcurrentDictionary
+        minutes: 35
+        xp: 40
+        theory: |
+          **Гонка данных** (race condition): несколько потоков одновременно меняют общие данные, и результат зависит от случайного порядка.
+
+          ```csharp
+          int count = 0;
+          Parallel.For(0, 100_000, _ => count++);   // ❌ результат < 100000
+          ```
+
+          `count++` — это три операции: прочитать, прибавить, записать. Потоки перезаписывают изменения друг друга.
+
+          ## lock
+
+          ```csharp
+          private readonly object sync = new();   // .NET 9: private readonly Lock sync = new();
+          private int count;
+
+          public void Inc()
+          {
+              lock (sync)          // только один поток внутри
+              {
+                  count++;
+              }
+          }
+          ```
+
+          Правила: блокируйте на **приватном** объекте (не `this`, не `typeof`, не строке); держите lock как можно короче; **нельзя** `await` внутри `lock`.
+
+          ## Interlocked — атомарные операции
+
+          ```csharp
+          Interlocked.Increment(ref count);
+          Interlocked.Add(ref total, 5);
+          Interlocked.CompareExchange(ref state, newValue, expected);
+          ```
+
+          ## Асинхронная блокировка
+
+          ```csharp
+          private readonly SemaphoreSlim gate = new(1, 1);
+          await gate.WaitAsync();
+          try { await SaveAsync(); }
+          finally { gate.Release(); }
+          ```
+
+          ## Потокобезопасные коллекции
+
+          ```csharp
+          var cache = new ConcurrentDictionary<string, int>();
+          cache.TryAdd("a", 1);
+          cache.AddOrUpdate("a", 1, (key, old) => old + 1);
+          int v = cache.GetOrAdd("b", key => Compute(key));   // фабрика может вызваться дважды!
+          ```
+
+          Также: `ConcurrentQueue<T>`, `ConcurrentBag<T>`, `BlockingCollection<T>`, неизменяемые `ImmutableList<T>`.
+
+          ## Deadlock
+
+          Поток 1 держит A и ждёт B, поток 2 держит B и ждёт A — оба висят вечно. Защита: всегда брать блокировки в **одном порядке**, использовать тайм-ауты (`Monitor.TryEnter`), минимизировать вложенные lock.
+
+          > 💡 Лучшая синхронизация — её отсутствие: неизменяемые данные и отсутствие общего состояния.
+        practice:
+          - type: choice
+            q: Почему `count++` из нескольких потоков даёт неверный результат?
+            options: ["Это не атомарная операция: чтение-изменение-запись", "int слишком мал", "Потоки не видят переменную", "Ошибка компилятора"]
+            answer: 0
+          - type: fill
+            q: Атомарно увеличьте счётчик
+            code: |
+              Interlocked.___(ref counter);
+            answers: ["Increment"]
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              private readonly object sync = new();
+              public async Task SaveAsync()
+              {
+                  lock (sync)
+                  {
+                      await File.WriteAllTextAsync("a.txt", "x");
+                  }
+              }
+            bugLine: 6
+            fix: Используйте SemaphoreSlim.WaitAsync вместо lock
+            explain: Внутри lock нельзя использовать await.
+          - type: choice
+            q: Как избежать deadlock при нескольких блокировках?
+            options: ["Брать блокировки всегда в одном порядке", "Использовать больше потоков", "lock(this)", "Thread.Sleep перед lock"]
+            answer: 0
+          - type: output
+            q: Что выведет код?
+            code: |
+              var d = new ConcurrentDictionary<string, int>();
+              d.AddOrUpdate("x", 1, (k, v) => v + 10);
+              d.AddOrUpdate("x", 1, (k, v) => v + 10);
+              Console.WriteLine(d["x"]);
+            answer: "11"
+        homework:
+          task: |
+            Реализуйте потокобезопасный `RateLimiter`: не более N запросов на ключ (IP) за окно в 1 минуту. Метод `bool TryAcquire(string key)`. Используйте `ConcurrentDictionary<string, Queue<DateTime>>` и lock на очередь конкретного ключа. Проверьте 1000 параллельных вызовов из `Parallel.For`.
+          checklist:
+            - Нет глобального lock на весь словарь
+            - Устаревшие отметки удаляются
+            - Тест показывает ровно N разрешённых
+          solution: |
+            using System.Collections.Concurrent;
+
+            public class RateLimiter(int limit, TimeSpan window)
+            {
+                private readonly ConcurrentDictionary<string, Queue<DateTime>> map = new();
+
+                public bool TryAcquire(string key)
+                {
+                    var q = map.GetOrAdd(key, _ => new Queue<DateTime>());
+                    lock (q)
+                    {
+                        var now = DateTime.UtcNow;
+                        while (q.Count > 0 && now - q.Peek() > window) q.Dequeue();
+                        if (q.Count >= limit) return false;
+                        q.Enqueue(now);
+                        return true;
+                    }
+                }
+            }
+
+            var rl = new RateLimiter(100, TimeSpan.FromMinutes(1));
+            int allowed = 0;
+            Parallel.For(0, 1000, _ => { if (rl.TryAcquire("1.2.3.4")) Interlocked.Increment(ref allowed); });
+            Console.WriteLine(allowed); // 100
+      - id: cs-06-05
+        title: Channels и producer/consumer
+        minutes: 30
+        xp: 40
+        theory: |
+          **Producer/consumer** — классический шаблон: одни задачи производят работу, другие потребляют. Между ними — очередь. В современном .NET для этого есть `System.Threading.Channels` — асинхронная потокобезопасная очередь.
+
+          ```csharp
+          using System.Threading.Channels;
+
+          var channel = Channel.CreateBounded<int>(new BoundedChannelOptions(100)
+          {
+              FullMode = BoundedChannelFullMode.Wait     // производитель ждёт, если очередь полна
+          });
+
+          // производитель
+          var producer = Task.Run(async () =>
+          {
+              for (int i = 0; i < 1000; i++)
+                  await channel.Writer.WriteAsync(i);
+              channel.Writer.Complete();                 // больше данных не будет
+          });
+
+          // несколько потребителей
+          var consumers = Enumerable.Range(0, 4).Select(id => Task.Run(async () =>
+          {
+              await foreach (var item in channel.Reader.ReadAllAsync())
+                  await HandleAsync(id, item);
+          })).ToArray();
+
+          await producer;
+          await Task.WhenAll(consumers);
+          ```
+
+          ## Bounded vs Unbounded
+
+          - `CreateUnbounded<T>()` — без ограничения: быстрый производитель может съесть всю память.
+          - `CreateBounded<T>(n)` — **back-pressure**: производитель притормаживает. В проде почти всегда bounded.
+
+          `FullMode`: `Wait`, `DropOldest`, `DropNewest`, `DropWrite`.
+
+          ## Где применяется
+
+          - фоновая обработка в ASP.NET Core: эндпоинт кладёт задачу в канал, `BackgroundService` разбирает;
+          - конвейеры (pipeline): скачать → распарсить → сохранить, каждый этап — отдельный канал;
+          - логирование, телеметрия, пакетная запись в БД.
+
+          ```csharp
+          public class EmailQueue
+          {
+              private readonly Channel<Email> ch = Channel.CreateBounded<Email>(500);
+              public ValueTask EnqueueAsync(Email e, CancellationToken ct) => ch.Writer.WriteAsync(e, ct);
+              public IAsyncEnumerable<Email> ReadAllAsync(CancellationToken ct) => ch.Reader.ReadAllAsync(ct);
+          }
+
+          public class EmailWorker(EmailQueue q, ISender s) : BackgroundService
+          {
+              protected override async Task ExecuteAsync(CancellationToken ct)
+              {
+                  await foreach (var e in q.ReadAllAsync(ct)) await s.SendAsync(e, ct);
+              }
+          }
+          ```
+
+          > 💡 Альтернативы: `BlockingCollection<T>` (блокирующая, старее), TPL Dataflow (`ActionBlock`, `TransformBlock`), очереди-брокеры (RabbitMQ, Kafka) — между процессами.
+        practice:
+          - type: fill
+            q: Сообщите потребителям, что данных больше не будет
+            code: |
+              channel.Writer.___();
+            answers: ["Complete"]
+          - type: choice
+            q: Зачем нужен bounded-канал?
+            options: ["Он быстрее", "Back-pressure: ограничить память, притормозив производителя", "Он сортирует элементы", "Для работы без async"]
+            answer: 1
+          - type: fill
+            q: Перебирайте элементы канала асинхронно
+            code: |
+              ___ foreach (var x in channel.Reader.ReadAllAsync()) Handle(x);
+            answers: ["await"]
+          - type: choice
+            q: Что будет с `ReadAllAsync`, если писатель никогда не вызовет Complete?
+            options: ["Цикл завершится, когда очередь опустеет", "Цикл будет ждать новых данных вечно", "Исключение", "Цикл не начнётся"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте конвейер из трёх этапов на каналах: генератор URL (20 штук) → 3 «загрузчика» (Task.Delay 100–300 мс, результат — длина строки) → 1 «сохранитель», который пишет результаты пачками по 5 в консоль. Каналы bounded(5), корректное завершение всех этапов.
+          checklist:
+            - Каждый этап завершает свой выходной канал
+            - Загрузчики завершают канал только когда все трое закончили
+            - Последняя неполная пачка тоже сохраняется
+          solution: |
+            using System.Threading.Channels;
+
+            var urls = Channel.CreateBounded<string>(5);
+            var results = Channel.CreateBounded<(string Url, int Len)>(5);
+
+            var gen = Task.Run(async () =>
+            {
+                for (int i = 1; i <= 20; i++) await urls.Writer.WriteAsync($"https://site/{i}");
+                urls.Writer.Complete();
+            });
+
+            var loaders = Enumerable.Range(0, 3).Select(_ => Task.Run(async () =>
+            {
+                await foreach (var u in urls.Reader.ReadAllAsync())
+                {
+                    await Task.Delay(Random.Shared.Next(100, 300));
+                    await results.Writer.WriteAsync((u, u.Length * 100));
+                }
+            })).ToArray();
+            _ = Task.WhenAll(loaders).ContinueWith(_ => results.Writer.Complete());
+
+            var batch = new List<(string, int)>();
+            await foreach (var r in results.Reader.ReadAllAsync())
+            {
+                batch.Add(r);
+                if (batch.Count == 5) { Console.WriteLine(string.Join(", ", batch)); batch.Clear(); }
+            }
+            if (batch.Count > 0) Console.WriteLine(string.Join(", ", batch));
+            await gen;

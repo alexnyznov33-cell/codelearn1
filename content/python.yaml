@@ -1,0 +1,1275 @@
+id: python
+title: Python
+short: Py
+lang: python
+color: "#3776ab"
+description: Самый популярный язык для старта, автоматизации, бэкенда и Data Science.
+modules:
+  - id: py-m1
+    title: Основы языка
+    level: Junior
+    lessons:
+      - id: py-01-01
+        title: Первая программа, print и комментарии
+        minutes: 10
+        xp: 15
+        theory: |
+          **Python** — интерпретируемый язык: код выполняется построчно, компилировать ничего не нужно. Установите Python с [python.org](https://python.org) и редактор (VS Code или PyCharm).
+
+          ## Первая программа
+
+          ```python
+          print("Привет, мир!")
+          ```
+
+          `print()` — встроенная функция, которая выводит значение в консоль. Ей можно передать несколько аргументов — они выведутся через пробел:
+
+          ```python
+          print("Мне", 25, "лет")      # Мне 25 лет
+          print("a", "b", sep="-")     # a-b
+          print("без перевода", end="")  # строка не закончится переносом
+          ```
+
+          - `sep` — разделитель между аргументами (по умолчанию пробел);
+          - `end` — что печатается в конце (по умолчанию `"\n"`, перенос строки).
+
+          ## Комментарии
+
+          Всё после `#` до конца строки игнорируется интерпретатором. Комментарии объясняют **зачем** написан код, а не что он делает.
+
+          ## Отступы важны
+
+          В Python блоки кода выделяются отступами (стандарт — 4 пробела), а не фигурными скобками. Лишний отступ в начале строки — это ошибка `IndentationError`.
+
+          > 💡 Запуск файла: `python main.py` (Windows) или `python3 main.py` (Linux/macOS).
+        practice:
+          - type: choice
+            q: Какая функция выводит текст в консоль?
+            options: ["`echo()`", "`print()`", "`console.log()`", "`write()`"]
+            answer: 1
+          - type: output
+            q: Что выведет программа?
+            code: |
+              print("a", "b", "c", sep="")
+            answer: abc
+          - type: output
+            q: Что выведет программа?
+            code: |
+              print("Hello", end=" ")
+              print("World")
+            answer: Hello World
+          - type: fill
+            q: Допишите код, чтобы вывести `1-2-3`
+            code: |
+              print(1, 2, 3, ___="-")
+            answers: [sep]
+          - type: bug
+            q: В какой строке ошибка?
+            code: |
+              # приветствие
+              print("Привет")
+                print("Как дела?")
+            bugLine: 3
+            explain: Лишний отступ в начале строки вызывает `IndentationError`.
+            fix: |
+              print("Как дела?")
+        homework:
+          task: |
+            Напишите программу `card.py`, которая выводит «визитку»:
+
+            ```
+            ==========
+            Имя: Алекс
+            Язык: Python
+            ==========
+            ```
+
+            Используйте `print` с параметром `sep` хотя бы один раз.
+          hints:
+            - "Строку из `=` можно получить умножением: `\"=\" * 10`."
+          checklist:
+            - Программа запускается без ошибок
+            - Использован параметр `sep`
+            - Есть хотя бы один осмысленный комментарий
+          solution: |
+            line = "=" * 10  # рамка
+            print(line)
+            print("Имя", "Алекс", sep=": ")
+            print("Язык", "Python", sep=": ")
+            print(line)
+
+      - id: py-01-02
+        title: Переменные и типы данных
+        minutes: 15
+        xp: 20
+        theory: |
+          **Переменная** — имя, которое ссылается на значение в памяти. Тип объявлять не нужно: Python определяет его сам (**динамическая типизация**).
+
+          ```python
+          age = 25          # int — целое число
+          price = 99.9      # float — дробное число
+          name = "Анна"     # str — строка
+          is_admin = False  # bool — логическое значение
+          nothing = None    # NoneType — «ничего»
+          ```
+
+          Узнать тип: `type(age)` → `<class 'int'>`.
+
+          ## Правила имён
+
+          - буквы, цифры, `_`; не может начинаться с цифры;
+          - регистр важен: `name` и `Name` — разные переменные;
+          - стиль Python — `snake_case`: `user_name`, `max_value`;
+          - константы пишут КАПСОМ: `MAX_SIZE = 100`.
+
+          ## Множественное присваивание
+
+          ```python
+          x, y = 1, 2
+          x, y = y, x      # обмен значениями без временной переменной
+          a = b = 0
+          ```
+
+          ## Преобразование типов
+
+          ```python
+          int("42")      # 42
+          float("3.5")   # 3.5
+          str(10)        # "10"
+          bool(0)        # False — 0, "", [], None считаются ложными
+          int(3.99)      # 3 — дробная часть отбрасывается
+          ```
+
+          > ⚠️ `int("3.5")` вызовет `ValueError` — сначала `float()`, потом `int()`.
+        practice:
+          - type: choice
+            q: Какой тип у значения `3.0`?
+            options: ["`int`", "`float`", "`str`", "`decimal`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              x, y = 5, 10
+              x, y = y, x
+              print(x, y)
+            answer: 10 5
+          - type: choice
+            q: Какие имена переменных допустимы?
+            options: ["`user_name`", "`2name`", "`_count`", "`my-var`"]
+            answer: [0, 2]
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(int(7.9) + int("3"))
+            answer: "10"
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(bool(""), bool("0"))
+            answer: False True
+            explain: Пустая строка ложна, а строка `"0"` не пустая — значит истинна.
+          - type: bug
+            q: Где ошибка?
+            code: |
+              count = 10
+              total = 2.5
+              result = count * total
+              print(Result)
+            bugLine: 4
+            explain: Регистр имеет значение — переменной `Result` не существует (`NameError`).
+            fix: print(result)
+        homework:
+          task: |
+            Создайте переменные с информацией о товаре: название, цена (дробное), количество (целое), есть ли в наличии.
+            Выведите каждую переменную и её тип в формате `Ноутбук <class 'str'>`. Затем посчитайте общую стоимость (цена × количество).
+          hints:
+            - "Тип выводится через `type(переменная)`."
+          checklist:
+            - Использованы 4 разных типа данных
+            - Имена в стиле snake_case
+            - Общая стоимость выводится правильно
+          solution: |
+            title = "Ноутбук"
+            price = 54999.9
+            quantity = 3
+            in_stock = True
+            for value in (title, price, quantity, in_stock):
+                print(value, type(value))
+            print("Итого:", price * quantity)
+
+      - id: py-01-03
+        title: Ввод данных и арифметика
+        minutes: 15
+        xp: 20
+        theory: |
+          ## Ввод с клавиатуры
+
+          `input()` всегда возвращает **строку**. Для чисел нужно преобразование:
+
+          ```python
+          name = input("Как тебя зовут? ")
+          age = int(input("Сколько лет? "))
+          print("Через 10 лет тебе будет", age + 10)
+          ```
+
+          ## Арифметические операторы
+
+          | Оператор | Действие | Пример | Результат |
+          |---|---|---|---|
+          | `+ - *` | сложение, вычитание, умножение | `2 * 3` | `6` |
+          | `/` | деление (всегда float) | `7 / 2` | `3.5` |
+          | `//` | целочисленное деление | `7 // 2` | `3` |
+          | `%` | остаток от деления | `7 % 2` | `1` |
+          | `**` | возведение в степень | `2 ** 10` | `1024` |
+
+          Приоритет как в математике: `**`, затем `* / // %`, затем `+ -`. Скобки меняют порядок.
+
+          ## Составное присваивание
+
+          ```python
+          score = 10
+          score += 5   # score = score + 5
+          score *= 2   # 30
+          ```
+
+          ## Полезные функции
+
+          `abs(-5)` → 5, `round(3.14159, 2)` → 3.14, `max(1, 7, 3)` → 7, `min(...)`, `pow(2, 3)` → 8.
+
+          > 💡 Остаток `%` часто применяют для проверки чётности: `n % 2 == 0`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(17 // 5, 17 % 5)
+            answer: 3 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(10 / 2)
+            answer: "5.0"
+            explain: Оператор `/` всегда возвращает `float`.
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(2 + 3 * 2 ** 2)
+            answer: "14"
+          - type: choice
+            q: Пользователь ввёл `5`. Что выведет `print(input() * 2)`?
+            options: ["`10`", "`55`", "Ошибку", "`5 5`"]
+            answer: 1
+            explain: "`input()` возвращает строку, а строка × 2 — это повторение."
+          - type: fill
+            q: Посчитайте сумму двух введённых чисел
+            code: |
+              a = ___(input())
+              b = int(input())
+              print(a ___ b)
+            answers: [int, "+"]
+          - type: order
+            q: Соберите программу, которая переводит минуты в часы и минуты
+            lines:
+              - total = int(input())
+              - hours = total // 60
+              - minutes = total % 60
+              - print(hours, "ч", minutes, "мин")
+        homework:
+          task: |
+            **Калькулятор чаевых.** Программа спрашивает сумму счёта и процент чаевых, затем выводит сумму чаевых и итог, округлённые до 2 знаков.
+
+            ```
+            Сумма счёта: 2350
+            Процент чаевых: 10
+            Чаевые: 235.0
+            Итого: 2585.0
+            ```
+          hints:
+            - Сумма может быть дробной — используйте `float()`.
+            - "Процент: `bill * percent / 100`."
+          checklist:
+            - Ввод корректно преобразуется в числа
+            - Используется `round(..., 2)`
+          solution: |
+            bill = float(input("Сумма счёта: "))
+            percent = float(input("Процент чаевых: "))
+            tip = round(bill * percent / 100, 2)
+            print("Чаевые:", tip)
+            print("Итого:", round(bill + tip, 2))
+
+      - id: py-01-04
+        title: Условия if / elif / else
+        minutes: 20
+        xp: 25
+        theory: |
+          ## Операторы сравнения
+
+          `==` равно, `!=` не равно, `<`, `>`, `<=`, `>=`. Результат — `True` или `False`.
+          В Python можно писать цепочки: `0 < x < 10`.
+
+          ## Конструкция if
+
+          ```python
+          age = int(input())
+          if age >= 18:
+              print("Доступ разрешён")
+          elif age >= 14:
+              print("Нужно разрешение родителей")
+          else:
+              print("Доступ запрещён")
+          ```
+
+          Условия проверяются сверху вниз, выполняется **первая** истинная ветка. `elif` и `else` необязательны.
+
+          ## Логические операторы
+
+          - `and` — истина, если оба условия истинны;
+          - `or` — истина, если хотя бы одно истинно;
+          - `not` — отрицание.
+
+          ```python
+          if login == "admin" and password == "1234":
+              print("Добро пожаловать")
+          ```
+
+          ## Тернарный оператор
+
+          ```python
+          status = "взрослый" if age >= 18 else "ребёнок"
+          ```
+
+          ## match (Python 3.10+)
+
+          ```python
+          match command:
+              case "start":
+                  print("Запуск")
+              case "stop" | "exit":
+                  print("Остановка")
+              case _:
+                  print("Неизвестная команда")
+          ```
+
+          > ⚠️ Не путайте `=` (присваивание) и `==` (сравнение).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              x = 15
+              if x > 10:
+                  print("A")
+              elif x > 5:
+                  print("B")
+              else:
+                  print("C")
+            answer: A
+            explain: Выполняется только первая истинная ветка.
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(5 > 3 and 2 > 4, not False)
+            answer: False True
+          - type: fill
+            q: Проверьте, что число чётное
+            code: |
+              n = int(input())
+              if n ___ 2 == 0:
+                  print("чётное")
+              ___:
+                  print("нечётное")
+            answers: ["%", else]
+          - type: output
+            q: Что выведет код?
+            code: |
+              age = 16
+              print("да" if age >= 18 else "нет")
+            answer: нет
+          - type: bug
+            q: Найдите ошибку
+            code: |
+              score = int(input())
+              if score = 100:
+                  print("Идеально!")
+            bugLine: 2
+            fix: "if score == 100:"
+            explain: Для сравнения используется `==`.
+          - type: choice
+            q: Как в Python записать «x от 1 до 10 включительно»?
+            options: ["`1 <= x <= 10`", "`x >= 1 && x <= 10`", "`1 =< x =< 10`", "`x in 1..10`"]
+            answer: 0
+        homework:
+          task: |
+            **Проверка года.** Пользователь вводит год. Выведите `високосный` или `обычный`.
+
+            Правило: год високосный, если делится на 4, но не на 100, **или** делится на 400.
+            Примеры: 2024 → високосный, 1900 → обычный, 2000 → високосный.
+          hints:
+            - "Используйте `%`, `and`, `or`."
+          checklist:
+            - 2024, 1900, 2000, 2023 дают верный ответ
+            - Условие записано одним выражением или аккуратной цепочкой elif
+          solution: |
+            year = int(input("Год: "))
+            if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0:
+                print("високосный")
+            else:
+                print("обычный")
+
+      - id: py-01-05
+        title: Циклы while и for, range
+        minutes: 20
+        xp: 25
+        theory: |
+          ## while
+
+          Повторяет блок, пока условие истинно:
+
+          ```python
+          n = 3
+          while n > 0:
+              print(n)
+              n -= 1
+          print("Старт!")
+          ```
+
+          Не забывайте менять переменную условия — иначе получится бесконечный цикл.
+
+          ## for и range
+
+          `for` перебирает элементы последовательности. `range` генерирует числа:
+
+          ```python
+          for i in range(5):        # 0 1 2 3 4
+              print(i)
+          for i in range(2, 8, 2):  # 2 4 6 — (старт, стоп, шаг), стоп не входит
+              print(i)
+          for i in range(5, 0, -1): # 5 4 3 2 1
+              print(i)
+          for ch in "кот":          # перебор символов строки
+              print(ch)
+          ```
+
+          ## break, continue, else
+
+          - `break` — немедленно выйти из цикла;
+          - `continue` — перейти к следующей итерации;
+          - `else` у цикла выполняется, если цикл завершился **без** `break`.
+
+          ```python
+          for n in range(2, 10):
+              if n % 7 == 0:
+                  print("Нашли", n)
+                  break
+          else:
+              print("Не нашли")
+          ```
+
+          ## Накопление результата
+
+          ```python
+          total = 0
+          for i in range(1, 101):
+              total += i
+          print(total)  # 5050
+          ```
+        practice:
+          - type: output
+            q: Что выведет код? (числа через пробел)
+            code: |
+              for i in range(1, 10, 3):
+                  print(i, end=" ")
+            answer: 1 4 7
+          - type: output
+            q: Сколько раз напечатается «hi»? Введите число.
+            code: |
+              i = 0
+              while i < 10:
+                  print("hi")
+                  i += 3
+            answer: "4"
+            explain: i принимает значения 0, 3, 6, 9.
+          - type: output
+            q: Что выведет код?
+            code: |
+              for i in range(6):
+                  if i == 4:
+                      break
+                  if i % 2 == 0:
+                      continue
+                  print(i)
+            answer: |
+              1
+              3
+          - type: fill
+            q: Выведите числа от 10 до 1
+            code: |
+              for i in range(10, ___, ___):
+                  print(i)
+            answers: ["0", "-1"]
+          - type: bug
+            q: Этот цикл никогда не закончится. Где ошибка?
+            code: |
+              count = 5
+              while count > 0:
+                  print(count)
+                  count += 1
+            bugLine: 4
+            fix: "    count -= 1"
+          - type: choice
+            q: Когда выполняется блок `else` у цикла `for`?
+            options: ["Всегда", "Если цикл не выполнился ни разу", "Если цикл завершился без `break`", "Если произошла ошибка"]
+            answer: 2
+        homework:
+          task: |
+            **Угадай число.** Программа загадывает число от 1 до 100 (`random.randint(1, 100)`), пользователь угадывает. После каждой попытки — подсказка «больше» / «меньше». В конце — количество попыток.
+          hints:
+            - "`import random` в начале файла."
+            - Бесконечный цикл `while True` + `break` при угадывании.
+          checklist:
+            - Подсказки работают правильно
+            - Считается количество попыток
+            - Программа завершается после угадывания
+          solution: |
+            import random
+
+            secret = random.randint(1, 100)
+            attempts = 0
+            while True:
+                guess = int(input("Ваше число: "))
+                attempts += 1
+                if guess < secret:
+                    print("больше")
+                elif guess > secret:
+                    print("меньше")
+                else:
+                    print(f"Угадали за {attempts} попыток!")
+                    break
+
+      - id: py-01-06
+        title: Строки и f-строки
+        minutes: 20
+        xp: 25
+        theory: |
+          Строки — **неизменяемые** последовательности символов.
+
+          ## Индексы и срезы
+
+          ```python
+          s = "Python"
+          s[0]     # 'P'
+          s[-1]    # 'n' — с конца
+          s[1:4]   # 'yth' — с 1 по 3 включительно
+          s[:2]    # 'Py'
+          s[::-1]  # 'nohtyP' — разворот
+          len(s)   # 6
+          ```
+
+          ## Основные методы
+
+          ```python
+          "hello".upper()            # 'HELLO'
+          "  hi  ".strip()           # 'hi'
+          "a,b,c".split(",")         # ['a', 'b', 'c']
+          "-".join(["a", "b"])       # 'a-b'
+          "мама".replace("м", "п")   # 'папа'
+          "hello".find("l")          # 2 (или -1, если нет)
+          "abc".startswith("ab")     # True
+          "123".isdigit()            # True
+          "py" in "python"           # True
+          ```
+
+          Методы **возвращают новую строку**, исходная не меняется: `s.upper()` без присваивания ничего не изменит.
+
+          ## f-строки
+
+          ```python
+          name, score = "Аня", 95.456
+          print(f"{name} набрала {score:.1f} баллов")  # Аня набрала 95.5 баллов
+          print(f"{42:05d}")    # 00042
+          print(f"{name!r}")    # 'Аня'
+          print(f"{2 + 2 = }")  # 2 + 2 = 4 — удобно для отладки
+          ```
+
+          Многострочные строки — в тройных кавычках `"""..."""`. Спецсимволы: `\n` перенос, `\t` табуляция.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              s = "programming"
+              print(s[3:7])
+            answer: gram
+          - type: output
+            q: Что выведет код?
+            code: |
+              s = "hello"
+              s.upper()
+              print(s)
+            answer: hello
+            explain: Строки неизменяемы, а результат `upper()` никуда не сохранён.
+          - type: output
+            q: Что выведет код?
+            code: |
+              print("-".join("abc"))
+            answer: a-b-c
+          - type: fill
+            q: "Выведите `Цена: 9.99` из переменной `price = 9.987`"
+            code: |
+              print(___"Цена: {price:___}")
+            answers: [f, ".2f"]
+          - type: choice
+            q: Как развернуть строку `s`?
+            options: ["`s.reverse()`", "`s[::-1]`", "`reversed(s)`", "`s[-1:0]`"]
+            answer: 1
+            explain: "`reversed(s)` вернёт итератор, а не строку; у строк нет метода `reverse()`."
+          - type: output
+            q: Что выведет код?
+            code: |
+              words = "  Я учу   Python ".split()
+              print(len(words))
+            answer: "3"
+            explain: "`split()` без аргументов делит по любым пробелам и убирает пустые части."
+        homework:
+          task: |
+            **Анализ текста.** Пользователь вводит предложение. Выведите:
+            1. количество слов;
+            2. самое длинное слово;
+            3. предложение, где каждое слово с заглавной буквы;
+            4. является ли строка палиндромом без учёта пробелов и регистра («А роза упала на лапу Азора» → да).
+          hints:
+            - "`max(words, key=len)` найдёт самое длинное слово."
+            - "Для палиндрома: `s.replace(\" \", \"\").lower()` и сравнение с разворотом."
+          checklist:
+            - Все 4 пункта выводятся корректно
+            - Использованы f-строки
+          solution: |
+            text = input("Введите предложение: ")
+            words = text.split()
+            print(f"Слов: {len(words)}")
+            print(f"Самое длинное: {max(words, key=len)}")
+            print(text.title())
+            clean = text.replace(" ", "").lower()
+            print("Палиндром" if clean == clean[::-1] else "Не палиндром")
+
+  - id: py-m2
+    title: Коллекции
+    level: Junior
+    lessons:
+      - id: py-02-01
+        title: Списки (list)
+        minutes: 25
+        xp: 30
+        theory: |
+          **Список** — упорядоченная **изменяемая** коллекция любых объектов.
+
+          ```python
+          nums = [3, 1, 4]
+          nums.append(5)        # [3, 1, 4, 5] — в конец
+          nums.insert(0, 9)     # [9, 3, 1, 4, 5] — по индексу
+          nums.remove(4)        # удаляет первое значение 4
+          last = nums.pop()     # удаляет и возвращает последний
+          nums.extend([7, 8])   # добавить несколько
+          nums.sort()           # сортировка на месте
+          sorted(nums, reverse=True)  # новый отсортированный список
+          len(nums), sum(nums), max(nums), nums.index(7), nums.count(3)
+          ```
+
+          Индексы и срезы работают как у строк, но список можно менять: `nums[0] = 100`.
+
+          ## Перебор
+
+          ```python
+          fruits = ["яблоко", "груша"]
+          for i, fruit in enumerate(fruits, start=1):
+              print(i, fruit)
+          ```
+
+          ## Генераторы списков (list comprehension)
+
+          ```python
+          squares = [x ** 2 for x in range(5)]          # [0, 1, 4, 9, 16]
+          evens = [x for x in range(10) if x % 2 == 0]  # [0, 2, 4, 6, 8]
+          ```
+
+          ## Ссылки и копии
+
+          ```python
+          a = [1, 2]
+          b = a          # b — та же самая ссылка!
+          b.append(3)
+          print(a)       # [1, 2, 3]
+          c = a.copy()   # поверхностная копия (или a[:])
+          ```
+
+          > ⚠️ Для вложенных списков нужна глубокая копия: `copy.deepcopy(a)`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              a = [1, 2, 3]
+              b = a
+              b.append(4)
+              print(len(a))
+            answer: "4"
+          - type: output
+            q: Что выведет код?
+            code: |
+              print([x * 2 for x in range(4) if x != 2])
+            answer: "[0, 2, 6]"
+          - type: choice
+            q: Чем отличается `nums.sort()` от `sorted(nums)`?
+            options: ["Ничем", "`sort()` меняет список на месте и возвращает `None`, `sorted()` возвращает новый список", "`sorted()` работает только с числами", "`sort()` быстрее в 10 раз"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              nums = [5, 3, 8]
+              x = nums.pop()
+              print(x, nums)
+            answer: 8 [5, 3]
+          - type: bug
+            q: Где ошибка?
+            code: |
+              nums = [4, 2, 7]
+              nums = nums.sort()
+              print(nums[0])
+            bugLine: 2
+            explain: "`sort()` возвращает `None`, поэтому `nums` станет `None`."
+            fix: nums.sort()
+          - type: fill
+            q: Создайте список квадратов нечётных чисел от 1 до 9
+            code: |
+              res = [x ** 2 ___ x in range(1, 10) ___ x % 2 == 1]
+            answers: [for, if]
+        homework:
+          task: |
+            **Статистика оценок.** Пользователь вводит оценки через пробел (`5 4 3 5 2`). Выведите среднее (2 знака), максимум, минимум, количество пятёрок и список оценок без двоек, отсортированный по убыванию.
+          hints:
+            - "`list(map(int, input().split()))` превращает ввод в список чисел."
+          checklist:
+            - Используется list comprehension
+            - Среднее округлено
+          solution: |
+            marks = list(map(int, input("Оценки: ").split()))
+            print(f"Среднее: {sum(marks) / len(marks):.2f}")
+            print("Макс:", max(marks), "Мин:", min(marks))
+            print("Пятёрок:", marks.count(5))
+            print(sorted([m for m in marks if m != 2], reverse=True))
+
+      - id: py-02-02
+        title: Кортежи и множества
+        minutes: 20
+        xp: 25
+        theory: |
+          ## Кортеж (tuple)
+
+          Упорядоченная **неизменяемая** коллекция. Быстрее и безопаснее списка, может быть ключом словаря.
+
+          ```python
+          point = (10, 20)
+          x, y = point          # распаковка
+          single = (5,)         # кортеж из одного элемента — нужна запятая!
+          first, *rest = (1, 2, 3, 4)   # first=1, rest=[2, 3, 4]
+          ```
+
+          Функции часто возвращают несколько значений именно кортежем: `return min_v, max_v`.
+
+          ## Множество (set)
+
+          Неупорядоченная коллекция **уникальных** элементов. Проверка `in` работает за O(1).
+
+          ```python
+          tags = {"python", "code", "python"}   # {'python', 'code'}
+          tags.add("ai")
+          tags.discard("code")
+          empty = set()                          # {} — это пустой словарь!
+          unique = set([1, 1, 2, 3])             # {1, 2, 3}
+          ```
+
+          ## Операции над множествами
+
+          ```python
+          a, b = {1, 2, 3}, {2, 3, 4}
+          a | b   # {1, 2, 3, 4} — объединение
+          a & b   # {2, 3}       — пересечение
+          a - b   # {1}          — разность
+          a ^ b   # {1, 4}       — симметрическая разность
+          ```
+
+          > 💡 Удалить дубликаты с сохранением порядка: `list(dict.fromkeys(items))`.
+        practice:
+          - type: choice
+            q: Что создаст выражение `x = (5)`?
+            options: ["Кортеж из одного элемента", "Число 5", "Пустой кортеж", "Ошибку"]
+            answer: 1
+            explain: Кортеж из одного элемента пишется с запятой — `(5,)`.
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(len({1, 2, 2, 3, 3, 3}))
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              a = {1, 2, 3, 4}
+              b = {3, 4, 5}
+              print(sorted(a & b))
+            answer: "[3, 4]"
+          - type: output
+            q: Что выведет код?
+            code: |
+              first, *rest = [10, 20, 30]
+              print(rest)
+            answer: "[20, 30]"
+          - type: bug
+            q: Где ошибка?
+            code: |
+              point = (3, 4)
+              print(point[0])
+              point[0] = 5
+            bugLine: 3
+            explain: Кортежи неизменяемы — `TypeError`.
+          - type: choice
+            q: Как создать пустое множество?
+            options: ["`{}`", "`set()`", "`[]`", "`()`"]
+            answer: 1
+        homework:
+          task: |
+            Даны два списка учеников, записавшихся на кружки по программированию и по робототехнике. Выведите: кто ходит на оба кружка; кто только на программирование; общее число уникальных учеников.
+          checklist:
+            - Используются операции над множествами
+            - Результаты выводятся отсортированными
+          solution: |
+            prog = ["Аня", "Борис", "Вика", "Гена"]
+            robo = ["Вика", "Гена", "Дима"]
+            p, r = set(prog), set(robo)
+            print("Оба:", sorted(p & r))
+            print("Только программирование:", sorted(p - r))
+            print("Всего:", len(p | r))
+
+      - id: py-02-03
+        title: Словари (dict)
+        minutes: 25
+        xp: 30
+        theory: |
+          **Словарь** хранит пары «ключ → значение». Ключи уникальны и неизменяемы (строки, числа, кортежи). Порядок вставки сохраняется (с Python 3.7).
+
+          ```python
+          user = {"name": "Иван", "age": 30}
+          user["city"] = "Москва"        # добавить / изменить
+          print(user["name"])             # Иван
+          print(user.get("email"))        # None — без ошибки
+          print(user.get("email", "—"))   # значение по умолчанию
+          del user["age"]
+          "name" in user                  # True — проверка ключа
+          ```
+
+          `user["email"]` при отсутствии ключа вызовет `KeyError`.
+
+          ## Перебор
+
+          ```python
+          for key, value in user.items():
+              print(key, "=", value)
+          list(user.keys()), list(user.values())
+          ```
+
+          ## Полезное
+
+          ```python
+          counts = {}
+          for word in "a b a c a".split():
+              counts[word] = counts.get(word, 0) + 1   # {'a': 3, 'b': 1, 'c': 1}
+
+          squares = {x: x ** 2 for x in range(4)}      # генератор словаря
+          merged = {**d1, **d2}                        # или d1 | d2 (3.9+)
+          user.setdefault("tags", []).append("vip")
+          ```
+
+          Для подсчёта есть готовый `collections.Counter`, для значений по умолчанию — `collections.defaultdict`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              d = {"a": 1, "b": 2}
+              d["a"] = 10
+              d["c"] = 3
+              print(len(d), d["a"])
+            answer: 3 10
+          - type: choice
+            q: Что вернёт `d.get("x")`, если ключа нет?
+            options: ["`KeyError`", "`None`", "`0`", "`False`"]
+            answer: 1
+          - type: fill
+            q: Посчитайте количество каждой буквы
+            code: |
+              counts = {}
+              for ch in "banana":
+                  counts[ch] = counts.___(ch, 0) + 1
+            answers: [get]
+          - type: output
+            q: Что выведет код?
+            code: |
+              d = {x: x * x for x in range(1, 4)}
+              print(d[3])
+            answer: "9"
+          - type: choice
+            q: Что НЕ может быть ключом словаря?
+            options: ["`42`", "`\"name\"`", "`(1, 2)`", "`[1, 2]`"]
+            answer: 3
+            explain: Списки изменяемы и не хешируются.
+          - type: order
+            q: Соберите перебор словаря с выводом пар
+            lines:
+              - "prices = {\"кофе\": 150, \"чай\": 90}"
+              - "for name, price in prices.items():"
+              - "    print(f\"{name}: {price} руб.\")"
+        homework:
+          task: |
+            **Телефонная книга.** Программа в цикле принимает команды:
+            - `add Имя Телефон` — добавить;
+            - `find Имя` — найти телефон;
+            - `del Имя` — удалить;
+            - `list` — показать все записи по алфавиту;
+            - `exit` — выход.
+          hints:
+            - "`cmd, *args = input().split()`"
+          checklist:
+            - Все команды работают
+            - Поиск несуществующего имени не ломает программу
+          solution: |
+            book = {}
+            while True:
+                cmd, *args = input("> ").split() or [""]
+                if cmd == "add" and len(args) == 2:
+                    book[args[0]] = args[1]
+                elif cmd == "find" and args:
+                    print(book.get(args[0], "Не найдено"))
+                elif cmd == "del" and args:
+                    print("Удалено" if book.pop(args[0], None) else "Нет такого")
+                elif cmd == "list":
+                    for name in sorted(book):
+                        print(name, book[name])
+                elif cmd == "exit":
+                    break
+                else:
+                    print("Неизвестная команда")
+      - id: py-02-04
+        title: Стек, очередь и модуль collections
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Стек (LIFO)
+
+          «Последним пришёл — первым ушёл». В Python стек — обычный список:
+
+          ```python
+          stack = []
+          stack.append(1)    # push
+          stack.append(2)
+          stack.pop()        # 2 — pop с конца за O(1)
+          ```
+
+          ## Очередь (FIFO) — deque
+
+          `list.pop(0)` работает за O(n). Для очередей используйте `deque`:
+
+          ```python
+          from collections import deque
+          q = deque([1, 2])
+          q.append(3)        # в конец
+          q.popleft()        # 1 — из начала за O(1)
+          q.appendleft(0)
+          last3 = deque(maxlen=3)   # хранит только 3 последних элемента
+          ```
+
+          ## Counter
+
+          ```python
+          from collections import Counter
+          c = Counter("abracadabra")
+          c["a"]               # 5
+          c.most_common(2)     # [('a', 5), ('b', 2)]
+          ```
+
+          ## defaultdict
+
+          ```python
+          from collections import defaultdict
+          groups = defaultdict(list)
+          for word in ["кот", "кит", "дом"]:
+              groups[word[0]].append(word)   # нет KeyError
+          # {'к': ['кот', 'кит'], 'д': ['дом']}
+          ```
+
+          ## namedtuple
+
+          ```python
+          from collections import namedtuple
+          Point = namedtuple("Point", ["x", "y"])
+          p = Point(3, 4)
+          p.x, p.y             # 3 4
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              s = [1, 2, 3]
+              s.append(4)
+              s.pop()
+              print(s.pop())
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              from collections import deque
+              q = deque([1, 2, 3])
+              q.append(4)
+              q.popleft()
+              print(list(q))
+            answer: "[2, 3, 4]"
+          - type: output
+            q: Что выведет код?
+            code: |
+              from collections import Counter
+              print(Counter("hello")["l"])
+            answer: "2"
+          - type: choice
+            q: Почему для очереди лучше `deque`, а не `list`?
+            options: ["`deque` занимает меньше памяти", "Удаление из начала `deque` — O(1), у списка — O(n)", "`list` не умеет удалять элементы", "Разницы нет"]
+            answer: 1
+          - type: fill
+            q: Сгруппируйте слова по длине без KeyError
+            code: |
+              from collections import ___
+              by_len = defaultdict(___)
+              for w in words:
+                  by_len[len(w)].append(w)
+            answers: [defaultdict, list]
+        homework:
+          task: |
+            **Проверка скобок.** Напишите функцию `is_balanced(s)`, которая проверяет, правильно ли расставлены скобки `()[]{}` в строке. Примеры: `"([]{})"` → True, `"(]"` → False, `"(("` → False. Используйте стек.
+          hints:
+            - "Словарь пар: `{')': '(', ']': '[', '}': '{'}`."
+          checklist:
+            - Решение использует стек
+            - Пустая строка — True
+          solution: |
+            def is_balanced(s):
+                pairs = {")": "(", "]": "[", "}": "{"}
+                stack = []
+                for ch in s:
+                    if ch in "([{":
+                        stack.append(ch)
+                    elif ch in pairs:
+                        if not stack or stack.pop() != pairs[ch]:
+                            return False
+                return not stack
+
+            print(is_balanced("([]{})"), is_balanced("(]"), is_balanced("(("))
+
+      - id: py-02-05
+        title: Практикум «Учёт расходов»
+        minutes: 40
+        xp: 40
+        theory: |
+          Закрепим коллекции на мини-проекте. Программа хранит расходы в списке словарей:
+
+          ```python
+          expenses = [
+              {"date": "2026-10-01", "category": "еда", "amount": 450.0},
+              {"date": "2026-10-01", "category": "транспорт", "amount": 60.0},
+              {"date": "2026-10-02", "category": "еда", "amount": 1200.0},
+          ]
+          ```
+
+          ## Типовые операции
+
+          ```python
+          total = sum(e["amount"] for e in expenses)           # общая сумма
+
+          by_cat = {}
+          for e in expenses:                                   # сумма по категориям
+              by_cat[e["category"]] = by_cat.get(e["category"], 0) + e["amount"]
+
+          food = [e for e in expenses if e["category"] == "еда"]   # фильтр
+
+          top = max(expenses, key=lambda e: e["amount"])       # самый крупный
+          by_amount = sorted(expenses, key=lambda e: e["amount"], reverse=True)
+          categories = sorted({e["category"] for e in expenses})  # уникальные
+          ```
+
+          `key=lambda e: e["amount"]` говорит функциям `max`/`sorted`, по какому полю сравнивать. Подробно lambda разберём в модуле «Функции».
+
+          ## Меню программы
+
+          ```python
+          while True:
+              cmd = input("1-добавить 2-отчёт 0-выход: ")
+              if cmd == "1":
+                  ...
+              elif cmd == "0":
+                  break
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              items = [{"a": 3}, {"a": 7}, {"a": 5}]
+              print(sum(x["a"] for x in items))
+            answer: "15"
+          - type: output
+            q: Что выведет код?
+            code: |
+              items = [{"n": "x", "p": 3}, {"n": "y", "p": 9}]
+              print(max(items, key=lambda i: i["p"])["n"])
+            answer: "y"
+          - type: output
+            q: Что выведет код?
+            code: |
+              cats = ["еда", "кафе", "еда"]
+              print(len({c for c in cats}))
+            answer: "2"
+          - type: order
+            q: Соберите подсчёт суммы по категориям
+            lines:
+              - by_cat = {}
+              - "for e in expenses:"
+              - "    cat = e[\"category\"]"
+              - "    by_cat[cat] = by_cat.get(cat, 0) + e[\"amount\"]"
+        homework:
+          task: |
+            Сделайте консольное приложение «Учёт расходов» с меню:
+            1. добавить расход (дата, категория, сумма);
+            2. показать все расходы, отсортированные по дате;
+            3. отчёт: сумма по категориям и доля каждой в процентах;
+            4. самый дорогой расход;
+            0. выход.
+
+            Неверный ввод суммы не должен ломать программу (проверяйте `replace(".", "", 1).isdigit()`).
+          checklist:
+            - Данные хранятся в списке словарей
+            - Отчёт выводит проценты с 1 знаком
+            - Пустой список не вызывает ошибок
+          solution: |
+            expenses = []
+            while True:
+                cmd = input("1-добавить 2-список 3-отчёт 4-максимум 0-выход: ")
+                if cmd == "1":
+                    date = input("Дата (ГГГГ-ММ-ДД): ")
+                    cat = input("Категория: ").strip().lower()
+                    raw = input("Сумма: ")
+                    if not raw.replace(".", "", 1).isdigit():
+                        print("Неверная сумма"); continue
+                    expenses.append({"date": date, "category": cat, "amount": float(raw)})
+                elif cmd == "2":
+                    for e in sorted(expenses, key=lambda e: e["date"]):
+                        print(e["date"], e["category"], e["amount"])
+                elif cmd == "3":
+                    total = sum(e["amount"] for e in expenses)
+                    by_cat = {}
+                    for e in expenses:
+                        by_cat[e["category"]] = by_cat.get(e["category"], 0) + e["amount"]
+                    for cat, s in by_cat.items():
+                        print(f"{cat}: {s} ({s / total * 100:.1f}%)")
+                elif cmd == "4" and expenses:
+                    print(max(expenses, key=lambda e: e["amount"]))
+                elif cmd == "0":
+                    break
+
+
+  - id: py-m3
+    title: Функции
+    level: Junior
+    lessons:
+      - Определение функций, параметры и return
+      - Аргументы по умолчанию, *args и **kwargs
+      - Области видимости, global и nonlocal
+      - Lambda, map, filter, sorted с key
+      - Рекурсия
+      - Аннотации типов (type hints)
+  - id: py-m4
+    title: Файлы, исключения и модули
+    level: Junior
+    lessons:
+      - Обработка исключений try / except / finally
+      - Собственные исключения
+      - Работа с файлами и контекстный менеджер with
+      - JSON и CSV
+      - Модули, пакеты и pip
+      - Виртуальные окружения venv и poetry
+  - id: py-m5
+    title: ООП
+    level: Junior+
+    lessons:
+      - Классы и объекты, __init__, self
+      - Инкапсуляция и property
+      - Наследование и super()
+      - Полиморфизм и абстрактные классы
+      - Магические методы (dunder)
+      - "@classmethod, @staticmethod, dataclasses"
+      - SOLID на примерах Python
+  - id: py-m6
+    title: Продвинутые возможности
+    level: Junior+
+    lessons:
+      - Итераторы и протокол итерации
+      - Генераторы и yield
+      - Декораторы
+      - Контекстные менеджеры своими руками
+      - Модули itertools и functools
+      - Регулярные выражения
+  - id: py-m7
+    title: Алгоритмы и структуры данных
+    level: Junior+
+    lessons:
+      - Сложность алгоритмов, O-нотация
+      - Сортировки и бинарный поиск
+      - Хеш-таблицы, стеки, очереди, heapq
+      - Графы, BFS и DFS
+      - Динамическое программирование
+  - id: py-m8
+    title: Тестирование и качество кода
+    level: Middle
+    lessons:
+      - PEP 8, линтеры ruff и black
+      - Unit-тесты с pytest
+      - Фикстуры, моки и параметризация
+      - Статическая типизация с mypy
+      - Логирование
+  - id: py-m9
+    title: Асинхронность и параллелизм
+    level: Middle
+    lessons:
+      - GIL, потоки и процессы
+      - threading и concurrent.futures
+      - multiprocessing
+      - asyncio, async и await
+      - aiohttp и асинхронные HTTP-запросы
+  - id: py-m10
+    title: Базы данных
+    level: Middle
+    lessons:
+      - SQL-основы и sqlite3
+      - PostgreSQL и psycopg
+      - ORM SQLAlchemy
+      - Миграции с Alembic
+      - Транзакции и индексы
+  - id: py-m11
+    title: Веб-разработка
+    level: Middle
+    lessons:
+      - HTTP, REST и JSON
+      - Библиотека requests
+      - FastAPI — первое API
+      - Pydantic и валидация
+      - Аутентификация JWT
+      - Django — обзор и ORM
+  - id: py-m12
+    title: Инженерные практики Middle
+    level: Middle
+    lessons:
+      - Git и code review
+      - Docker для Python-приложений
+      - CI/CD с GitHub Actions
+      - Паттерны проектирования
+      - Профилирование и оптимизация
+      - "Итоговый проект: REST-сервис с БД и тестами"

@@ -1,0 +1,648 @@
+id: cpp
+modules:
+  - id: cpp-m8
+    title: Производительность и архитектура
+    level: Middle
+    lessons:
+      - id: cpp-08-01
+        title: Кэш процессора и локальность данных
+        minutes: 30
+        xp: 45
+        theory: |
+          Процессор считает намного быстрее, чем память отдаёт данные. Между ними — иерархия кэшей:
+
+          | Уровень | Размер | Задержка |
+          |---|---|---|
+          | Регистры | — | ~0 тактов |
+          | L1 | 32–64 КБ на ядро | ~4 такта |
+          | L2 | 256 КБ – 2 МБ | ~12 тактов |
+          | L3 | 8–64 МБ общий | ~40 тактов |
+          | RAM | ГБ | ~200+ тактов |
+
+          Память читается **кэш-линиями по 64 байта**. Если следующий нужный элемент уже в линии — он почти бесплатен. Процессор также **предвыбирает** (prefetch) последовательные данные.
+
+          ## Пространственная локальность
+
+          ```cpp
+          // матрица N×N, хранится построчно (row-major)
+          for (int i = 0; i < N; ++i)
+              for (int j = 0; j < N; ++j)
+                  sum += m[i][j];      // ✅ последовательно по памяти — быстро
+
+          for (int j = 0; j < N; ++j)
+              for (int i = 0; i < N; ++i)
+                  sum += m[i][j];      // ❌ прыжки на N*8 байт — промах кэша почти на каждом шаге, в 5–10 раз медленнее
+          ```
+
+          ## Почему std::vector почти всегда быстрее std::list
+
+          `vector` — элементы подряд, предвыборка работает. `list` — каждый узел в случайном месте кучи + указатели: при обходе почти каждый элемент — промах кэша. Даже вставка в середину `vector` (O(n) сдвиг) часто быстрее, чем поиск позиции в `list`.
+
+          ## Data-Oriented Design
+
+          ```cpp
+          // AoS — Array of Structures
+          struct Particle { float x, y, z, vx, vy, vz; char name[64]; bool alive; };
+          std::vector<Particle> ps;
+          for (auto& p : ps) p.x += p.vx;      // в кэш грузятся и name, и всё лишнее
+
+          // SoA — Structure of Arrays
+          struct Particles { std::vector<float> x, y, z, vx, vy, vz; };
+          for (size_t i = 0; i < n; ++i) P.x[i] += P.vx[i];   // только нужные данные, + векторизация SIMD
+          ```
+
+          ## Другие приёмы
+
+          - Компактные типы: `int32_t` вместо `int64_t`, порядок полей по убыванию размера (меньше padding — проверяйте `sizeof`).
+          - Горячие и холодные данные — в разных структурах.
+          - Избегайте указателей-«прыжков» (`vector<unique_ptr<T>>` хуже `vector<T>` для обхода).
+          - Предсказание ветвлений: сортированные данные обрабатываются быстрее при `if` внутри цикла; branchless-код (`x += (v > 0) * v`).
+          - Flat-контейнеры (`boost::flat_map`, C++23 `std::flat_map`) — сортированный вектор вместо дерева.
+          - False sharing в многопоточном коде (см. atomic).
+
+          > 💡 «Big-O» описывает рост, но константы, определяемые кэшем, на реальных размерах часто важнее.
+        practice:
+          - type: choice
+            q: Какой размер кэш-линии на большинстве современных CPU?
+            options: ["8 байт", "64 байта", "4 КБ", "1 МБ"]
+            answer: 1
+          - type: choice
+            q: Почему обход std::vector быстрее обхода std::list?
+            options: ["vector использует меньше кода", "Элементы vector лежат подряд — работает кэш и предвыборка", "list медленно компилируется", "Это не так"]
+            answer: 1
+          - type: choice
+            q: Матрица хранится построчно. Какой порядок циклов быстрее?
+            options: ["Внешний по строкам, внутренний по столбцам", "Внешний по столбцам, внутренний по строкам", "Одинаково", "Зависит от компилятора"]
+            answer: 0
+          - type: output
+            q: "Что выведет код (типичная x86-64 платформа)?"
+            code: |
+              struct A { char c; double d; char e; };
+              struct B { double d; char c; char e; };
+              std::cout << sizeof(A) << " " << sizeof(B);
+            answer: 24 16
+            explain: Из-за выравнивания double по 8 байт порядок полей влияет на padding.
+          - type: choice
+            q: Что такое SoA?
+            options: ["Массив структур", "Структура массивов: каждое поле в отдельном массиве", "Тип умного указателя", "Алгоритм сортировки"]
+            answer: 1
+        homework:
+          task: |
+            Проведите три эксперимента с замером времени (std::chrono, -O2): (1) сумма матрицы 4096×4096 по строкам и по столбцам; (2) обход и сумма 10 млн int в `std::vector`, `std::list`, `std::vector<std::unique_ptr<int>>`; (3) обновление позиций 10 млн частиц в AoS (с «толстым» полем name[64]) и SoA. Оформите таблицу и объясните результаты.
+          checklist:
+            - Сборка с оптимизацией
+            - Результат вычислений используется (чтобы не выкинул компилятор)
+            - Объяснение через кэш
+          solution: |
+            #include <chrono>
+            #include <iostream>
+            #include <list>
+            #include <memory>
+            #include <numeric>
+            #include <vector>
+
+            template <class F> double ms(F f) {
+                auto t = std::chrono::steady_clock::now(); f();
+                return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count();
+            }
+
+            int main() {
+                const int N = 4096;
+                std::vector<int> m(N * N, 1);
+                long long s1 = 0, s2 = 0;
+                std::cout << "rows " << ms([&] { for (int i = 0; i < N; ++i) for (int j = 0; j < N; ++j) s1 += m[i * N + j]; }) << " ms\n";
+                std::cout << "cols " << ms([&] { for (int j = 0; j < N; ++j) for (int i = 0; i < N; ++i) s2 += m[i * N + j]; }) << " ms\n";
+
+                const int M = 10'000'000;
+                std::vector<int> v(M, 1); std::list<int> l(M, 1);
+                std::vector<std::unique_ptr<int>> vp; vp.reserve(M); for (int i = 0; i < M; ++i) vp.push_back(std::make_unique<int>(1));
+                long long a = 0, b = 0, c = 0;
+                std::cout << "vector " << ms([&] { a = std::accumulate(v.begin(), v.end(), 0LL); }) << "\n";
+                std::cout << "list " << ms([&] { b = std::accumulate(l.begin(), l.end(), 0LL); }) << "\n";
+                std::cout << "vec<uptr> " << ms([&] { for (auto& p : vp) c += *p; }) << "\n";
+                std::cout << s1 + s2 + a + b + c << "\n";
+            }
+            // Типично: cols в 5–10 раз медленнее rows; list в 5–20 раз медленнее vector; SoA в 2–4 раза быстрее AoS.
+      - id: cpp-08-02
+        title: Профилирование
+        minutes: 30
+        xp: 45
+        theory: |
+          «Преждевременная оптимизация — корень всех зол» (Кнут). Сначала **измеряйте**, потом оптимизируйте узкое место. Интуиция программистов о «медленных местах» ошибается чаще, чем кажется.
+
+          ## Виды профилировщиков
+
+          - **Сэмплирующие** — периодически (1000 раз/с) снимают стек: почти не замедляют программу, показывают, где тратится время. `perf`, Intel VTune, AMD uProf, Visual Studio Profiler, Instruments (macOS), Superluminal.
+          - **Инструментирующие** — вставляют счётчики в каждую функцию: точно, но медленно. `callgrind`, `gprof`.
+          - **Трассировщики** — размеченные интервалы во времени: Tracy, Perfetto, Optick (особенно в геймдеве).
+
+          ## perf (Linux)
+
+          ```bash
+          g++ -O2 -g -fno-omit-frame-pointer main.cpp -o app   # оптимизации + символы
+          perf stat ./app             # общая статистика: такты, инструкции, cache-misses, branch-misses
+          perf record -g ./app        # запись с call graph
+          perf report                 # интерактивный отчёт: % времени по функциям
+          ```
+
+          **Flame graph** (Brendan Gregg) — визуализация: ширина = доля времени, вверх — вложенность вызовов. `perf script | stackcollapse-perf.pl | flamegraph.pl > out.svg`, или открыть в speedscope.app / Firefox Profiler / hotspot.
+
+          ## Микробенчмарки — Google Benchmark
+
+          ```cpp
+          #include <benchmark/benchmark.h>
+
+          static void BM_VectorPush(benchmark::State& state) {
+              for (auto _ : state) {
+                  std::vector<int> v;
+                  for (int i = 0; i < state.range(0); ++i) v.push_back(i);
+                  benchmark::DoNotOptimize(v.data());     // не дать компилятору выкинуть код
+              }
+          }
+          BENCHMARK(BM_VectorPush)->Range(8, 1 << 16);
+          BENCHMARK_MAIN();
+          ```
+
+          ## Что обычно находят
+
+          1. Лишние копии (передача по значению, `auto` вместо `auto&` в range-for).
+          2. Аллокации в горячем цикле (`std::string` конкатенации, `new`, рост vector без `reserve`).
+          3. Неподходящий контейнер / алгоритм O(n²).
+          4. Промахи кэша, ложное разделение.
+          5. Блокировки и ожидание I/O (видно в off-CPU профиле).
+          6. Виртуальные вызовы и отсутствие инлайнинга в горячих местах.
+
+          ## Оптимизации компилятора
+
+          `-O2`/`-O3`, `-march=native` (векторные инструкции текущего CPU), **LTO** (`-flto`, `CMAKE_INTERPROCEDURAL_OPTIMIZATION ON`), **PGO** (`-fprofile-generate` → прогон → `-fprofile-use`) — дают 5–30% бесплатно.
+
+          ## Порядок работы
+
+          Цель (latency/throughput) → воспроизводимый сценарий → профиль → гипотеза → изменение → повторный замер → сравнение. Фиксируйте результаты бенчмарков в CI, чтобы ловить регрессии.
+        practice:
+          - type: choice
+            q: Какой профилировщик почти не замедляет программу?
+            options: ["Инструментирующий", "Сэмплирующий (perf)", "Valgrind callgrind", "printf"]
+            answer: 1
+          - type: fill
+            q: Запишите профиль со стеком вызовов
+            code: |
+              perf ___ -g ./app
+            answers: ["record"]
+          - type: choice
+            q: Что показывает ширина блока на flame graph?
+            options: ["Время запуска функции", "Долю времени, проведённого в функции (и её детях)", "Количество строк кода", "Глубину рекурсии"]
+            answer: 1
+          - type: fill
+            q: Не дайте компилятору выкинуть результат в Google Benchmark
+            code: |
+              benchmark::___(result);
+            answers: ["DoNotOptimize"]
+          - type: choice
+            q: Что включает CMAKE_INTERPROCEDURAL_OPTIMIZATION?
+            options: ["Отладку", "LTO — оптимизацию на этапе линковки", "Санитайзеры", "Профилирование"]
+            answer: 1
+        homework:
+          task: |
+            Возьмите программу «подсчёт частот слов в 100 МБ текста» (наивная версия: чтение по строке, `std::map<std::string,int>`, `tolower` через копию строки). Профилируйте perf + flame graph, найдите 3 главные проблемы, исправьте по одной с замером после каждой (например: unordered_map + reserve, string_view без копий, чтение файла целиком). Ускорьте минимум в 3 раза и приложите таблицу «до/после».
+          checklist:
+            - Есть flame graph до и после
+            - Каждое изменение замерено отдельно
+            - Ускорение ≥ 3×
+          solution: |
+            # профилирование
+            g++ -O2 -g -fno-omit-frame-pointer words.cpp -o words
+            perf record -g ./words big.txt
+            perf report --no-children | head -40
+            # → 45% std::map::operator[] (сравнение строк, промахи кэша)
+            # → 25% malloc/free (копии строк в tolower)
+            # → 15% getline + istringstream
+
+            # шаги и результаты (пример):
+            # 1. map -> unordered_map + reserve(1<<20)               : 9.8 s -> 5.1 s
+            # 2. чтение целиком + разбор string_view, lower in-place : 5.1 s -> 2.3 s
+            # 3. ключ string, поиск через heterogeneous lookup        : 2.3 s -> 1.9 s
+            # итого ~5x
+
+            struct SvHash { using is_transparent = void; size_t operator()(std::string_view s) const { return std::hash<std::string_view>{}(s); } };
+            std::unordered_map<std::string, int, SvHash, std::equal_to<>> freq;
+            // freq.find(sv) без создания std::string (C++20)
+      - id: cpp-08-03
+        title: Паттерны проектирования в C++
+        minutes: 35
+        xp: 45
+        theory: |
+          ## RAII и Scope Guard
+
+          Фундамент C++ (см. модуль 2): ресурс = объект с деструктором.
+
+          ## Pimpl (Pointer to implementation)
+
+          Прячет детали реализации из заголовка: быстрее компиляция (меньше зависимостей), стабильный ABI.
+
+          ```cpp
+          // widget.h
+          class Widget {
+          public:
+              Widget();
+              ~Widget();                       // определить в .cpp, где Impl полный
+              Widget(Widget&&) noexcept;
+              Widget& operator=(Widget&&) noexcept;
+              void draw();
+          private:
+              struct Impl;
+              std::unique_ptr<Impl> impl_;
+          };
+          // widget.cpp
+          struct Widget::Impl { HeavyLib::Canvas canvas; std::vector<Shape> shapes; };
+          Widget::Widget() : impl_(std::make_unique<Impl>()) {}
+          Widget::~Widget() = default;
+          ```
+
+          ## CRTP — статический полиморфизм
+
+          ```cpp
+          template <typename Derived>
+          struct Shape {
+              double area() const { return static_cast<const Derived*>(this)->areaImpl(); }
+          };
+          struct Square : Shape<Square> { double s; double areaImpl() const { return s * s; } };
+
+          template <typename T> double total(const std::vector<T>& v) { ... }  // без vtable, инлайнится
+          ```
+
+          C++23 «deducing this» (`this auto& self`) упрощает CRTP.
+
+          ## Strategy — три способа
+
+          ```cpp
+          struct Compressor { virtual ~Compressor() = default; virtual Bytes run(Bytes) = 0; };  // 1. виртуальный интерфейс
+          template <class Policy> class Archiver { Policy p; };                                  // 2. policy-шаблон (compile-time)
+          class Archiver2 { std::function<Bytes(Bytes)> compress; };                             // 3. std::function
+          ```
+
+          ## Observer
+
+          ```cpp
+          class Button {
+              std::vector<std::function<void()>> handlers_;
+          public:
+              void onClick(std::function<void()> h) { handlers_.push_back(std::move(h)); }
+              void click() { for (auto& h : handlers_) h(); }
+          };
+          ```
+
+          Осторожно с временем жизни подписчиков: храните `weak_ptr` или возвращайте RAII-токен отписки.
+
+          ## Factory и регистрация
+
+          ```cpp
+          using Creator = std::function<std::unique_ptr<Shape>()>;
+          std::unordered_map<std::string, Creator>& registry() { static std::unordered_map<std::string, Creator> r; return r; }
+
+          auto s = registry().at("circle")();
+          ```
+
+          ## Singleton (Meyers)
+
+          ```cpp
+          Config& config() { static Config c; return c; }    // потокобезопасная инициализация с C++11
+          ```
+
+          Используйте редко — скрытая глобальная зависимость мешает тестам. Лучше передавать зависимости явно.
+
+          ## Type Erasure
+
+          Как `std::function` и `std::any`: единый тип-значение для разных классов без общего базового класса.
+
+          ```cpp
+          class Drawable {
+              struct Concept { virtual ~Concept() = default; virtual void draw() const = 0; };
+              template <class T> struct Model : Concept { T obj; Model(T o) : obj(std::move(o)) {} void draw() const override { obj.draw(); } };
+              std::unique_ptr<Concept> p_;
+          public:
+              template <class T> Drawable(T obj) : p_(std::make_unique<Model<T>>(std::move(obj))) {}
+              void draw() const { p_->draw(); }
+          };
+          std::vector<Drawable> scene{Circle{}, Text{"hi"}};   // разные типы, без наследования
+          ```
+
+          Также: **Visitor** через `std::variant`/`std::visit`, **Command** (`std::function` + undo-стек), **NVI** (non-virtual interface).
+        practice:
+          - type: choice
+            q: Главная польза идиомы Pimpl?
+            options: ["Ускорение выполнения", "Сокрытие реализации: быстрее компиляция и стабильный ABI", "Многопоточность", "Сериализация"]
+            answer: 1
+          - type: choice
+            q: Что даёт CRTP по сравнению с виртуальными функциями?
+            options: ["Динамическую замену типов", "Полиморфизм на этапе компиляции без vtable", "Меньше кода в бинарнике всегда", "Сборку мусора"]
+            answer: 1
+          - type: choice
+            q: Почему в Pimpl деструктор объявляют в .h, а определяют в .cpp?
+            options: ["Стиль кода", "unique_ptr<Impl> требует полного типа Impl в месте уничтожения", "Для скорости", "Иначе ошибка линковки"]
+            answer: 1
+          - type: choice
+            q: Какой стандартный класс — пример type erasure?
+            options: ["std::vector", "std::function", "std::pair", "std::array"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              template <class D> struct Base { int v() const { return static_cast<const D*>(this)->impl() * 2; } };
+              struct X : Base<X> { int impl() const { return 21; } };
+              int main() { std::cout << X{}.v(); }
+            answer: "42"
+        homework:
+          task: |
+            Сделайте текстовый редактор-ядро: `Document` с Pimpl; команды (Command) `Insert`, `Delete` с undo/redo; наблюдатели изменений (Observer) с RAII-токеном отписки; фабрика экспортёров по имени (`txt`, `md`, `html`) с регистрацией. Покройте GoogleTest-ами undo/redo и отписку.
+          checklist:
+            - Pimpl скрывает внутренние структуры
+            - Отписка автоматическая при уничтожении токена
+            - Новые экспортёры добавляются без изменения фабрики
+          solution: |
+            // document.h
+            class Document {
+            public:
+                Document(); ~Document(); Document(Document&&) noexcept; Document& operator=(Document&&) noexcept;
+                void insert(std::size_t pos, std::string text);
+                void erase(std::size_t pos, std::size_t len);
+                bool undo(); bool redo();
+                const std::string& text() const;
+                class Subscription { public: ~Subscription(); /* удаляет обработчик */ private: friend Document; std::function<void()> off_; };
+                [[nodiscard]] Subscription subscribe(std::function<void(const std::string&)> h);
+            private:
+                struct Impl; std::unique_ptr<Impl> impl_;
+            };
+
+            // document.cpp (фрагмент)
+            struct Command { virtual ~Command() = default; virtual void apply(std::string&) = 0; virtual void revert(std::string&) = 0; };
+            struct Insert : Command {
+                std::size_t pos; std::string t;
+                Insert(std::size_t p, std::string s) : pos(p), t(std::move(s)) {}
+                void apply(std::string& d) override { d.insert(pos, t); }
+                void revert(std::string& d) override { d.erase(pos, t.size()); }
+            };
+            struct Document::Impl {
+                std::string text;
+                std::vector<std::unique_ptr<Command>> undo, redo;
+                std::map<int, std::function<void(const std::string&)>> subs; int nextId = 0;
+                void run(std::unique_ptr<Command> c) { c->apply(text); undo.push_back(std::move(c)); redo.clear(); notify(); }
+                void notify() { for (auto& [id, h] : subs) h(text); }
+            };
+
+            // фабрика экспортёров
+            using Exporter = std::function<std::string(const std::string&)>;
+            std::map<std::string, Exporter>& exporters() { static std::map<std::string, Exporter> m; return m; }
+            static const bool regMd = (exporters()["md"] = [](const std::string& s) { return "# Документ\n\n" + s; }, true);
+      - id: cpp-08-04
+        title: Неопределённое поведение (каталог UB)
+        minutes: 30
+        xp: 45
+        theory: |
+          **Неопределённое поведение (UB)** — стандарт не накладывает никаких требований на результат. Компилятор **предполагает, что UB никогда не случается**, и оптимизирует исходя из этого — поэтому последствия бывают совсем неожиданными.
+
+          ```cpp
+          bool willOverflow(int x) { return x + 1 < x; }   // компилятор с -O2 вернёт всегда false:
+                                                            // signed overflow — UB, значит «не бывает»
+          ```
+
+          ## Каталог частых UB
+
+          **Память**
+          - выход за границы массива / `vector::operator[]`;
+          - разыменование `nullptr`, висячего указателя/ссылки/итератора;
+          - use-after-free, double free, `delete` вместо `delete[]`;
+          - чтение неинициализированной переменной (`int x; cout << x;`).
+
+          **Арифметика**
+          - переполнение **знаковых** целых (беззнаковые — оборачиваются, это определено);
+          - деление на ноль, `INT_MIN / -1`;
+          - сдвиг на отрицательное число или ≥ ширины типа (`1 << 32` для int).
+
+          **Типы и объекты**
+          - нарушение strict aliasing: `*(float*)&intVar` → используйте `std::bit_cast` или `memcpy`;
+          - вызов метода у объекта после окончания его жизни;
+          - модификация `const`-объекта через `const_cast`;
+          - невыровненный доступ;
+          - вызов чисто виртуальной функции из конструктора базы.
+
+          **Последовательность**
+          - модификация переменной дважды без упорядочения (до C++17 `i = i++ + 1`);
+          - гонка данных между потоками.
+
+          **Функции**
+          - выход из не-void функции без `return` (кроме main);
+          - бесконечный цикл без побочных эффектов (может быть удалён).
+
+          ## Что делать
+
+          1. **Предупреждения**: `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wnull-dereference` + `-Werror`.
+          2. **Санитайзеры** в тестах: ASan, UBSan, TSan, MSan.
+          3. Безопасные API: `.at()`, `std::span`, `std::array`, `gsl::narrow`, `std::bit_cast`, `std::ssize`.
+          4. Проверки переполнения: `__builtin_add_overflow`, C++26 `std::add_sat`.
+          5. Инициализация всего: `int x{};`, члены с инициализаторами по умолчанию.
+          6. `constexpr`-тесты: в константных вычислениях UB — **ошибка компиляции**.
+          7. Статический анализ (clang-tidy, PVS-Studio), C++ Core Guidelines.
+
+          ## Unspecified и implementation-defined
+
+          Не путайте с UB: **implementation-defined** — поведение задокументировано реализацией (`sizeof(long)`), **unspecified** — один из допустимых вариантов без документирования (порядок вычисления аргументов функции `f(a(), b())`).
+        practice:
+          - type: choice
+            q: Какая операция — UB?
+            options: ["unsigned u = UINT_MAX; u++;", "int i = INT_MAX; i++;", "double d = 1.0 / 3;", "size_t s = sizeof(int);"]
+            answer: 1
+            explain: Переполнение беззнаковых определено (оборачивание), знаковых — UB.
+          - type: choice
+            q: Как безопасно интерпретировать биты float как uint32_t?
+            options: ["*(uint32_t*)&f", "reinterpret_cast<uint32_t&>(f)", "std::bit_cast<uint32_t>(f)", "union всегда"]
+            answer: 2
+          - type: bug
+            q: В какой строке UB?
+            code: |
+              int compute(bool flag) {
+                  if (flag) {
+                      return 42;
+                  }
+              }
+            bugLine: 5
+            explain: При flag == false функция выходит без return — UB для не-void функции.
+          - type: choice
+            q: Порядок вычисления аргументов f(a(), b()) — это…
+            options: ["UB", "Unspecified", "Всегда слева направо", "Ошибка компиляции"]
+            answer: 1
+          - type: bug
+            q: Где UB?
+            code: |
+              std::vector<int> v{1, 2, 3};
+              for (std::size_t i = 0; i <= v.size(); ++i)
+                  std::cout << v[i];
+            bugLine: 2
+            fix: i < v.size()
+            explain: При i == 3 — выход за границы вектора.
+        homework:
+          task: |
+            Напишите 10 маленьких функций, каждая содержит отдельный вид UB из каталога. Для каждой: (1) поймайте инструментом (предупреждение компилятора, UBSan, ASan, TSan или constexpr-вычисление), (2) запишите сообщение, (3) исправьте. Особо: покажите, как `-O2` меняет поведение функции `x + 1 < x`.
+          checklist:
+            - 10 видов UB
+            - Для каждого — инструмент и исправление
+            - Демонстрация влияния оптимизатора
+          solution: |
+            // 1. signed overflow — UBSan: "signed integer overflow"
+            bool willOverflow(int x) { return x + 1 < x; }          // -O2: всегда false
+            bool willOverflowFixed(int x) { return x == INT_MAX; }
+
+            // 2. shift >= width — UBSan: "shift exponent 32 is too large"
+            uint32_t s = 1u << n;  // fix: n < 32 ? 1u << n : 0
+
+            // 3. out of bounds — ASan: heap-buffer-overflow; fix: v.at(i) или i < v.size()
+            // 4. use-after-free — ASan: heap-use-after-free; fix: unique_ptr
+            // 5. uninitialized — MSan / -Wuninitialized; fix: int x{};
+            // 6. strict aliasing — -Wstrict-aliasing; fix: std::bit_cast
+            // 7. no return — -Wreturn-type (ошибка в GCC с -Werror); fix: return в каждой ветке
+            // 8. data race — TSan; fix: std::atomic / mutex
+            // 9. const_cast модификация const-объекта — fix: не изменять
+            // 10. constexpr ловит UB:
+            constexpr int bad() { int a[3]{}; return a[3]; }
+            // constexpr int x = bad();   // ошибка компиляции: read of out-of-bounds
+      - id: cpp-08-05
+        title: "Итоговый проект: многопоточный сервис на CMake"
+        minutes: 60
+        xp: 100
+        theory: |
+          Время собрать всё в проект уровня **Middle C++ разработчика**.
+
+          ## Задание: «KV-Store» — многопоточное in-memory хранилище ключ-значение с TCP-интерфейсом
+
+          **Функциональность**
+          - Текстовый протокол поверх TCP (как упрощённый Redis):
+            - `SET key value [EX seconds]` → `OK`
+            - `GET key` → значение или `(nil)`
+            - `DEL key` → `1`/`0`
+            - `INCR key` → новое число (ошибка, если не число)
+            - `KEYS prefix*` → список
+            - `STATS` → количество ключей, запросов, uptime
+          - Истечение ключей по TTL (фоновый поток очистки).
+          - Персистентность: снапшот в файл по команде `SAVE` и при остановке, загрузка при старте.
+          - Корректное завершение по SIGINT (доработать текущие запросы).
+
+          **Архитектура**
+          ```
+          kvstore/
+            CMakeLists.txt  CMakePresets.json  vcpkg.json
+            include/kv/      storage.h  protocol.h  server.h
+            src/             storage.cpp (шардированный map + shared_mutex)
+                             protocol.cpp (парсинг команд → std::variant<SetCmd, GetCmd, ...>)
+                             server.cpp (Boost.Asio или poll/epoll + ThreadPool)
+                             main.cpp (CLI11: --port --threads --data)
+            tests/           storage_test.cpp  protocol_test.cpp  (GoogleTest)
+            bench/           storage_bench.cpp (Google Benchmark)
+            .github/workflows/ci.yml   Dockerfile   README.md
+          ```
+
+          **Технические требования**
+          - C++20, современный CMake (только target_*), зависимости через vcpkg/Conan.
+          - Хранилище: N шардов (`std::array<Shard, 16>`, шард = `unordered_map` + `shared_mutex`) — меньше конкуренции за блокировку.
+          - Протокол отделён от сети и полностью покрыт unit-тестами.
+          - Пул потоков для обработки соединений, `std::jthread` + `stop_token`.
+          - Никаких `new`/`delete`, RAII везде; логирование spdlog.
+          - CI: сборка GCC и Clang, тесты, отдельная сборка с ASan+UBSan и с TSan, clang-tidy.
+          - Бенчмарк: RPS на GET/SET при 1, 4, 8 потоках-клиентах; результаты в README.
+
+          ## Ядро хранилища
+
+          ```cpp
+          class Storage {
+              struct Shard {
+                  mutable std::shared_mutex m;
+                  std::unordered_map<std::string, Entry> map;
+              };
+              std::array<Shard, 16> shards_;
+              Shard& shard(std::string_view k) { return shards_[std::hash<std::string_view>{}(k) % shards_.size()]; }
+          public:
+              void set(std::string k, std::string v, std::optional<std::chrono::seconds> ttl);
+              std::optional<std::string> get(std::string_view k);
+              bool del(std::string_view k);
+              std::expected<long long, std::string> incr(std::string_view k);
+              std::size_t evictExpired();
+          };
+          ```
+
+          ## Критерии готовности
+
+          `git clone` → `cmake --preset release && cmake --build --preset release` → `./kvstore --port 6380` → `nc localhost 6380` работает; все тесты зелёные под санитайзерами; README описывает архитектуру, протокол и бенчмарки.
+
+          > 🎉 Поздравляем! Этот проект демонстрирует владение памятью, современным C++, STL, многопоточностью, инструментами и сборкой — ключевыми навыками Middle C++ разработчика.
+        practice:
+          - type: choice
+            q: Зачем шардировать хранилище на несколько map с отдельными мьютексами?
+            options: ["Чтобы экономить память", "Чтобы уменьшить конкуренцию потоков за одну блокировку", "Чтобы ключи были отсортированы", "Так требует TCP"]
+            answer: 1
+          - type: choice
+            q: Почему парсинг протокола выделяют в отдельный модуль без сети?
+            options: ["Так быстрее компилируется", "Его можно полностью покрыть быстрыми unit-тестами", "Сеть не нужна", "Для красоты"]
+            answer: 1
+          - type: choice
+            q: Какой тип хорошо подходит для представления распарсенной команды?
+            options: ["std::any", "std::variant<SetCmd, GetCmd, DelCmd, ...>", "void*", "std::string"]
+            answer: 1
+          - type: order
+            q: Расставьте этапы разработки
+            lines:
+              - Storage и его unit-тесты
+              - Парсер протокола и тесты
+              - Сетевой сервер и пул потоков
+              - TTL, снапшоты, graceful shutdown
+              - CI с санитайзерами, бенчмарки, README
+        homework:
+          task: |
+            Реализуйте «KV-Store» по требованиям урока и опубликуйте на GitHub. Минимум для сдачи: команды SET/GET/DEL/INCR/STATS, шардированное хранилище, TTL, пул потоков, graceful shutdown, 20+ unit-тестов, CI со сборкой под ASan и TSan, Dockerfile, README с бенчмарком.
+          hints:
+            - Начните с Storage и тестов — сеть добавьте последней
+            - Для сети проще всего standalone Asio (vcpkg asio) с io_context и несколькими потоками run()
+            - Для graceful shutdown используйте asio::signal_set или std::signal + atomic флаг
+          checklist:
+            - Собирается одной командой через пресет
+            - Тесты зелёные под ASan/UBSan и TSan
+            - Нет утечек и гонок
+            - README с архитектурой, протоколом и цифрами
+          solution: |
+            // protocol.h — ключевой фрагмент
+            struct SetCmd { std::string key, value; std::optional<std::chrono::seconds> ttl; };
+            struct GetCmd { std::string key; };
+            struct DelCmd { std::string key; };
+            struct IncrCmd { std::string key; };
+            struct StatsCmd {};
+            using Command = std::variant<SetCmd, GetCmd, DelCmd, IncrCmd, StatsCmd>;
+
+            std::expected<Command, std::string> parse(std::string_view line);
+
+            // dispatcher
+            std::string execute(Storage& s, const Command& c) {
+                return std::visit(overloaded{
+                    [&](const SetCmd& x) { s.set(x.key, x.value, x.ttl); return std::string("OK"); },
+                    [&](const GetCmd& x) { return s.get(x.key).value_or("(nil)"); },
+                    [&](const DelCmd& x) { return std::string(s.del(x.key) ? "1" : "0"); },
+                    [&](const IncrCmd& x) {
+                        auto r = s.incr(x.key);
+                        return r ? std::to_string(*r) : "ERR " + r.error();
+                    },
+                    [&](const StatsCmd&) { return s.stats(); }
+                }, c);
+            }
+
+            // main.cpp
+            int main(int argc, char** argv) {
+                Config cfg = parseArgs(argc, argv);
+                Storage storage;
+                storage.load(cfg.dataFile);
+                std::jthread janitor([&](std::stop_token st) {
+                    while (!st.stop_requested()) { storage.evictExpired(); std::this_thread::sleep_for(std::chrono::seconds(1)); }
+                });
+                Server server(cfg.port, cfg.threads, [&](std::string_view line) {
+                    auto cmd = parse(line);
+                    return cmd ? execute(storage, *cmd) : "ERR " + cmd.error();
+                });
+                server.runUntilSignal();        // SIGINT/SIGTERM
+                storage.save(cfg.dataFile);
+            }

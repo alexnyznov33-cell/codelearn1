@@ -1,0 +1,700 @@
+id: java
+modules:
+  - id: java-m9
+    title: Базы данных
+    level: Middle
+    lessons:
+      - id: java-09-01
+        title: JDBC
+        minutes: 40
+        xp: 45
+        theory: |
+          **JDBC** — стандартный низкоуровневый API для работы с реляционными БД. Под ним работают все ORM.
+
+          ```java
+          String url = "jdbc:postgresql://localhost:5432/shop";
+          try (Connection conn = DriverManager.getConnection(url, "app", "secret");
+               PreparedStatement ps = conn.prepareStatement(
+                   "SELECT id, name, price FROM product WHERE price > ? ORDER BY price")) {
+              ps.setBigDecimal(1, new BigDecimal("1000"));
+              try (ResultSet rs = ps.executeQuery()) {
+                  while (rs.next()) {
+                      long id = rs.getLong("id");
+                      String name = rs.getString("name");
+                      BigDecimal price = rs.getBigDecimal("price");
+                      System.out.println(id + " " + name + " " + price);
+                  }
+              }
+          }
+          ```
+
+          ## Изменение данных
+
+          ```java
+          try (PreparedStatement ps = conn.prepareStatement(
+                  "INSERT INTO product(name, price) VALUES (?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+              ps.setString(1, "Мышь");
+              ps.setBigDecimal(2, new BigDecimal("990"));
+              int rows = ps.executeUpdate();          // число изменённых строк
+              try (ResultSet keys = ps.getGeneratedKeys()) { keys.next(); long id = keys.getLong(1); }
+          }
+          ```
+
+          ## SQL-инъекции
+
+          ```java
+          // ❌ Никогда так не делайте:
+          stmt.executeQuery("SELECT * FROM users WHERE login = '" + login + "'");
+          // login = "' OR '1'='1"  → вернёт всех пользователей
+          ```
+
+          `PreparedStatement` с `?` передаёт параметры отдельно от SQL — инъекция невозможна, а план запроса кешируется.
+
+          ## Транзакции вручную
+
+          ```java
+          conn.setAutoCommit(false);
+          try {
+              debit.executeUpdate(); credit.executeUpdate();
+              conn.commit();
+          } catch (SQLException e) {
+              conn.rollback();
+              throw e;
+          }
+          ```
+
+          ## Пакетная вставка и пул соединений
+
+          `ps.addBatch()` + `ps.executeBatch()` — тысячи строк за один сетевой обмен. Открывать соединение на каждый запрос дорого, поэтому используют **пул соединений** — **HikariCP** (`DataSource`), он по умолчанию в Spring Boot.
+
+          Всегда закрывайте `Connection`, `Statement`, `ResultSet` через try-with-resources — иначе утечка соединений и пул «кончится».
+        practice:
+          - type: choice
+            q: Как защититься от SQL-инъекций в JDBC?
+            options: ["Экранировать кавычки вручную", "Использовать PreparedStatement с параметрами ?", "Использовать Statement", "Писать SQL заглавными буквами"]
+            answer: 1
+          - type: fill
+            q: Подставьте параметр и выполните запрос на чтение
+            code: |
+              PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE id = ?");
+              ps.___(1, 42L);
+              ResultSet rs = ps.___();
+            answers: ["setLong", "executeQuery"]
+          - type: bug
+            q: Где уязвимость?
+            code: |
+              String login = request.getParameter("login");
+              Statement st = conn.createStatement();
+              ResultSet rs = st.executeQuery("SELECT * FROM users WHERE login='" + login + "'");
+            bugLine: 3
+            fix: PreparedStatement с параметром ? и ps.setString(1, login)
+            explain: Конкатенация пользовательского ввода в SQL — классическая SQL-инъекция.
+          - type: choice
+            q: Что возвращает executeUpdate()?
+            options: ["ResultSet", "Количество изменённых строк", "boolean", "ID новой записи"]
+            answer: 1
+          - type: order
+            q: Расставьте шаги чтения данных через JDBC
+            lines:
+              - Получить Connection из DataSource
+              - Создать PreparedStatement с параметрами ?
+              - Установить параметры setXxx
+              - Выполнить executeQuery
+              - Пройти ResultSet через while (rs.next())
+        homework:
+          task: |
+            Напишите DAO `ProductDao` на чистом JDBC (подойдёт H2 in-memory: `jdbc:h2:mem:shop`): создание таблицы, `long insert(Product p)` с возвратом сгенерированного id, `Optional<Product> findById(long id)`, `List<Product> findByMaxPrice(BigDecimal max)`, `void insertAll(List<Product>)` через batch и `void changePrice(long id, BigDecimal price)`. Product — record. Все ресурсы — в try-with-resources.
+          checklist:
+            - Только PreparedStatement
+            - Сгенерированный id возвращается
+            - Batch-вставка
+            - Ресурсы закрываются
+          solution: |
+            import java.math.BigDecimal;
+            import java.sql.*;
+            import java.util.*;
+
+            record Product(Long id, String name, BigDecimal price) {}
+
+            class ProductDao {
+                private final Connection c;
+                ProductDao(Connection c) throws SQLException {
+                    this.c = c;
+                    try (Statement st = c.createStatement()) {
+                        st.execute("CREATE TABLE IF NOT EXISTS product(id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), price DECIMAL(10,2))");
+                    }
+                }
+                long insert(Product p) throws SQLException {
+                    try (var ps = c.prepareStatement("INSERT INTO product(name, price) VALUES (?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+                        ps.setString(1, p.name()); ps.setBigDecimal(2, p.price());
+                        ps.executeUpdate();
+                        try (var keys = ps.getGeneratedKeys()) { keys.next(); return keys.getLong(1); }
+                    }
+                }
+                void insertAll(List<Product> list) throws SQLException {
+                    try (var ps = c.prepareStatement("INSERT INTO product(name, price) VALUES (?, ?)")) {
+                        for (Product p : list) { ps.setString(1, p.name()); ps.setBigDecimal(2, p.price()); ps.addBatch(); }
+                        ps.executeBatch();
+                    }
+                }
+                Optional<Product> findById(long id) throws SQLException {
+                    try (var ps = c.prepareStatement("SELECT * FROM product WHERE id = ?")) {
+                        ps.setLong(1, id);
+                        try (var rs = ps.executeQuery()) { return rs.next() ? Optional.of(map(rs)) : Optional.empty(); }
+                    }
+                }
+                List<Product> findByMaxPrice(BigDecimal max) throws SQLException {
+                    try (var ps = c.prepareStatement("SELECT * FROM product WHERE price <= ? ORDER BY price")) {
+                        ps.setBigDecimal(1, max);
+                        List<Product> res = new ArrayList<>();
+                        try (var rs = ps.executeQuery()) { while (rs.next()) res.add(map(rs)); }
+                        return res;
+                    }
+                }
+                void changePrice(long id, BigDecimal price) throws SQLException {
+                    try (var ps = c.prepareStatement("UPDATE product SET price = ? WHERE id = ?")) {
+                        ps.setBigDecimal(1, price); ps.setLong(2, id); ps.executeUpdate();
+                    }
+                }
+                private Product map(ResultSet rs) throws SQLException {
+                    return new Product(rs.getLong("id"), rs.getString("name"), rs.getBigDecimal("price"));
+                }
+                public static void main(String[] args) throws SQLException {
+                    try (Connection c = DriverManager.getConnection("jdbc:h2:mem:shop")) {
+                        var dao = new ProductDao(c);
+                        long id = dao.insert(new Product(null, "Мышь", new BigDecimal("990")));
+                        dao.insertAll(List.of(new Product(null, "Клавиатура", new BigDecimal("2500")), new Product(null, "Коврик", new BigDecimal("300"))));
+                        dao.changePrice(id, new BigDecimal("890"));
+                        System.out.println(dao.findById(id));
+                        System.out.println(dao.findByMaxPrice(new BigDecimal("1000")));
+                    }
+                }
+            }
+      - id: java-09-02
+        title: JPA и Hibernate
+        minutes: 40
+        xp: 50
+        theory: |
+          **JPA (Jakarta Persistence)** — спецификация ORM: классы ↔ таблицы. **Hibernate** — её самая популярная реализация.
+
+          ```java
+          @Entity
+          @Table(name = "customers")
+          public class Customer {
+              @Id
+              @GeneratedValue(strategy = GenerationType.IDENTITY)
+              private Long id;
+
+              @Column(nullable = false, length = 100)
+              private String name;
+
+              @Column(unique = true)
+              private String email;
+
+              @Enumerated(EnumType.STRING)
+              private Status status = Status.ACTIVE;
+
+              protected Customer() {}           // JPA требует конструктор без аргументов
+              public Customer(String name, String email) { this.name = name; this.email = email; }
+              // геттеры/сеттеры
+          }
+          ```
+
+          ## EntityManager и контекст персистентности
+
+          ```java
+          em.getTransaction().begin();
+          Customer c = new Customer("Анна", "anna@mail.ru");
+          em.persist(c);                       // NEW → MANAGED, INSERT при flush
+          c.setName("Анна П.");                // dirty checking: UPDATE сам при коммите!
+          Customer same = em.find(Customer.class, c.getId()); // из кеша 1-го уровня, без SQL
+          em.getTransaction().commit();
+          ```
+
+          **Состояния сущности**: `new/transient` → `managed` (отслеживается) → `detached` (после закрытия контекста) → `removed`. Изменения managed-объектов автоматически сохраняются при `flush`/commit — это **dirty checking**.
+
+          `merge(detached)` — копирует состояние в managed-объект; `remove(managed)` — удаление.
+
+          ## JPQL
+
+          Запросы к **сущностям**, а не таблицам:
+
+          ```java
+          List<Customer> list = em.createQuery(
+                  "SELECT c FROM Customer c WHERE c.status = :st ORDER BY c.name", Customer.class)
+              .setParameter("st", Status.ACTIVE)
+              .setMaxResults(20)
+              .getResultList();
+          ```
+
+          ## Важно знать
+
+          - `@Enumerated(EnumType.STRING)` — иначе хранится порядковый номер, и вставка нового значения в середину enum ломает данные.
+          - `equals/hashCode` в сущностях — по бизнес-ключу или id с осторожностью; Lombok `@Data` на сущностях — плохая идея.
+          - `hibernate.hbm2ddl.auto=update` годится лишь для учёбы; в проде схему меняют **миграциями** (Flyway).
+          - Включайте логирование SQL (`spring.jpa.show-sql=true` или `org.hibernate.SQL=DEBUG`), чтобы видеть реальные запросы.
+        practice:
+          - type: fill
+            q: Сделайте поле первичным ключом с автоинкрементом
+            code: |
+              @___
+              @GeneratedValue(strategy = GenerationType.___)
+              private Long id;
+            answers: ["Id", "IDENTITY"]
+          - type: choice
+            q: Что произойдёт, если изменить поле managed-сущности внутри транзакции без вызова save/merge?
+            options: ["Ничего", "Hibernate выполнит UPDATE при коммите (dirty checking)", "Ошибка", "Изменение сохранится только в кеше"]
+            answer: 1
+          - type: bug
+            q: Какая строка может испортить данные при изменении enum?
+            code: |
+              @Entity
+              public class Order {
+                  @Id @GeneratedValue private Long id;
+                  @Enumerated(EnumType.ORDINAL)
+                  private Status status;
+              }
+            bugLine: 4
+            fix: "@Enumerated(EnumType.STRING)"
+            explain: ORDINAL хранит номер константы; добавление значения в середину enum сдвинет номера.
+          - type: choice
+            q: Зачем JPA-сущности конструктор без аргументов?
+            options: ["Для сериализации JSON", "Hibernate создаёт объекты через рефлексию", "Это требование Java", "Для equals"]
+            answer: 1
+          - type: choice
+            q: К чему обращается JPQL-запрос?
+            options: ["К таблицам и колонкам", "К сущностям и их полям", "К XML-файлам", "К индексам"]
+            answer: 1
+        homework:
+          task: |
+            Создайте сущность `Book` (id, title, author, isbn уникальный, year, genre — enum STRING) и класс `BookRepository` на `EntityManager` с методами save (persist/merge), findById, findByAuthor (JPQL с параметром), deleteById и `updateYear` через dirty checking. Используйте H2 и Hibernate (persistence.xml) или Spring Boot. Включите вывод SQL и убедитесь, что повторный `find` того же id в одной транзакции не делает SELECT.
+          checklist:
+            - Корректные аннотации сущности
+            - JPQL с именованным параметром
+            - Обновление без явного UPDATE
+          solution: |
+            @Entity
+            public class Book {
+                @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+                @Column(nullable = false) private String title;
+                private String author;
+                @Column(unique = true, nullable = false) private String isbn;
+                private int year;
+                @Enumerated(EnumType.STRING) private Genre genre;
+                protected Book() {}
+                public Book(String title, String author, String isbn, int year, Genre genre) {
+                    this.title = title; this.author = author; this.isbn = isbn; this.year = year; this.genre = genre;
+                }
+                public Long getId() { return id; }
+                public void setYear(int year) { this.year = year; }
+            }
+            enum Genre { NOVEL, SCIENCE, FANTASY }
+
+            public class BookRepository {
+                private final EntityManager em;
+                public BookRepository(EntityManager em) { this.em = em; }
+                public Book save(Book b) {
+                    if (b.getId() == null) { em.persist(b); return b; }
+                    return em.merge(b);
+                }
+                public Optional<Book> findById(long id) { return Optional.ofNullable(em.find(Book.class, id)); }
+                public List<Book> findByAuthor(String author) {
+                    return em.createQuery("SELECT b FROM Book b WHERE b.author = :a ORDER BY b.year", Book.class)
+                             .setParameter("a", author).getResultList();
+                }
+                public void deleteById(long id) { findById(id).ifPresent(em::remove); }
+                public void updateYear(long id, int year) { findById(id).ifPresent(b -> b.setYear(year)); } // dirty checking
+            }
+
+            // Использование:
+            // em.getTransaction().begin();
+            // var repo = new BookRepository(em);
+            // Book b = repo.save(new Book("Солярис", "Лем", "978-5-17", 1961, Genre.SCIENCE));
+            // repo.updateYear(b.getId(), 1962);   // UPDATE при commit
+            // repo.findById(b.getId());           // без SELECT — кеш 1-го уровня
+            // em.getTransaction().commit();
+      - id: java-09-03
+        title: Связи сущностей и N+1
+        minutes: 45
+        xp: 50
+        theory: |
+          ## Виды связей
+
+          ```java
+          @Entity
+          public class Customer {
+              @Id @GeneratedValue private Long id;
+              @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
+              private List<Order> orders = new ArrayList<>();
+
+              public void addOrder(Order o) { orders.add(o); o.setCustomer(this); } // синхронизация сторон
+          }
+
+          @Entity
+          @Table(name = "orders")
+          public class Order {
+              @Id @GeneratedValue private Long id;
+              @ManyToOne(fetch = FetchType.LAZY)
+              @JoinColumn(name = "customer_id")
+              private Customer customer;          // ВЛАДЕЛЕЦ связи (есть внешний ключ)
+          }
+          ```
+
+          - `@ManyToOne` — сторона с внешним ключом, **владелец**.
+          - `@OneToMany(mappedBy = ...)` — обратная сторона.
+          - `@ManyToMany` — через промежуточную таблицу `@JoinTable`; при дополнительных полях лучше отдельная сущность.
+          - `@OneToOne` — один к одному.
+
+          ## LAZY и EAGER
+
+          По умолчанию `*ToOne` — EAGER, `*ToMany` — LAZY. Рекомендация: **всё LAZY**, а нужные данные подгружать явно. Обращение к lazy-полю вне транзакции даёт `LazyInitializationException`.
+
+          ## Проблема N+1
+
+          ```java
+          List<Customer> customers = em.createQuery("SELECT c FROM Customer c", Customer.class).getResultList(); // 1 запрос
+          for (Customer c : customers) {
+              System.out.println(c.getOrders().size());   // + N запросов — по одному на клиента!
+          }
+          ```
+
+          100 клиентов → 101 запрос. Решения:
+
+          ```java
+          // 1. JOIN FETCH
+          "SELECT DISTINCT c FROM Customer c LEFT JOIN FETCH c.orders"
+
+          // 2. Entity graph (Spring Data)
+          @EntityGraph(attributePaths = "orders")
+          List<Customer> findAll();
+
+          // 3. Пакетная загрузка
+          @BatchSize(size = 50)    // или hibernate.default_batch_fetch_size=50
+          ```
+
+          4. **DTO-проекция**: выбирайте только нужные поля — `SELECT new ru.shop.CustomerStat(c.name, COUNT(o)) FROM Customer c LEFT JOIN c.orders o GROUP BY c.name`.
+
+          Не используйте `JOIN FETCH` двух коллекций сразу (декартово произведение, `MultipleBagFetchException`) и пагинацию с fetch коллекции (пагинация в памяти).
+
+          ## Каскады
+
+          `cascade = CascadeType.ALL` — операции над родителем распространяются на детей; `orphanRemoval = true` — удалённый из коллекции ребёнок удаляется из БД. Каскады ставят от родителя к детям, но не на `@ManyToOne`.
+        practice:
+          - type: choice
+            q: Какая сторона связи OneToMany/ManyToOne является владельцем?
+            options: ["@OneToMany", "@ManyToOne (с внешним ключом)", "Обе", "Определяется cascade"]
+            answer: 1
+          - type: choice
+            q: Загружаем 50 авторов, затем для каждого обращаемся к книгам (LAZY). Сколько SQL-запросов?
+            options: ["1", "2", "51", "50"]
+            answer: 2
+          - type: fill
+            q: Загрузите клиентов вместе с заказами одним запросом
+            code: |
+              SELECT DISTINCT c FROM Customer c LEFT JOIN ___ c.orders
+            answers: ["FETCH"]
+          - type: bug
+            q: Какая строка вызовет LazyInitializationException?
+            code: |
+              Customer c = service.findCustomer(1L); // транзакция внутри сервиса закончилась
+              System.out.println(c.getName());
+              System.out.println(c.getOrders().size());
+            bugLine: 3
+            fix: загрузить заказы в сервисе (JOIN FETCH / EntityGraph) или вернуть DTO
+            explain: Ленивая коллекция инициализируется вне транзакции — сессия уже закрыта.
+          - type: fill
+            q: Укажите обратную сторону связи
+            code: |
+              @OneToMany(___ = "customer")
+              private List<Order> orders;
+            answers: ["mappedBy"]
+        homework:
+          task: |
+            Смоделируйте «Блог»: `Author` 1—N `Post` N—M `Tag` (через `@ManyToMany` и `@JoinTable`) и `Post` 1—N `Comment`. Все связи LAZY, вспомогательные методы addPost/addComment синхронизируют обе стороны. Напишите метод, печатающий для каждого автора число постов и комментариев: сначала «наивно» (увидьте N+1 в логах SQL), затем исправьте через JOIN FETCH и через DTO-проекцию с GROUP BY. Посчитайте число запросов в каждом варианте.
+          checklist:
+            - Корректные mappedBy и JoinColumn
+            - N+1 воспроизведён и устранён
+            - Есть DTO-проекция
+          solution: |
+            @Entity class Author {
+                @Id @GeneratedValue Long id;
+                String name;
+                @OneToMany(mappedBy = "author", cascade = CascadeType.ALL, orphanRemoval = true)
+                List<Post> posts = new ArrayList<>();
+                void addPost(Post p) { posts.add(p); p.author = this; }
+            }
+            @Entity class Post {
+                @Id @GeneratedValue Long id;
+                String title;
+                @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "author_id") Author author;
+                @OneToMany(mappedBy = "post", cascade = CascadeType.ALL) List<Comment> comments = new ArrayList<>();
+                @ManyToMany @JoinTable(name = "post_tag", joinColumns = @JoinColumn(name = "post_id"),
+                    inverseJoinColumns = @JoinColumn(name = "tag_id")) Set<Tag> tags = new HashSet<>();
+                void addComment(Comment c) { comments.add(c); c.post = this; }
+            }
+            @Entity class Comment { @Id @GeneratedValue Long id; String text; @ManyToOne(fetch = FetchType.LAZY) Post post; }
+            @Entity class Tag { @Id @GeneratedValue Long id; String name; @ManyToMany(mappedBy = "tags") Set<Post> posts = new HashSet<>(); }
+
+            record AuthorStat(String name, long posts, long comments) {}
+
+            // 1. Наивно: 1 + N(авторы) + M(посты) запросов
+            for (Author a : em.createQuery("SELECT a FROM Author a", Author.class).getResultList()) {
+                long comments = a.posts.stream().mapToLong(p -> p.comments.size()).sum();
+                System.out.println(a.name + " " + a.posts.size() + " " + comments);
+            }
+            // 2. JOIN FETCH: 1 запрос на авторов с постами (+ batch для комментариев)
+            em.createQuery("SELECT DISTINCT a FROM Author a LEFT JOIN FETCH a.posts", Author.class).getResultList();
+            // 3. DTO-проекция: ровно 1 запрос
+            em.createQuery("""
+                SELECT new AuthorStat(a.name, COUNT(DISTINCT p), COUNT(c))
+                FROM Author a LEFT JOIN a.posts p LEFT JOIN p.comments c
+                GROUP BY a.name""", AuthorStat.class).getResultList().forEach(System.out::println);
+      - id: java-09-04
+        title: Транзакции
+        minutes: 40
+        xp: 50
+        theory: |
+          **Транзакция** — группа операций, выполняемая по принципу «всё или ничего». Свойства **ACID**: Atomicity (атомарность), Consistency (согласованность), Isolation (изоляция), Durability (долговечность).
+
+          ## Аномалии и уровни изоляции
+
+          | Уровень | Грязное чтение | Неповторяемое чтение | Фантомы |
+          |---|---|---|---|
+          | READ UNCOMMITTED | возможно | возможно | возможно |
+          | READ COMMITTED (PostgreSQL по умолчанию) | нет | возможно | возможно |
+          | REPEATABLE READ (MySQL по умолчанию) | нет | нет | возможно* |
+          | SERIALIZABLE | нет | нет | нет |
+
+          *в PostgreSQL REPEATABLE READ не допускает и фантомов.
+
+          ## @Transactional в Spring
+
+          ```java
+          @Service
+          public class TransferService {
+              @Transactional
+              public void transfer(long fromId, long toId, BigDecimal sum) {
+                  Account from = repo.findById(fromId).orElseThrow();
+                  Account to = repo.findById(toId).orElseThrow();
+                  from.withdraw(sum);      // бросит исключение → откат
+                  to.deposit(sum);
+              }   // commit, изменения сохранены через dirty checking
+
+              @Transactional(readOnly = true)
+              public BigDecimal total() { ... }
+          }
+          ```
+
+          ## Подводные камни
+
+          1. **Откат по умолчанию только для unchecked** (`RuntimeException`, `Error`). Для checked: `@Transactional(rollbackFor = Exception.class)`.
+          2. **Self-invocation**: вызов `this.method()` внутри того же класса **обходит прокси** — аннотация не сработает.
+          3. Работает только на `public`-методах бинов Spring (прокси).
+          4. Не держите транзакцию во время долгих внешних вызовов (HTTP) — блокировки и соединения заняты.
+
+          ## Propagation
+
+          - `REQUIRED` (по умолчанию) — присоединиться к текущей или создать новую.
+          - `REQUIRES_NEW` — приостановить текущую и открыть отдельную (например, запись аудита, которая должна сохраниться даже при откате).
+          - `MANDATORY`, `SUPPORTS`, `NOT_SUPPORTED`, `NEVER`, `NESTED`.
+
+          ## Блокировки
+
+          **Оптимистическая**: поле `@Version` — при одновременном изменении второй получит `OptimisticLockException` (повторить операцию). **Пессимистическая**: `@Lock(LockModeType.PESSIMISTIC_WRITE)` → `SELECT ... FOR UPDATE`.
+        practice:
+          - type: choice
+            q: Какие исключения по умолчанию вызывают откат в @Transactional?
+            options: ["Все исключения", "Только unchecked (RuntimeException и Error)", "Только checked", "Никакие"]
+            answer: 1
+          - type: bug
+            q: Почему транзакция не откроется?
+            code: |
+              @Service
+              public class ReportService {
+                  public void build() {
+                      this.saveAll();
+                  }
+                  @Transactional
+                  public void saveAll() { /* ... */ }
+              }
+            bugLine: 4
+            fix: вынести saveAll в другой бин или пометить @Transactional метод build
+            explain: Вызов через this обходит прокси Spring, поэтому аннотация не срабатывает.
+          - type: choice
+            q: Какая аномалия невозможна на уровне READ COMMITTED?
+            options: ["Грязное чтение", "Неповторяемое чтение", "Фантомное чтение", "Потерянное обновление в любом случае"]
+            answer: 0
+          - type: fill
+            q: Включите оптимистическую блокировку
+            code: |
+              @___
+              private Long version;
+            answers: ["Version"]
+          - type: choice
+            q: Аудит должен сохраниться, даже если основная операция откатится. Какой propagation?
+            options: ["REQUIRED", "REQUIRES_NEW", "SUPPORTS", "NEVER"]
+            answer: 1
+        homework:
+          task: |
+            В Spring Boot проекте (H2) создайте `Account` с `@Version` и сервис перевода денег с `@Transactional`. Напишите тесты: (1) успешный перевод; (2) недостаточно средств — исключение и балансы не изменились; (3) аудит через отдельный бин с `REQUIRES_NEW` сохраняется даже при откате; (4) два параллельных изменения одного счёта — одно получает `ObjectOptimisticLockingFailureException`, добавьте повтор (retry) до 3 раз.
+          checklist:
+            - Откат проверен тестом
+            - Аудит в отдельной транзакции
+            - Оптимистическая блокировка с повтором
+          solution: |
+            @Entity
+            public class Account {
+                @Id @GeneratedValue Long id;
+                BigDecimal balance;
+                @Version Long version;
+                void withdraw(BigDecimal s) {
+                    if (balance.compareTo(s) < 0) throw new InsufficientFundsException();
+                    balance = balance.subtract(s);
+                }
+                void deposit(BigDecimal s) { balance = balance.add(s); }
+            }
+
+            @Service
+            public class AuditService {
+                private final AuditRepository repo;
+                AuditService(AuditRepository repo) { this.repo = repo; }
+                @Transactional(propagation = Propagation.REQUIRES_NEW)
+                public void record(String msg) { repo.save(new AuditEntry(msg)); }
+            }
+
+            @Service
+            public class TransferService {
+                private final AccountRepository accounts;
+                private final AuditService audit;
+                TransferService(AccountRepository a, AuditService au) { accounts = a; audit = au; }
+
+                @Transactional
+                public void transfer(long from, long to, BigDecimal sum) {
+                    audit.record("перевод " + from + "→" + to + " " + sum);  // сохранится всегда
+                    accounts.findById(from).orElseThrow().withdraw(sum);
+                    accounts.findById(to).orElseThrow().deposit(sum);
+                }
+
+                public void transferWithRetry(long from, long to, BigDecimal sum) {
+                    for (int attempt = 1; ; attempt++) {
+                        try { self().transfer(from, to, sum); return; }
+                        catch (ObjectOptimisticLockingFailureException e) { if (attempt == 3) throw e; }
+                    }
+                }
+                @Lazy @Autowired private TransferService self;
+                private TransferService self() { return self; }   // вызов через прокси
+            }
+      - id: java-09-05
+        title: Миграции Flyway
+        minutes: 30
+        xp: 40
+        theory: |
+          Схема БД меняется вместе с кодом. **Миграции** — версионированные SQL-скрипты в репозитории, которые применяются по порядку и **ровно один раз** на каждой базе (dev, test, prod).
+
+          ## Flyway
+
+          В Spring Boot достаточно зависимости `org.flywaydb:flyway-core` (+ `flyway-database-postgresql`). Скрипты кладутся в `src/main/resources/db/migration`:
+
+          ```
+          V1__create_customers.sql
+          V2__create_orders.sql
+          V3__add_customer_phone.sql
+          R__refresh_views.sql        ← repeatable: перезапускается при изменении
+          ```
+
+          Формат имени: `V<версия>__<описание>.sql` (два подчёркивания!).
+
+          ```sql
+          -- V1__create_customers.sql
+          CREATE TABLE customers (
+              id BIGSERIAL PRIMARY KEY,
+              name VARCHAR(100) NOT NULL,
+              email VARCHAR(255) UNIQUE NOT NULL,
+              created_at TIMESTAMP NOT NULL DEFAULT now()
+          );
+
+          -- V3__add_customer_phone.sql
+          ALTER TABLE customers ADD COLUMN phone VARCHAR(20);
+          CREATE INDEX idx_customers_email ON customers(email);
+          ```
+
+          ## Как работает
+
+          Flyway создаёт таблицу `flyway_schema_history`, где хранит применённые версии и **контрольную сумму** каждого скрипта. При старте приложения:
+          1. Находит новые миграции (версия больше последней применённой).
+          2. Применяет их по порядку в транзакциях.
+          3. Проверяет, что старые скрипты не изменились (иначе ошибка validate).
+
+          ## Правила
+
+          - **Никогда не редактируйте** применённую миграцию — пишите новую.
+          - В Spring Boot: `spring.jpa.hibernate.ddl-auto=validate` — Hibernate только проверяет, что сущности совпадают со схемой.
+          - Изменения делайте **обратно совместимыми** (expand–contract): добавить колонку → код пишет в обе → перенести данные → убрать старую в следующем релизе. Так можно обновлять без простоя.
+          - Большие таблицы: `CREATE INDEX CONCURRENTLY` (PostgreSQL) — отдельная нетранзакционная миграция.
+          - Миграции данных (UPDATE) тоже можно писать в SQL или на Java (`BaseJavaMigration`).
+
+          Альтернатива — **Liquibase** (changelog в XML/YAML/SQL, поддерживает rollback).
+        practice:
+          - type: choice
+            q: Какое имя файла миграции корректно для Flyway?
+            options: ["V2_add_phone.sql", "V2__add_phone.sql", "2__add_phone.sql", "migration-2.sql"]
+            answer: 1
+          - type: choice
+            q: Миграция V3 уже применена на проде, в ней нашли опечатку. Что делать?
+            options: ["Исправить V3", "Создать V4 с исправлением", "Удалить строку из flyway_schema_history", "Пересоздать базу"]
+            answer: 1
+          - type: fill
+            q: Пусть Hibernate только проверяет схему
+            code: |
+              spring.jpa.hibernate.ddl-auto=___
+            answers: ["validate"]
+          - type: order
+            q: Расставьте шаги безопасного переименования колонки без простоя
+            lines:
+              - Добавить новую колонку миграцией
+              - Код пишет в обе колонки
+              - Скопировать старые данные в новую колонку
+              - Код читает только новую колонку
+              - Удалить старую колонку в следующем релизе
+          - type: choice
+            q: Где Flyway хранит информацию о применённых миграциях?
+            options: ["В файле flyway.lock", "В таблице flyway_schema_history", "В application.properties", "Нигде"]
+            answer: 1
+        homework:
+          task: |
+            Подключите Flyway к Spring Boot-проекту с PostgreSQL (через Docker: `docker run -p 5432:5432 -e POSTGRES_PASSWORD=pg postgres:16`). Напишите миграции: V1 — таблицы `customers` и `orders` с внешним ключом; V2 — индекс по `orders.customer_id`; V3 — колонка `status` со значением по умолчанию 'NEW' и CHECK-ограничением; V4 — заполнить тестовыми данными. Поставьте `ddl-auto=validate`, проверьте `flyway_schema_history`, затем попробуйте изменить V2 и посмотрите на ошибку валидации.
+          checklist:
+            - Правильные имена файлов
+            - Внешний ключ и индекс
+            - Hibernate в режиме validate
+          solution: |
+            -- V1__init.sql
+            CREATE TABLE customers (
+                id BIGSERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                email VARCHAR(255) NOT NULL UNIQUE
+            );
+            CREATE TABLE orders (
+                id BIGSERIAL PRIMARY KEY,
+                customer_id BIGINT NOT NULL REFERENCES customers(id),
+                total NUMERIC(12,2) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT now()
+            );
+
+            -- V2__orders_customer_idx.sql
+            CREATE INDEX idx_orders_customer ON orders(customer_id);
+
+            -- V3__order_status.sql
+            ALTER TABLE orders ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'NEW';
+            ALTER TABLE orders ADD CONSTRAINT chk_status CHECK (status IN ('NEW', 'PAID', 'SHIPPED', 'CANCELLED'));
+
+            -- V4__seed.sql
+            INSERT INTO customers(name, email) VALUES ('Анна', 'anna@mail.ru'), ('Борис', 'boris@mail.ru');
+            INSERT INTO orders(customer_id, total, status) VALUES (1, 1500, 'PAID'), (1, 300, 'NEW'), (2, 9900, 'SHIPPED');
+
+            # application.properties
+            # spring.datasource.url=jdbc:postgresql://localhost:5432/postgres
+            # spring.datasource.username=postgres
+            # spring.datasource.password=pg
+            # spring.jpa.hibernate.ddl-auto=validate
+            # SELECT version, description, success FROM flyway_schema_history;

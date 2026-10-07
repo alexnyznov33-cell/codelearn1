@@ -1,0 +1,751 @@
+id: java
+modules:
+  - id: java-m4
+    title: Исключения и I/O
+    level: Junior+
+    lessons:
+      - id: java-04-01
+        title: Checked и unchecked исключения
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Иерархия
+
+          ```
+          Throwable
+          ├── Error                  — сбои JVM (OutOfMemoryError, StackOverflowError) — не ловить
+          └── Exception              — checked: IOException, SQLException, InterruptedException
+              └── RuntimeException   — unchecked: NullPointerException, IllegalArgumentException,
+                                       IllegalStateException, IndexOutOfBoundsException, ArithmeticException
+          ```
+
+          **Checked** исключения компилятор заставляет обработать: поймать `catch` или объявить `throws`. **Unchecked** (`RuntimeException` и наследники) — не обязательно.
+
+          ```java
+          public String readFirstLine(Path p) throws IOException {     // объявляем checked
+              return Files.readAllLines(p).get(0);
+          }
+
+          try {
+              String line = readFirstLine(Path.of("config.txt"));
+              int port = Integer.parseInt(line);                         // NumberFormatException (unchecked)
+          } catch (NoSuchFileException e) {                              // конкретное — раньше
+              System.out.println("Нет файла: " + e.getFile());
+          } catch (IOException e) {
+              System.out.println("Ошибка чтения: " + e.getMessage());
+          } catch (NumberFormatException | IndexOutOfBoundsException e) {  // multi-catch
+              System.out.println("Неверный формат");
+          } finally {
+              System.out.println("выполнится всегда");
+          }
+          ```
+
+          ## Когда что
+
+          - **Unchecked** — ошибки программиста и нарушение контракта (null, неверный аргумент, неверное состояние). Исправляются кодом.
+          - **Checked** — ожидаемые внешние сбои, от которых вызывающий может восстановиться (нет файла, сеть).
+          - Современные фреймворки (Spring) и большинство новых API предпочитают unchecked; лямбды и Stream API с checked работают неудобно.
+
+          ## Правила хорошего тона
+
+          ```java
+          // ❌ проглатывание
+          try { ... } catch (Exception e) { }
+          // ❌ потеря причины
+          catch (SQLException e) { throw new RuntimeException("Ошибка"); }
+          // ✅ оборачивание с cause
+          catch (SQLException e) { throw new DataAccessException("Не удалось сохранить заказ " + id, e); }
+          ```
+
+          - Ловите максимально конкретный тип там, где можете что-то сделать.
+          - Не используйте исключения для обычного управления потоком.
+          - Проверки аргументов в начале метода: `Objects.requireNonNull(x, "x")`, `if (age < 0) throw new IllegalArgumentException(...)`.
+          - `InterruptedException`: либо пробросить, либо восстановить флаг `Thread.currentThread().interrupt()`.
+          - `e.printStackTrace()` — только в учебных примерах; в проде логгер: `log.error("...", e)`.
+
+          ## finally и return
+
+          `finally` выполняется даже после `return` в `try`. Не делайте `return` в `finally` — это «съест» исключение.
+        practice:
+          - type: choice
+            q: Какое исключение — checked?
+            options: ["NullPointerException", "IllegalArgumentException", "IOException", "ArithmeticException"]
+            answer: 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              try {
+                  System.out.print("A");
+                  int x = 1 / 0;
+                  System.out.print("B");
+              } catch (ArithmeticException e) {
+                  System.out.print("C");
+              } finally {
+                  System.out.print("D");
+              }
+            answer: ACD
+          - type: fill
+            q: Поймайте два типа одним блоком
+            code: |
+              catch (NumberFormatException ___ NullPointerException e) { ... }
+            answers: ["|"]
+          - type: bug
+            q: Какая строка — анти-паттерн, скрывающий ошибки?
+            code: |
+              public void save(Order o) {
+                  try {
+                      repo.insert(o);
+                  } catch (Exception e) {
+                  }
+              }
+            bugLine: 4
+            explain: Пустой catch проглатывает исключение — ошибка пройдёт незамеченной. Залогируйте и пробросьте/оберните.
+          - type: output
+            q: Что вернёт метод?
+            code: |
+              static int f() {
+                  try { return 1; }
+                  finally { System.out.print("F"); }
+              }
+              System.out.print(f());
+            answer: F1
+        homework:
+          task: |
+            Напишите метод `Config load(Path file)`, читающий `key=value` строки: отсутствие файла → своё checked-исключение `ConfigNotFoundException` (с путём), неверная строка → unchecked `ConfigFormatException` с номером строки, обязательный ключ `port` должен быть числом 1–65535. В main обработайте каждый тип по-разному, сохраняя причину (cause).
+          checklist:
+            - Причина исключения не теряется
+            - Порядок catch от частного к общему
+            - Нет пустых catch
+          solution: |
+            import java.io.IOException;
+            import java.nio.file.*;
+            import java.util.*;
+
+            class ConfigNotFoundException extends Exception {
+                ConfigNotFoundException(Path p, Throwable cause) { super("Нет конфига: " + p, cause); }
+            }
+            class ConfigFormatException extends RuntimeException {
+                ConfigFormatException(int line, String msg) { super("Строка " + line + ": " + msg); }
+            }
+            record Config(Map<String, String> values) {
+                int port() { return Integer.parseInt(values.get("port")); }
+            }
+
+            public class Loader {
+                static Config load(Path file) throws ConfigNotFoundException, IOException {
+                    List<String> lines;
+                    try { lines = Files.readAllLines(file); }
+                    catch (NoSuchFileException e) { throw new ConfigNotFoundException(file, e); }
+                    Map<String, String> m = new HashMap<>();
+                    for (int i = 0; i < lines.size(); i++) {
+                        String l = lines.get(i).strip();
+                        if (l.isEmpty() || l.startsWith("#")) continue;
+                        int eq = l.indexOf('=');
+                        if (eq <= 0) throw new ConfigFormatException(i + 1, "ожидается key=value");
+                        m.put(l.substring(0, eq).strip(), l.substring(eq + 1).strip());
+                    }
+                    try {
+                        int port = Integer.parseInt(m.getOrDefault("port", ""));
+                        if (port < 1 || port > 65535) throw new ConfigFormatException(0, "port вне диапазона");
+                    } catch (NumberFormatException e) { throw new ConfigFormatException(0, "port не число"); }
+                    return new Config(m);
+                }
+
+                public static void main(String[] args) {
+                    try { System.out.println(load(Path.of("app.conf")).port()); }
+                    catch (ConfigNotFoundException e) { System.out.println(e.getMessage() + " (" + e.getCause().getClass().getSimpleName() + ")"); }
+                    catch (ConfigFormatException e) { System.out.println("Формат: " + e.getMessage()); }
+                    catch (IOException e) { System.out.println("I/O: " + e.getMessage()); }
+                }
+            }
+      - id: java-04-02
+        title: try-with-resources
+        minutes: 20
+        xp: 25
+        theory: |
+          Ресурсы (файлы, сокеты, соединения с БД) нужно закрывать, иначе утечка дескрипторов и соединений. Ручной `finally` громоздкий и ошибкоопасный:
+
+          ```java
+          BufferedReader r = null;
+          try {
+              r = new BufferedReader(new FileReader("a.txt"));
+              return r.readLine();
+          } finally {
+              if (r != null) r.close();       // и close() тоже может бросить IOException...
+          }
+          ```
+
+          ## try-with-resources (Java 7)
+
+          ```java
+          try (BufferedReader r = Files.newBufferedReader(Path.of("a.txt"))) {
+              return r.readLine();
+          }   // r.close() вызовется автоматически, даже при исключении
+          ```
+
+          Несколько ресурсов закрываются в **обратном** порядке:
+
+          ```java
+          try (Connection c = dataSource.getConnection();
+               PreparedStatement ps = c.prepareStatement("SELECT ...");
+               ResultSet rs = ps.executeQuery()) {
+              while (rs.next()) { ... }
+          }   // rs → ps → c
+          ```
+
+          Java 9: можно использовать уже объявленную effectively final переменную: `try (reader) { ... }`.
+
+          ## AutoCloseable
+
+          Ресурс — любой объект, реализующий `AutoCloseable` (или `Closeable`):
+
+          ```java
+          public class Timer implements AutoCloseable {
+              private final long start = System.nanoTime();
+              private final String name;
+              public Timer(String name) { this.name = name; }
+              @Override public void close() {
+                  System.out.printf("%s: %d мс%n", name, (System.nanoTime() - start) / 1_000_000);
+              }
+          }
+
+          try (var t = new Timer("загрузка")) {
+              loadData();
+          }
+          ```
+
+          ## Подавленные исключения
+
+          Если упало и тело `try`, и `close()`, главным останется исключение из тела, а исключение из `close()` будет **подавленным** — доступно через `e.getSuppressed()`. Ничего не теряется (в отличие от ручного finally).
+
+          ## Правила
+
+          - Всё, что `AutoCloseable` и создано вами, — в try-with-resources.
+          - Исключение — объекты, временем жизни которых управляет фреймворк (Spring закрывает бины, пул соединений управляет соединениями — но `Connection` из пула всё равно закрывайте, это возвращает его в пул).
+          - `Stream<Path>` из `Files.lines`/`Files.list`/`Files.walk` тоже нужно закрывать!
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class R implements AutoCloseable {
+                  String n; R(String n) { this.n = n; System.out.print("+" + n); }
+                  public void close() { System.out.print("-" + n); }
+              }
+              try (R a = new R("a"); R b = new R("b")) {
+                  System.out.print("!");
+              }
+            answer: +a+b!-b-a
+          - type: choice
+            q: Какой интерфейс должен реализовать ресурс для try-with-resources?
+            options: ["Runnable", "AutoCloseable", "Serializable", "Iterable"]
+            answer: 1
+          - type: choice
+            q: Что происходит с исключением из close(), если тело try тоже бросило исключение?
+            options: ["Заменяет исходное", "Теряется", "Добавляется как suppressed к исходному", "Программа падает"]
+            answer: 2
+          - type: bug
+            q: Где утечка файлового дескриптора?
+            code: |
+              long countLines(Path p) throws IOException {
+                  Stream<String> lines = Files.lines(p);
+                  return lines.filter(l -> !l.isBlank()).count();
+              }
+            bugLine: 2
+            fix: try (Stream<String> lines = Files.lines(p)) { return ...; }
+            explain: Stream из Files.lines держит открытый файл и должен быть закрыт.
+        homework:
+          task: |
+            Утилита копирования файла с прогрессом: `copy(Path src, Path dst)` через `InputStream`/`OutputStream` с буфером 8 КБ в try-with-resources, печатает процент каждые 10%. Свой `AutoCloseable` класс `ProgressReporter`, печатающий итог в close(). Продемонстрируйте подавленное исключение: ресурс, у которого и тело, и close бросают исключения.
+          checklist:
+            - Все потоки закрываются автоматически
+            - Подавленное исключение выведено через getSuppressed
+            - Буферизированное копирование
+          solution: |
+            import java.io.*;
+            import java.nio.file.*;
+
+            class ProgressReporter implements AutoCloseable {
+                private final long total; private long done; private int lastPct = -10;
+                ProgressReporter(long total) { this.total = total; }
+                void add(long n) {
+                    done += n;
+                    int pct = total == 0 ? 100 : (int) (done * 100 / total);
+                    if (pct >= lastPct + 10) { System.out.println(pct + "%"); lastPct = pct; }
+                }
+                @Override public void close() { System.out.println("Скопировано " + done + " байт"); }
+            }
+
+            public class Copy {
+                static void copy(Path src, Path dst) throws IOException {
+                    try (InputStream in = Files.newInputStream(src);
+                         OutputStream out = Files.newOutputStream(dst);
+                         ProgressReporter pr = new ProgressReporter(Files.size(src))) {
+                        byte[] buf = new byte[8192];
+                        int n;
+                        while ((n = in.read(buf)) != -1) { out.write(buf, 0, n); pr.add(n); }
+                    }
+                }
+
+                public static void main(String[] args) throws IOException {
+                    copy(Path.of(args[0]), Path.of(args[1]));
+                    class Bad implements AutoCloseable { public void close() { throw new IllegalStateException("close упал"); } }
+                    try (Bad b = new Bad()) { throw new RuntimeException("тело упало"); }
+                    catch (RuntimeException e) {
+                        System.out.println(e.getMessage() + ", suppressed: " + e.getSuppressed()[0].getMessage());
+                    }
+                }
+            }
+      - id: java-04-03
+        title: Свои исключения
+        minutes: 25
+        xp: 30
+        theory: |
+          Свои исключения делают ошибки **осмысленными** для вызывающего кода: можно поймать именно `InsufficientFundsException`, а не разбирать текст сообщения.
+
+          ## Как создать
+
+          ```java
+          // бизнес-ошибка — обычно unchecked
+          public class InsufficientFundsException extends RuntimeException {
+              private final BigDecimal needed;
+
+              public InsufficientFundsException(BigDecimal needed) {
+                  super("Недостаточно средств, не хватает " + needed);
+                  this.needed = needed;
+              }
+
+              public BigDecimal getNeeded() { return needed; }
+          }
+
+          // техническая ошибка с причиной
+          public class StorageException extends RuntimeException {
+              public StorageException(String message, Throwable cause) { super(message, cause); }
+          }
+          ```
+
+          Добавляйте **данные** (id, суммы, поля), а не только текст — это пригодится для обработки и логов.
+
+          ## Иерархия ошибок приложения
+
+          ```java
+          public abstract class AppException extends RuntimeException {
+              private final String code;
+              protected AppException(String code, String msg) { super(msg); this.code = code; }
+              public String getCode() { return code; }
+          }
+          public class NotFoundException extends AppException {
+              public NotFoundException(String entity, Object id) { super("NOT_FOUND", entity + " " + id + " не найден"); }
+          }
+          public class ConflictException extends AppException {
+              public ConflictException(String msg) { super("CONFLICT", msg); }
+          }
+          public class ValidationException extends AppException {
+              private final Map<String, String> errors;
+              public ValidationException(Map<String, String> errors) { super("VALIDATION", "Ошибка валидации"); this.errors = Map.copyOf(errors); }
+              public Map<String, String> getErrors() { return errors; }
+          }
+          ```
+
+          В веб-приложении глобальный обработчик (`@RestControllerAdvice` в Spring) сопоставит `NotFoundException → 404`, `ConflictException → 409`, `ValidationException → 400`.
+
+          ## Exception translation
+
+          Нижний слой не должен «протекать» деталями наверх: сервис заказов не должен бросать `SQLException`.
+
+          ```java
+          try {
+              jdbc.update(...);
+          } catch (SQLException e) {
+              throw new StorageException("Не удалось сохранить заказ " + order.id(), e);   // cause сохранён
+          }
+          ```
+
+          ## Советы
+
+          - Имя заканчивается на `Exception` и описывает проблему.
+          - Сначала посмотрите стандартные: `IllegalArgumentException` (неверный аргумент), `IllegalStateException` (неверное состояние объекта), `UnsupportedOperationException`, `NoSuchElementException`.
+          - Не создавайте исключение на каждый чих — достаточно нескольких осмысленных типов.
+          - Для очень частых «ожидаемых» неудач подумайте про `Optional` или Result-объект.
+        practice:
+          - type: fill
+            q: Передайте причину в конструктор родителя
+            code: |
+              public StorageException(String msg, Throwable cause) {
+                  ___(msg, cause);
+              }
+            answers: ["super"]
+          - type: choice
+            q: Какое стандартное исключение подходит для вызова метода в неверном состоянии объекта (заказ уже отправлен)?
+            options: ["IllegalArgumentException", "IllegalStateException", "NullPointerException", "IOException"]
+            answer: 1
+          - type: choice
+            q: Зачем добавлять поля (id, сумму) в своё исключение?
+            options: ["Для красоты", "Чтобы вызывающий код и логи могли использовать данные без разбора текста", "Так требует JVM", "Чтобы оно стало checked"]
+            answer: 1
+          - type: bug
+            q: Какая строка теряет исходную причину ошибки?
+            code: |
+              try {
+                  return parser.parse(file);
+              } catch (IOException e) {
+                  throw new ImportException("Импорт не удался");
+              }
+            bugLine: 4
+            fix: throw new ImportException("Импорт не удался", e);
+          - type: choice
+            q: Что такое exception translation?
+            options: ["Перевод сообщений на другой язык", "Оборачивание низкоуровневого исключения в исключение своего слоя с сохранением cause", "Преобразование checked в Error", "Логирование"]
+            answer: 1
+        homework:
+          task: |
+            Для интернет-магазина создайте иерархию `ShopException` (с кодом ошибки): `ProductNotFoundException(productId)`, `OutOfStockException(productId, requested, available)`, `PaymentFailedException(orderId, cause)`. Сервис `OrderService.place(...)` бросает их; «контроллер» ловит базовый тип и печатает JSON-подобный ответ `{code, message, details}` и HTTP-статус по типу.
+          checklist:
+            - Исключения несут данные
+            - Сохраняется cause
+            - Один обработчик для всей иерархии
+          solution: |
+            import java.util.*;
+
+            abstract class ShopException extends RuntimeException {
+                private final String code;
+                ShopException(String code, String msg, Throwable cause) { super(msg, cause); this.code = code; }
+                String code() { return code; }
+                abstract int status();
+                Map<String, Object> details() { return Map.of(); }
+            }
+            class ProductNotFoundException extends ShopException {
+                final long productId;
+                ProductNotFoundException(long id) { super("PRODUCT_NOT_FOUND", "Товар " + id + " не найден", null); productId = id; }
+                int status() { return 404; }
+                Map<String, Object> details() { return Map.of("productId", productId); }
+            }
+            class OutOfStockException extends ShopException {
+                final long productId; final int requested, available;
+                OutOfStockException(long id, int req, int av) {
+                    super("OUT_OF_STOCK", "Недостаточно товара " + id, null); productId = id; requested = req; available = av;
+                }
+                int status() { return 409; }
+                Map<String, Object> details() { return Map.of("productId", productId, "requested", requested, "available", available); }
+            }
+            class PaymentFailedException extends ShopException {
+                PaymentFailedException(long orderId, Throwable cause) { super("PAYMENT_FAILED", "Оплата заказа " + orderId + " не прошла", cause); }
+                int status() { return 402; }
+            }
+
+            public class Controller {
+                static void handle(Runnable action) {
+                    try { action.run(); System.out.println("200 OK"); }
+                    catch (ShopException e) {
+                        System.out.printf("%d {code: %s, message: %s, details: %s}%n", e.status(), e.code(), e.getMessage(), e.details());
+                    }
+                }
+                public static void main(String[] args) {
+                    handle(() -> { throw new OutOfStockException(7, 5, 2); });
+                    handle(() -> { throw new PaymentFailedException(42, new java.net.SocketTimeoutException("bank")); });
+                }
+            }
+      - id: java-04-04
+        title: Файлы java.nio.file
+        minutes: 30
+        xp: 35
+        theory: |
+          Современный API для файлов — `java.nio.file` (`Path`, `Files`). Старый `java.io.File` — для легаси.
+
+          ## Path
+
+          ```java
+          Path p = Path.of("data", "users", "list.csv");   // правильный разделитель для ОС
+          p.getFileName();      // list.csv
+          p.getParent();        // data/users
+          p.toAbsolutePath();
+          p.resolve("x.txt");   // data/users/list.csv/x.txt
+          p.getParent().resolveSibling("archive");
+          Path.of("a/b/../c").normalize();   // a/c
+          ```
+
+          ## Чтение и запись (небольшие файлы)
+
+          ```java
+          String text = Files.readString(p);                        // UTF-8 по умолчанию
+          List<String> lines = Files.readAllLines(p);
+          byte[] bytes = Files.readAllBytes(p);
+
+          Files.writeString(p, "привет\n");                          // перезапишет
+          Files.writeString(p, "ещё\n", StandardOpenOption.APPEND, StandardOpenOption.CREATE);
+          Files.write(p, List.of("a", "b"));
+          ```
+
+          ## Большие файлы — потоково
+
+          ```java
+          try (Stream<String> lines = Files.lines(p)) {
+              long errors = lines.filter(l -> l.contains("ERROR")).count();
+          }
+
+          try (BufferedReader r = Files.newBufferedReader(p);
+               BufferedWriter w = Files.newBufferedWriter(out)) {
+              String line;
+              while ((line = r.readLine()) != null) w.write(line.toUpperCase() + "\n");
+          }
+          ```
+
+          ## Операции с файлами и папками
+
+          ```java
+          Files.exists(p); Files.isDirectory(p); Files.size(p);
+          Files.createDirectories(Path.of("out/reports"));      // вся цепочка
+          Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
+          Files.move(src, dst, StandardCopyOption.ATOMIC_MOVE);
+          Files.delete(p);              // NoSuchFileException, если нет
+          Files.deleteIfExists(p);
+          Path tmp = Files.createTempFile("app", ".tmp");
+          Files.getLastModifiedTime(p);
+          ```
+
+          ## Обход каталогов
+
+          ```java
+          try (Stream<Path> s = Files.list(dir)) { s.forEach(System.out::println); }   // один уровень
+
+          try (Stream<Path> s = Files.walk(dir)) {                                      // рекурсивно
+              List<Path> javaFiles = s.filter(f -> f.toString().endsWith(".java")).toList();
+          }
+
+          try (Stream<Path> s = Files.find(dir, 10, (path, attrs) -> attrs.size() > 1_000_000)) { ... }
+          ```
+
+          ## Кодировки
+
+          `Files.readString(p, Charset.forName("windows-1251"))` — для старых файлов. Явно указывайте кодировку, если файл не UTF-8.
+
+          ## Атомарная запись
+
+          Пишите во временный файл и делайте `Files.move(tmp, target, ATOMIC_MOVE)` — тогда при сбое не останется «полуфайла».
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              Path p = Path.of("docs", "2024", "report.pdf");
+              System.out.println(p.getFileName() + " " + p.getParent().getFileName());
+            answer: report.pdf 2024
+          - type: fill
+            q: Прочитайте файл в одну строку
+            code: |
+              String content = Files.___(Path.of("a.txt"));
+            answers: ["readString"]
+          - type: choice
+            q: Какой метод создаст папку вместе со всеми недостающими родительскими?
+            options: ["Files.createDirectory", "Files.createDirectories", "Files.mkdir", "Path.create"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              System.out.println(Path.of("a/b/../c/./d").normalize());
+            answer: a/c/d
+          - type: choice
+            q: Как дописать строку в конец файла?
+            options: ["Files.writeString(p, s)", "Files.writeString(p, s, StandardOpenOption.APPEND)", "Files.append(p, s)", "Files.readString(p) + s"]
+            answer: 1
+        homework:
+          task: |
+            Утилита «организатор загрузок»: проходит папку (Files.list), раскладывает файлы по подпапкам по расширению (images, docs, archives, other), не перезаписывает существующие (добавляет суффикс `(1)`), пишет журнал перемещений в `organizer.log` и в конце выводит статистику: количество и общий размер по категориям.
+          checklist:
+            - Используются Path/Files, а не java.io.File
+            - Все Stream<Path> закрываются
+            - Конфликты имён обрабатываются
+          solution: |
+            import java.io.IOException;
+            import java.nio.file.*;
+            import java.util.*;
+            import java.util.stream.Stream;
+
+            public class Organizer {
+                static final Map<String, String> CATEGORIES = Map.of(
+                    "jpg", "images", "png", "images", "gif", "images",
+                    "pdf", "docs", "docx", "docs", "txt", "docs",
+                    "zip", "archives", "rar", "archives", "7z", "archives");
+
+                static String ext(Path p) {
+                    String n = p.getFileName().toString();
+                    int i = n.lastIndexOf('.');
+                    return i < 0 ? "" : n.substring(i + 1).toLowerCase();
+                }
+                static Path unique(Path target) {
+                    if (!Files.exists(target)) return target;
+                    String n = target.getFileName().toString();
+                    int dot = n.lastIndexOf('.');
+                    String base = dot < 0 ? n : n.substring(0, dot), e = dot < 0 ? "" : n.substring(dot);
+                    for (int i = 1; ; i++) {
+                        Path c = target.resolveSibling(base + "(" + i + ")" + e);
+                        if (!Files.exists(c)) return c;
+                    }
+                }
+                public static void main(String[] args) throws IOException {
+                    Path dir = Path.of(args.length > 0 ? args[0] : "Downloads");
+                    Map<String, long[]> stats = new TreeMap<>();
+                    List<String> log = new ArrayList<>();
+                    try (Stream<Path> files = Files.list(dir)) {
+                        for (Path f : files.filter(Files::isRegularFile).toList()) {
+                            String cat = CATEGORIES.getOrDefault(ext(f), "other");
+                            Path dest = dir.resolve(cat);
+                            Files.createDirectories(dest);
+                            long size = Files.size(f);
+                            Path to = unique(dest.resolve(f.getFileName()));
+                            Files.move(f, to);
+                            log.add(f.getFileName() + " -> " + dir.relativize(to));
+                            stats.computeIfAbsent(cat, k -> new long[2]);
+                            stats.get(cat)[0]++; stats.get(cat)[1] += size;
+                        }
+                    }
+                    Files.write(dir.resolve("organizer.log"), log, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                    stats.forEach((c, s) -> System.out.printf("%s: %d файлов, %.1f КБ%n", c, s[0], s[1] / 1024.0));
+                }
+            }
+      - id: java-04-05
+        title: Сериализация и JSON (Jackson)
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Встроенная сериализация Java — не используйте
+
+          `implements Serializable` + `ObjectOutputStream` превращает объект в байты. Проблемы: небезопасна (десериализация недоверенных данных — путь к удалённому выполнению кода), хрупкая к изменениям классов, нечитаема, только для Java. Сегодня для обмена данными используют **JSON** (или Protobuf/Avro).
+
+          ## Jackson — стандарт де-факто
+
+          ```xml
+          <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.0</version>
+          </dependency>
+          ```
+
+          ```java
+          ObjectMapper mapper = new ObjectMapper();   // создать один раз и переиспользовать (потокобезопасен)
+
+          public record User(String name, int age, List<String> roles) {}
+
+          String json = mapper.writeValueAsString(new User("Аня", 25, List.of("admin")));
+          // {"name":"Аня","age":25,"roles":["admin"]}
+
+          User u = mapper.readValue(json, User.class);
+
+          List<User> users = mapper.readValue(jsonArray, new TypeReference<List<User>>() {});   // generics
+
+          mapper.writerWithDefaultPrettyPrinter().writeValue(Path.of("users.json").toFile(), users);
+          ```
+
+          Записи (record) поддерживаются с Jackson 2.12. Для обычных классов нужен конструктор без параметров + сеттеры, либо `@JsonCreator`.
+
+          ## Аннотации
+
+          ```java
+          public class Product {
+              @JsonProperty("product_id") private long id;
+              @JsonIgnore private String internalNote;
+              @JsonInclude(JsonInclude.Include.NON_NULL) private String description;
+              @JsonFormat(pattern = "yyyy-MM-dd") private LocalDate created;
+          }
+          ```
+
+          ## Настройка
+
+          ```java
+          ObjectMapper mapper = new ObjectMapper()
+              .registerModule(new JavaTimeModule())                              // LocalDate, Instant
+              .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)           // даты строкой ISO
+              .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)        // игнорировать лишние поля
+              .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);   // firstName → first_name
+          ```
+
+          `FAIL_ON_UNKNOWN_PROPERTIES` по умолчанию включён: незнакомое поле в JSON → исключение. Для внешних API обычно выключают.
+
+          ## Дерево JSON
+
+          ```java
+          JsonNode root = mapper.readTree(json);
+          String city = root.path("address").path("city").asText("неизвестно");   // path — без NPE
+          for (JsonNode item : root.get("items")) { ... }
+          ```
+
+          Ошибки парсинга — `JsonProcessingException` (наследник `IOException`).
+
+          В Spring Boot Jackson настроен автоматически и используется для `@RestController`. Альтернативы: Gson (Google), JSON-B (Jakarta).
+        practice:
+          - type: fill
+            q: Превратите объект в JSON-строку
+            code: |
+              String json = mapper.___(order);
+            answers: ["writeValueAsString"]
+          - type: choice
+            q: Почему встроенная Java-сериализация считается опасной?
+            options: ["Она медленная", "Десериализация недоверенных данных может привести к выполнению кода", "Не поддерживает строки", "Она устарела в Java 8"]
+            answer: 1
+          - type: choice
+            q: Как прочитать JSON-массив в List<User>?
+            options: ["readValue(json, List.class)", "readValue(json, new TypeReference<List<User>>() {})", "readValue(json, User[].class) — единственный способ", "Нельзя"]
+            answer: 1
+          - type: fill
+            q: Исключите поле из JSON
+            code: |
+              @___ private String password;
+            answers: ["JsonIgnore"]
+          - type: choice
+            q: Что произойдёт по умолчанию, если в JSON есть поле, которого нет в классе?
+            options: ["Оно проигнорируется", "UnrecognizedPropertyException", "Создастся новое поле", "Значение станет null"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте «трекер расходов» с хранением в JSON: `record Expense(LocalDate date, String category, BigDecimal amount, String note)`. Команды: add, list за месяц, report (сумма по категориям), export в CSV. Данные — в `expenses.json` (pretty print, даты в ISO). Один настроенный ObjectMapper. Повреждённый файл не должен ронять программу — переименуйте его в `.bak` и начните с пустого списка.
+          checklist:
+            - JavaTimeModule подключён
+            - TypeReference для списка
+            - Обработан JsonProcessingException
+          solution: |
+            import com.fasterxml.jackson.core.JsonProcessingException;
+            import com.fasterxml.jackson.core.type.TypeReference;
+            import com.fasterxml.jackson.databind.*;
+            import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+            import java.io.IOException;
+            import java.math.BigDecimal;
+            import java.nio.file.*;
+            import java.time.*;
+            import java.util.*;
+            import java.util.stream.Collectors;
+
+            record Expense(LocalDate date, String category, BigDecimal amount, String note) {}
+
+            public class Expenses {
+                static final ObjectMapper M = new ObjectMapper()
+                    .registerModule(new JavaTimeModule())
+                    .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                    .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                    .enable(SerializationFeature.INDENT_OUTPUT);
+                static final Path FILE = Path.of("expenses.json");
+
+                static List<Expense> load() throws IOException {
+                    if (!Files.exists(FILE)) return new ArrayList<>();
+                    try { return new ArrayList<>(M.readValue(FILE.toFile(), new TypeReference<List<Expense>>() {})); }
+                    catch (JsonProcessingException e) {
+                        Files.move(FILE, FILE.resolveSibling("expenses.json.bak"), StandardCopyOption.REPLACE_EXISTING);
+                        System.out.println("Файл повреждён, сохранён в .bak");
+                        return new ArrayList<>();
+                    }
+                }
+                static void save(List<Expense> l) throws IOException { M.writeValue(FILE.toFile(), l); }
+
+                public static void main(String[] args) throws IOException {
+                    List<Expense> list = load();
+                    list.add(new Expense(LocalDate.now(), "еда", new BigDecimal("450.50"), "обед"));
+                    save(list);
+                    YearMonth ym = YearMonth.now();
+                    Map<String, BigDecimal> report = list.stream()
+                        .filter(e -> YearMonth.from(e.date()).equals(ym))
+                        .collect(Collectors.groupingBy(Expense::category, TreeMap::new,
+                                 Collectors.reducing(BigDecimal.ZERO, Expense::amount, BigDecimal::add)));
+                    System.out.println(report);
+                    List<String> csv = new ArrayList<>(List.of("date;category;amount;note"));
+                    list.forEach(e -> csv.add(e.date() + ";" + e.category() + ";" + e.amount() + ";" + e.note()));
+                    Files.write(Path.of("expenses.csv"), csv);
+                }
+            }

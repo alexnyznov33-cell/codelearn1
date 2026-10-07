@@ -1,0 +1,643 @@
+id: javascript
+modules:
+  - id: js-m7
+    title: TypeScript
+    level: Middle
+    lessons:
+      - id: js-07-01
+        title: Базовые типы и интерфейсы
+        minutes: 40
+        xp: 45
+        theory: |
+          **TypeScript** — JavaScript с типами. Компилятор `tsc` проверяет типы **до запуска** и выдаёт обычный JS. Ошибки вроде «undefined is not a function» ловятся в редакторе.
+
+          ```typescript
+          let title: string = "Книга";
+          let price: number = 499;
+          let inStock: boolean = true;
+          let tags: string[] = ["js", "ts"];
+          let point: [number, number] = [10, 20];       // кортеж
+          let anything: unknown = JSON.parse("{}");      // безопасная альтернатива any
+
+          let count = 5;          // вывод типа (inference): number — аннотация не нужна
+          // count = "пять";      // ❌ Type 'string' is not assignable to type 'number'
+          ```
+
+          ## Объектные типы: interface и type
+
+          ```typescript
+          interface User {
+            id: number;
+            name: string;
+            email?: string;                // необязательное поле
+            readonly createdAt: Date;      // только чтение
+          }
+
+          type Product = {
+            id: number;
+            title: string;
+            price: number;
+          };
+
+          const u: User = { id: 1, name: "Анна", createdAt: new Date() };
+          // u.createdAt = new Date();     // ❌ readonly
+          ```
+
+          `interface` можно расширять (`extends`) и «дополнять» повторным объявлением; `type` умеет объединения, пересечения и сложные конструкции. В обычном коде подходят оба — выберите один стиль для проекта.
+
+          ```typescript
+          interface Admin extends User { permissions: string[] }
+          type WithTimestamps = { createdAt: Date; updatedAt: Date };
+          type Post = { id: number; title: string } & WithTimestamps;   // пересечение
+          ```
+
+          ## Индексные сигнатуры и Record
+
+          ```typescript
+          const prices: Record<string, number> = { чай: 300, кофе: 500 };
+          interface Dict { [key: string]: number }
+          ```
+
+          ## any, unknown, never
+
+          - `any` — отключает проверку. Избегайте: это «дыра» в типах.
+          - `unknown` — «что-то неизвестное»: прежде чем использовать, нужно сузить тип проверкой (`typeof x === "string"`).
+          - `never` — значение, которого не бывает (функция, которая всегда бросает исключение).
+
+          ## Литеральные типы и enum
+
+          ```typescript
+          type Status = "new" | "paid" | "shipped";      // только эти строки
+          let s: Status = "paid";
+          enum Direction { Up, Down }                     // enum генерирует JS-код; часто хватает union строк
+          const ROLES = ["user", "admin"] as const;       // readonly ["user", "admin"]
+          type Role = (typeof ROLES)[number];             // "user" | "admin"
+          ```
+
+          Запуск: `npx tsc --init` создаёт `tsconfig.json`; `npx tsc` компилирует; в Node 22+ и через `tsx` можно запускать `.ts` напрямую.
+        practice:
+          - type: choice
+            q: Чем unknown безопаснее any?
+            options: ["Ничем", "С unknown нельзя работать без проверки/сужения типа", "unknown быстрее", "any нельзя присвоить переменной"]
+            answer: 1
+          - type: fill
+            q: Сделайте поле email необязательным
+            code: |
+              interface User {
+                name: string;
+                email___: string;
+              }
+            answers: ["?"]
+          - type: bug
+            q: На какой строке TypeScript покажет ошибку?
+            code: |
+              type Status = "new" | "paid";
+              let s: Status = "new";
+              s = "paid";
+              s = "cancelled";
+            bugLine: 4
+            fix: добавить "cancelled" в тип Status или использовать допустимое значение
+            explain: Литеральный union разрешает только перечисленные строки.
+          - type: choice
+            q: Какой тип у переменной let n = 10 без аннотации?
+            options: ["any", "number", "10", "unknown"]
+            answer: 1
+          - type: fill
+            q: Опишите словарь «строка → число»
+            code: |
+              const stock: ___<string, number> = { чай: 5 };
+            answers: ["Record"]
+        homework:
+          task: |
+            Опишите типы для интернет-магазина: `Product` (id, title, price, category — union из 3 значений, tags — массив строк, discount? — необязательный), `CartItem` (product + qty), `Customer` (readonly id, name, email?, address — вложенный объект), `Order` (id, customer, items, status — union, createdAt). Создайте тестовые данные и напишите функцию `orderTotal(order: Order): number`. Убедитесь, что опечатки в полях и неверные статусы подсвечиваются компилятором. Включите `"strict": true`.
+          checklist:
+            - Нет any
+            - Используются union, optional и readonly
+            - strict-режим включён
+          solution: |
+            type Category = "книги" | "электроника" | "одежда";
+            type OrderStatus = "new" | "paid" | "shipped" | "cancelled";
+
+            interface Product {
+              id: number;
+              title: string;
+              price: number;
+              category: Category;
+              tags: string[];
+              discount?: number;      // 0..1
+            }
+            interface CartItem { product: Product; qty: number }
+            interface Address { city: string; street: string; zip?: string }
+            interface Customer {
+              readonly id: number;
+              name: string;
+              email?: string;
+              address: Address;
+            }
+            interface Order {
+              id: number;
+              customer: Customer;
+              items: CartItem[];
+              status: OrderStatus;
+              createdAt: Date;
+            }
+
+            function orderTotal(order: Order): number {
+              return order.items.reduce((sum, { product, qty }) => {
+                const price = product.price * (1 - (product.discount ?? 0));
+                return sum + price * qty;
+              }, 0);
+            }
+
+            const book: Product = { id: 1, title: "TS для всех", price: 1000, category: "книги", tags: ["ts"], discount: 0.1 };
+            const order: Order = {
+              id: 100,
+              customer: { id: 1, name: "Анна", address: { city: "Казань", street: "Баумана, 1" } },
+              items: [{ product: book, qty: 2 }],
+              status: "paid",
+              createdAt: new Date(),
+            };
+            console.log(orderTotal(order)); // 1800
+            // order.status = "lost";      // ❌ ошибка компиляции
+      - id: js-07-02
+        title: Union, generics, utility types
+        minutes: 45
+        xp: 50
+        theory: |
+          ## Union и сужение типов
+
+          ```typescript
+          function format(value: string | number): string {
+            if (typeof value === "number") return value.toFixed(2);   // здесь value: number
+            return value.trim();                                      // здесь value: string
+          }
+          ```
+
+          Способы сужения: `typeof`, `instanceof`, `in` (`"email" in user`), сравнение с литералом, проверки на `null`, свои **type guards**:
+
+          ```typescript
+          function isProduct(x: unknown): x is Product {
+            return typeof x === "object" && x !== null && "price" in x;
+          }
+          ```
+
+          ## Дискриминированные объединения
+
+          ```typescript
+          type Result =
+            | { status: "loading" }
+            | { status: "success"; data: string[] }
+            | { status: "error"; message: string };
+
+          function render(r: Result) {
+            switch (r.status) {
+              case "loading": return "Загрузка...";
+              case "success": return r.data.join(", ");     // data доступна только здесь
+              case "error":   return "Ошибка: " + r.message;
+              default: {
+                const never: never = r;   // компилятор проверит, что все варианты обработаны
+                return never;
+              }
+            }
+          }
+          ```
+
+          ## Generics — обобщённые типы
+
+          ```typescript
+          function first<T>(arr: T[]): T | undefined {
+            return arr[0];
+          }
+          first([1, 2, 3]);        // number | undefined
+          first(["a"]);            // string | undefined
+
+          interface ApiResponse<T> { data: T; error?: string }
+          const r: ApiResponse<User[]> = { data: [] };
+
+          function pluck<T, K extends keyof T>(items: T[], key: K): T[K][] {
+            return items.map((i) => i[key]);
+          }
+          pluck(users, "name");    // string[]
+          // pluck(users, "nmae"); // ❌ такого ключа нет
+          ```
+
+          `K extends keyof T` — **ограничение**: K может быть только именем поля T.
+
+          ## Utility types
+
+          | Тип | Что делает |
+          |---|---|
+          | `Partial<T>` | все поля необязательные (для PATCH-обновлений) |
+          | `Required<T>` | все обязательные |
+          | `Readonly<T>` | все только для чтения |
+          | `Pick<T, "a" \| "b">` | только выбранные поля |
+          | `Omit<T, "password">` | все, кроме указанных |
+          | `Record<K, V>` | словарь |
+          | `ReturnType<typeof fn>` | тип результата функции |
+          | `Parameters<typeof fn>` | кортеж параметров |
+          | `Awaited<Promise<T>>` | T |
+          | `NonNullable<T>` | без null/undefined |
+
+          ```typescript
+          type PublicUser = Omit<User, "password">;
+          type UserUpdate = Partial<Pick<User, "name" | "email">>;
+          ```
+
+          ## keyof, typeof, mapped types
+
+          ```typescript
+          const config = { theme: "dark", lang: "ru" };
+          type Config = typeof config;              // { theme: string; lang: string }
+          type ConfigKey = keyof Config;            // "theme" | "lang"
+          type Flags<T> = { [K in keyof T]: boolean };   // mapped type
+          ```
+        practice:
+          - type: fill
+            q: Сделайте функцию обобщённой
+            code: |
+              function last___(arr: T[]): T | undefined {
+                return arr[arr.length - 1];
+              }
+            answers: ["<T>"]
+          - type: choice
+            q: Какой utility type подходит для тела PATCH-запроса, где любые поля необязательны?
+            options: ["Required<User>", "Partial<User>", "Readonly<User>", "Record<User>"]
+            answer: 1
+          - type: fill
+            q: Тип пользователя без поля password
+            code: |
+              type PublicUser = ___<User, "password">;
+            answers: ["Omit"]
+          - type: choice
+            q: Что означает K extends keyof T?
+            options: ["K наследует класс T", "K — одно из имён свойств T", "K — массив ключей", "K равен T"]
+            answer: 1
+          - type: bug
+            q: Где TypeScript сообщит об ошибке?
+            code: |
+              type Shape = { kind: "circle"; r: number } | { kind: "square"; side: number };
+              function area(s: Shape) {
+                if (s.kind === "circle") return Math.PI * s.r ** 2;
+                return s.r * s.r;
+              }
+            bugLine: 4
+            fix: return s.side * s.side;
+            explain: После проверки kind в этой ветке s — квадрат, у него нет поля r.
+        homework:
+          task: |
+            Напишите типизированные утилиты: `groupBy<T, K extends PropertyKey>(items: T[], key: (item: T) => K): Record<K, T[]>`; `createStore<S>(initial: S)` с методами `get(): S`, `set(patch: Partial<S>)`, `select<K extends keyof S>(key: K): S[K]`; тип `AsyncState<T>` (дискриминированный union: idle/loading/success/error) и функцию `renderState` с исчерпывающей проверкой `never`. Типы `CreateUserDto = Omit<User, "id" | "createdAt">` и `UpdateUserDto = Partial<CreateUserDto>`.
+          checklist:
+            - Generics с ограничениями
+            - Дискриминированный union с never
+            - Используются utility types
+          solution: |
+            function groupBy<T, K extends PropertyKey>(items: T[], key: (item: T) => K): Record<K, T[]> {
+              return items.reduce((acc, item) => {
+                const k = key(item);
+                (acc[k] ??= []).push(item);
+                return acc;
+              }, {} as Record<K, T[]>);
+            }
+
+            function createStore<S extends object>(initial: S) {
+              let state = initial;
+              return {
+                get: (): S => state,
+                set: (patch: Partial<S>) => { state = { ...state, ...patch }; },
+                select: <K extends keyof S>(key: K): S[K] => state[key],
+              };
+            }
+
+            type AsyncState<T> =
+              | { status: "idle" }
+              | { status: "loading" }
+              | { status: "success"; data: T }
+              | { status: "error"; error: string };
+
+            function renderState<T>(s: AsyncState<T>, show: (d: T) => string): string {
+              switch (s.status) {
+                case "idle": return "—";
+                case "loading": return "Загрузка…";
+                case "success": return show(s.data);
+                case "error": return `Ошибка: ${s.error}`;
+                default: { const n: never = s; return n; }
+              }
+            }
+
+            interface User { id: number; name: string; email: string; createdAt: Date }
+            type CreateUserDto = Omit<User, "id" | "createdAt">;
+            type UpdateUserDto = Partial<CreateUserDto>;
+
+            const users: User[] = [
+              { id: 1, name: "Анна", email: "a@x.ru", createdAt: new Date() },
+              { id: 2, name: "Иван", email: "i@y.ru", createdAt: new Date() },
+            ];
+            const byDomain = groupBy(users, (u) => u.email.split("@")[1]);
+            const store = createStore({ count: 0, title: "Счётчик" });
+            store.set({ count: 5 });
+            const c: number = store.select("count");
+            const patch: UpdateUserDto = { name: "Анна П." };
+            console.log(byDomain, c, renderState({ status: "success", data: [1, 2] }, (d) => d.join(",")), patch);
+      - id: js-07-03
+        title: Типизация функций и классов
+        minutes: 40
+        xp: 45
+        theory: |
+          ## Функции
+
+          ```typescript
+          function add(a: number, b: number): number { return a + b; }
+          const greet = (name: string, greeting = "Привет"): string => `${greeting}, ${name}`;
+          function log(message: string, ...tags: string[]): void { console.log(message, tags); }
+          function find(id: number, opts?: { strict: boolean }) { /* opts может быть undefined */ }
+
+          type Comparator<T> = (a: T, b: T) => number;      // тип функции
+          const byPrice: Comparator<Product> = (a, b) => a.price - b.price;   // типы параметров выведутся
+          ```
+
+          Тип результата обычно выводится сам, но для публичных функций полезно указывать его явно — это контракт.
+
+          ## Перегрузки
+
+          ```typescript
+          function parse(input: string): number;
+          function parse(input: string[]): number[];
+          function parse(input: string | string[]): number | number[] {
+            return Array.isArray(input) ? input.map(Number) : Number(input);
+          }
+          const one = parse("5");         // number
+          const many = parse(["1", "2"]); // number[]
+          ```
+
+          ## Асинхронные функции
+
+          ```typescript
+          async function getUser(id: number): Promise<User> {
+            const res = await fetch(`/api/users/${id}`);
+            if (!res.ok) throw new Error(String(res.status));
+            return (await res.json()) as User;     // json() возвращает any — уточняем тип
+          }
+          ```
+
+          `as` — **утверждение типа**: вы говорите компилятору «поверь мне». Для данных извне надёжнее валидация в рантайме (библиотека **Zod**: `UserSchema.parse(data)` возвращает типизированный объект или бросает ошибку).
+
+          ## Классы
+
+          ```typescript
+          interface Repository<T> {
+            findById(id: number): Promise<T | undefined>;
+            save(entity: T): Promise<void>;
+          }
+
+          class InMemoryRepo<T extends { id: number }> implements Repository<T> {
+            private items = new Map<number, T>();
+            constructor(private readonly name: string) {}       // parameter property: поле + присваивание
+
+            async findById(id: number) { return this.items.get(id); }
+            async save(entity: T) { this.items.set(entity.id, entity); }
+            protected count(): number { return this.items.size; }  // доступен наследникам
+          }
+
+          abstract class Shape {
+            abstract area(): number;                 // наследники обязаны реализовать
+            describe() { return `Площадь ${this.area().toFixed(1)}`; }
+          }
+          ```
+
+          Модификаторы: `public` (по умолчанию), `private` (проверка только в TS), `protected`, `readonly`. Настоящая приватность в рантайме — `#field` из JS.
+
+          ## Типизация this и колбэков
+
+          ```typescript
+          button.addEventListener("click", (e: MouseEvent) => { /* e.clientX */ });
+          const input = document.querySelector<HTMLInputElement>("#email");   // HTMLInputElement | null
+          input?.value;
+          ```
+
+          Оператор `!` (non-null assertion) — `document.getElementById("app")!` — «точно не null». Используйте, только если уверены.
+        practice:
+          - type: fill
+            q: Укажите тип результата асинхронной функции
+            code: |
+              async function loadUsers(): ___<User[]> { ... }
+            answers: ["Promise"]
+          - type: choice
+            q: "Что делает constructor(private readonly name: string) {}?"
+            options: ["Ничего", "Объявляет приватное readonly-поле name и присваивает его", "Создаёт геттер", "Объявляет статическое поле"]
+            answer: 1
+          - type: choice
+            q: Чем опасно приведение типов data as User для ответа API?
+            options: ["Замедляет код", "Компилятор поверит на слово, а реальные данные могут не совпасть с типом", "Ошибка компиляции", "Ничем"]
+            answer: 1
+          - type: fill
+            q: Найдите input с правильным типом
+            code: |
+              const input = document.querySelector<___>("#name");
+            answers: ["HTMLInputElement"]
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              abstract class Animal {
+                abstract sound(): string;
+              }
+              class Cat extends Animal {}
+              const c = new Cat();
+            bugLine: 4
+            fix: "class Cat extends Animal { sound() { return \"мяу\"; } }"
+            explain: Неабстрактный наследник обязан реализовать абстрактные методы.
+        homework:
+          task: |
+            Переведите классы магазина (Product, DiscountedProduct, Cart) из модуля 4 на TypeScript: интерфейс `Priced`, абстрактный класс `BaseProduct`, обобщённый `Repository<T extends { id: string }>` с реализацией `InMemoryRepository`, сервис `OrderService` с внедрением репозитория через конструктор. Добавьте Zod-схему для `CreateOrderDto` и функцию, которая принимает `unknown` (как из JSON) и возвращает валидный типизированный объект или ошибки.
+          checklist:
+            - Используются interface, abstract, generics
+            - Модификаторы доступа
+            - Данные извне валидируются в рантайме
+          solution: |
+            import { z } from "zod";
+
+            interface Priced { readonly price: number }
+            abstract class BaseProduct implements Priced {
+              constructor(public readonly id: string, public title: string, protected basePrice: number) {}
+              abstract get price(): number;
+            }
+            class Product extends BaseProduct { get price() { return this.basePrice; } }
+            class DiscountedProduct extends BaseProduct {
+              constructor(id: string, title: string, basePrice: number, private percent: number) { super(id, title, basePrice); }
+              get price() { return Math.round(this.basePrice * (1 - this.percent / 100)); }
+            }
+
+            interface Repository<T extends { id: string }> {
+              get(id: string): T | undefined;
+              save(item: T): void;
+              all(): T[];
+            }
+            class InMemoryRepository<T extends { id: string }> implements Repository<T> {
+              private items = new Map<string, T>();
+              get(id: string) { return this.items.get(id); }
+              save(item: T) { this.items.set(item.id, item); }
+              all() { return [...this.items.values()]; }
+            }
+
+            const CreateOrderDto = z.object({
+              customer: z.string().min(2),
+              items: z.array(z.object({ productId: z.string(), qty: z.number().int().positive() })).min(1),
+            });
+            type CreateOrderDto = z.infer<typeof CreateOrderDto>;
+
+            class OrderService {
+              constructor(private readonly products: Repository<BaseProduct>) {}
+              parse(input: unknown): CreateOrderDto { return CreateOrderDto.parse(input); }  // бросит ZodError
+              total(dto: CreateOrderDto): number {
+                return dto.items.reduce((s, i) => {
+                  const p = this.products.get(i.productId);
+                  if (!p) throw new Error(`Нет товара ${i.productId}`);
+                  return s + p.price * i.qty;
+                }, 0);
+              }
+            }
+
+            const repo = new InMemoryRepository<BaseProduct>();
+            repo.save(new Product("p1", "Чай", 300));
+            repo.save(new DiscountedProduct("p2", "Кофе", 1000, 20));
+            const svc = new OrderService(repo);
+            const dto = svc.parse(JSON.parse('{"customer":"Анна","items":[{"productId":"p1","qty":2},{"productId":"p2","qty":1}]}'));
+            console.log(svc.total(dto)); // 1400
+      - id: js-07-04
+        title: TypeScript в проекте
+        minutes: 35
+        xp: 45
+        theory: |
+          ## tsconfig.json
+
+          ```json
+          {
+            "compilerOptions": {
+              "target": "ES2022",
+              "module": "ESNext",
+              "moduleResolution": "Bundler",
+              "strict": true,
+              "noUncheckedIndexedAccess": true,
+              "noImplicitOverride": true,
+              "esModuleInterop": true,
+              "skipLibCheck": true,
+              "jsx": "react-jsx",
+              "outDir": "dist",
+              "baseUrl": ".",
+              "paths": { "@/*": ["src/*"] }
+            },
+            "include": ["src"]
+          }
+          ```
+
+          - **`strict: true`** — обязательно в новых проектах: включает `strictNullChecks` (null и undefined — отдельные типы), `noImplicitAny` и др.
+          - `noUncheckedIndexedAccess` — `arr[i]` имеет тип `T | undefined`: заставляет проверять выход за границы.
+          - `paths` — алиасы импорта `@/components/Button`.
+
+          ## Как запускать
+
+          - **Vite** (`npm create vite@latest -- --template react-ts`) — транспилирует TS через esbuild, **без проверки типов** для скорости. Типы проверяются в редакторе и отдельной командой `tsc --noEmit` (добавьте в CI).
+          - **Node.js**: `tsx src/index.ts` для разработки, `tsc` → `node dist/index.js` в продакшене. Node 22.6+ умеет запускать `.ts` с флагом `--experimental-strip-types`.
+
+          ## Типы для библиотек
+
+          Многие пакеты содержат типы сами. Для остальных — пакеты `@types/...`: `npm i -D @types/node @types/express`. Свои объявления — файлы `.d.ts`:
+
+          ```typescript
+          // src/env.d.ts
+          interface ImportMetaEnv { readonly VITE_API_URL: string }
+          declare module "*.svg" { const url: string; export default url; }
+          ```
+
+          ## Миграция JS → TS
+
+          1. Добавить `tsconfig` с `allowJs: true`, `checkJs: false`.
+          2. Переименовывать файлы `.js` → `.ts` по одному, начиная с утилит без зависимостей.
+          3. Временно допускается `any`, но с комментарием `// TODO`.
+          4. Включить `strict`, исправить ошибки, запретить `any` правилом линтера `@typescript-eslint/no-explicit-any`.
+
+          ## Типы на границах системы
+
+          Самые ценные типы — у данных, приходящих извне: API, формы, localStorage, переменные окружения. Схемы Zod/Valibot дают и проверку в рантайме, и тип (`z.infer`). Типы API можно **генерировать** из OpenAPI (`openapi-typescript`) или делить между фронтом и бэком в монорепозитории (tRPC).
+
+          ## Полезные приёмы
+
+          - `satisfies` — проверить соответствие типу, сохранив точный вывод: `const routes = { home: "/" } satisfies Record<string, string>;`
+          - `as const` — литеральные и readonly типы для конфигов.
+          - Не пишите типы, которые компилятор выводит сам — меньше шума.
+        practice:
+          - type: choice
+            q: Проверяет ли Vite типы TypeScript при npm run dev?
+            options: ["Да, всегда", "Нет, только транспилирует; типы проверяет tsc --noEmit или редактор", "Только в production", "Только с плагином React"]
+            answer: 1
+          - type: fill
+            q: Установите типы для Node.js
+            code: |
+              npm i -D @types/___
+            answers: ["node"]
+          - type: choice
+            q: Что даёт strictNullChecks?
+            options: ["Запрещает null в коде", "null и undefined становятся отдельными типами, их нужно явно обрабатывать", "Ускоряет компиляцию", "Удаляет null при сборке"]
+            answer: 1
+          - type: fill
+            q: Проверьте типы без генерации файлов (для CI)
+            code: |
+              npx tsc ___
+            answers: ["--noEmit"]
+          - type: order
+            q: Расставьте шаги постепенной миграции проекта на TypeScript
+            lines:
+              - Добавить tsconfig.json с allowJs
+              - Переименовать утилиты .js → .ts и добавить типы
+              - Установить @types для библиотек
+              - Включить strict и исправить ошибки
+              - Запретить any правилом линтера
+        homework:
+          task: |
+            Переведите свой Vite-проект To-Do на TypeScript: `tsconfig` со `strict` и `noUncheckedIndexedAccess`, типы `Todo`, `Filter`, `State`, типизированные действия (дискриминированный union `Action` и редьюсер), `env.d.ts` для переменных окружения, Zod-схема для данных из localStorage (повреждённые данные → состояние по умолчанию). Добавьте `typecheck` в scripts и в CI.
+          checklist:
+            - Нет any и @ts-ignore
+            - Данные из localStorage проверяются схемой
+            - tsc --noEmit проходит в CI
+          solution: |
+            // src/types.ts
+            export type Filter = "all" | "active" | "done";
+            export interface Todo { id: string; text: string; done: boolean }
+            export interface State { todos: Todo[]; filter: Filter }
+            export type Action =
+              | { type: "add"; text: string }
+              | { type: "toggle"; id: string }
+              | { type: "remove"; id: string }
+              | { type: "filter"; filter: Filter };
+
+            // src/reducer.ts
+            import type { State, Action } from "./types";
+            export function reducer(s: State, a: Action): State {
+              switch (a.type) {
+                case "add": return { ...s, todos: [...s.todos, { id: crypto.randomUUID(), text: a.text, done: false }] };
+                case "toggle": return { ...s, todos: s.todos.map((t) => (t.id === a.id ? { ...t, done: !t.done } : t)) };
+                case "remove": return { ...s, todos: s.todos.filter((t) => t.id !== a.id) };
+                case "filter": return { ...s, filter: a.filter };
+                default: { const never: never = a; return never; }
+              }
+            }
+
+            // src/storage.ts
+            import { z } from "zod";
+            import type { State } from "./types";
+            const StateSchema = z.object({
+              todos: z.array(z.object({ id: z.string(), text: z.string(), done: z.boolean() })),
+              filter: z.enum(["all", "active", "done"]),
+            });
+            const DEFAULT: State = { todos: [], filter: "all" };
+            export function load(): State {
+              try {
+                const parsed = StateSchema.safeParse(JSON.parse(localStorage.getItem("todos") ?? "null"));
+                return parsed.success ? parsed.data : DEFAULT;
+              } catch { return DEFAULT; }
+            }
+
+            // src/env.d.ts
+            interface ImportMetaEnv { readonly VITE_APP_TITLE: string }
+            interface ImportMeta { readonly env: ImportMetaEnv }
+
+            // package.json: "typecheck": "tsc --noEmit"

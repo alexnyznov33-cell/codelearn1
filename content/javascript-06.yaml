@@ -1,0 +1,694 @@
+id: javascript
+modules:
+  - id: js-m6
+    title: Модули и инструменты
+    level: Junior+
+    lessons:
+      - id: js-06-01
+        title: ES-модули import/export
+        minutes: 30
+        xp: 35
+        theory: |
+          **Модуль** — файл со своей областью видимости. Наружу видно только то, что явно **экспортировано**.
+
+          ```javascript
+          // math.js — именованные экспорты
+          export const PI = 3.14159;
+          export function area(r) { return PI * r * r; }
+          function helper() {}           // приватная функция модуля
+          export { helper as util };     // экспорт под другим именем
+
+          // user.js — экспорт по умолчанию (один на модуль)
+          export default class User { constructor(name) { this.name = name; } }
+          ```
+
+          ```javascript
+          // main.js
+          import User from "./user.js";                 // default — любое имя
+          import { area, PI as P } from "./math.js";    // именованные — точные имена (можно переименовать)
+          import * as math from "./math.js";            // всё как объект-пространство имён
+          console.log(area(2), math.PI);
+          ```
+
+          В браузере: `<script type="module" src="main.js"></script>` — модули по умолчанию работают как `defer` и в строгом режиме. Путь к файлу с расширением обязателен (без сборщика).
+
+          ## Особенности
+
+          - Модуль выполняется **один раз**, даже если импортирован в десяти местах — все получают один и тот же экземпляр (удобно для общего состояния/конфигурации).
+          - Импорты — **живые привязки** (live bindings): если модуль изменит экспортируемую `let`, импортирующие увидят новое значение. Но присвоить импорту нельзя.
+          - Импорты поднимаются и разрешаются **до** выполнения кода — поэтому возможен статический анализ и tree shaking (удаление неиспользуемого кода сборщиком).
+          - **Top-level await** разрешён в модулях: `const config = await fetch("/config.json").then(r => r.json());`
+
+          ## Реэкспорт и «баррели»
+
+          ```javascript
+          // components/index.js
+          export { Button } from "./Button.js";
+          export { Modal } from "./Modal.js";
+          export * from "./icons.js";
+          // теперь: import { Button, Modal } from "./components/index.js";
+          ```
+
+          ## Динамический импорт
+
+          ```javascript
+          button.addEventListener("click", async () => {
+            const { renderChart } = await import("./chart.js");   // загрузится только при клике
+            renderChart(data);
+          });
+          ```
+
+          Так делают «ленивую загрузку» тяжёлых частей приложения (code splitting).
+
+          ## CommonJS
+
+          В старом коде Node.js: `const fs = require("fs")` и `module.exports = {...}`. Новые проекты пишут на ESM (`"type": "module"` в package.json или расширение `.mjs`).
+
+          Совет: предпочитайте **именованные экспорты** — их проще искать и автоматически импортировать в IDE, переименование ловится инструментами.
+        practice:
+          - type: choice
+            q: Сколько экспортов по умолчанию может быть в модуле?
+            options: ["Сколько угодно", "Один", "Ни одного", "Два"]
+            answer: 1
+          - type: fill
+            q: Импортируйте именованную функцию format из utils.js
+            code: |
+              import ___ format ___ from "./utils.js";
+            answers: ["{", "}"]
+          - type: bug
+            q: Почему в браузере import не работает?
+            code: |
+              <script src="main.js"></script>
+              <!-- main.js: import { api } from "./api.js"; -->
+            bugLine: 1
+            fix: <script type="module" src="main.js"></script>
+            explain: Синтаксис import доступен только в скриптах с type="module".
+          - type: choice
+            q: Модуль config.js импортирован в 5 файлах. Сколько раз выполнится его код?
+            options: ["5", "1", "0", "Зависит от браузера"]
+            answer: 1
+          - type: fill
+            q: Загрузите модуль лениво при клике
+            code: |
+              const { openEditor } = await ___("./editor.js");
+            answers: ["import"]
+        homework:
+          task: |
+            Разбейте To-Do из модуля 3 на ES-модули: `storage.js` (load/save), `state.js` (состояние и действия, экспорт `subscribe`, `actions`), `render.js` (отрисовка), `main.js` (связывает всё). Добавьте `stats.js` со статистикой, загружаемый динамическим импортом по кнопке «Статистика». Запустите через локальный сервер (`npx serve` или расширение Live Server), т.к. модули не работают с `file://`.
+          checklist:
+            - Нет глобальных переменных
+            - Каждый модуль отвечает за одно
+            - Есть динамический импорт
+          solution: |
+            // storage.js
+            const KEY = "todos-v1";
+            export const load = () => JSON.parse(localStorage.getItem(KEY) || "null") ?? { todos: [], filter: "all" };
+            export const save = (s) => localStorage.setItem(KEY, JSON.stringify(s));
+
+            // state.js
+            import { load, save } from "./storage.js";
+            let state = load();
+            const listeners = new Set();
+            export const getState = () => state;
+            export const subscribe = (fn) => (listeners.add(fn), () => listeners.delete(fn));
+            function update(fn) { state = fn(state); save(state); listeners.forEach((l) => l(state)); }
+            export const actions = {
+              add: (text) => update((s) => ({ ...s, todos: [...s.todos, { id: crypto.randomUUID(), text, done: false }] })),
+              toggle: (id) => update((s) => ({ ...s, todos: s.todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) })),
+              remove: (id) => update((s) => ({ ...s, todos: s.todos.filter((t) => t.id !== id) })),
+            };
+
+            // render.js
+            export function render(state, list) {
+              list.replaceChildren(...state.todos.map((t) => {
+                const li = document.createElement("li");
+                li.dataset.id = t.id;
+                li.className = t.done ? "done" : "";
+                li.textContent = t.text;
+                return li;
+              }));
+            }
+
+            // stats.js
+            export const stats = (s) => ({ total: s.todos.length, done: s.todos.filter((t) => t.done).length });
+
+            // main.js
+            import { getState, subscribe, actions } from "./state.js";
+            import { render } from "./render.js";
+            const list = document.querySelector("#list");
+            subscribe((s) => render(s, list));
+            render(getState(), list);
+            list.addEventListener("click", (e) => { const id = e.target.dataset.id; if (id) actions.toggle(id); });
+            document.querySelector("#form").addEventListener("submit", (e) => {
+              e.preventDefault();
+              actions.add(e.target.text.value.trim());
+              e.target.reset();
+            });
+            document.querySelector("#stats").addEventListener("click", async () => {
+              const { stats } = await import("./stats.js");
+              alert(JSON.stringify(stats(getState())));
+            });
+      - id: js-06-02
+        title: npm и package.json
+        minutes: 30
+        xp: 35
+        theory: |
+          **npm** — менеджер пакетов Node.js и крупнейший реестр библиотек. Альтернативы: **pnpm** (быстрый, экономит диск), **yarn**, **bun**.
+
+          ```bash
+          npm init -y                    # создать package.json
+          npm install dayjs              # зависимость (npm i)
+          npm install -D vitest eslint   # dev-зависимость (только для разработки)
+          npm uninstall dayjs
+          npm install                    # поставить всё по package.json (после git clone)
+          npm ci                         # чистая установка строго по lock-файлу (для CI)
+          npm outdated                   # что устарело
+          npm update                     # обновить в рамках диапазонов
+          npx create-vite my-app         # запустить пакет без установки
+          ```
+
+          ## package.json
+
+          ```json
+          {
+            "name": "my-shop",
+            "version": "1.2.0",
+            "type": "module",
+            "scripts": {
+              "dev": "vite",
+              "build": "vite build",
+              "test": "vitest",
+              "lint": "eslint ."
+            },
+            "dependencies": { "dayjs": "^1.11.10" },
+            "devDependencies": { "vite": "^5.2.0", "vitest": "^1.5.0" },
+            "engines": { "node": ">=20" }
+          }
+          ```
+
+          Скрипты запускают так: `npm run dev`, `npm run build`; для `test` и `start` можно короче: `npm test`, `npm start`. Внутри скриптов доступны бинарники из `node_modules/.bin`.
+
+          ## Семантическое версионирование (SemVer)
+
+          `MAJOR.MINOR.PATCH`: **major** — ломающие изменения, **minor** — новые возможности без поломок, **patch** — исправления.
+
+          | Диапазон | Разрешает |
+          |---|---|
+          | `^1.4.2` | `>=1.4.2 <2.0.0` (по умолчанию) |
+          | `~1.4.2` | `>=1.4.2 <1.5.0` |
+          | `1.4.2` | ровно эту версию |
+          | `*` / `latest` | любую — опасно |
+
+          Для `0.x` версии `^0.3.1` разрешает только `<0.4.0`.
+
+          ## Lock-файл
+
+          `package-lock.json` фиксирует **точные** версии всего дерева зависимостей → у всех разработчиков и в CI одинаковые пакеты. **Коммитьте его** в git. А вот `node_modules/` — в `.gitignore`.
+
+          ## Безопасность и гигиена
+
+          - `npm audit` / `npm audit fix` — известные уязвимости.
+          - Проверяйте популярность и поддержку пакета перед установкой; не ставьте пакет ради одной строки кода.
+          - Остерегайтесь опечаток в именах (typosquatting).
+          - Публикация своего пакета: `npm login`, `npm version patch`, `npm publish`.
+        practice:
+          - type: choice
+            q: Какие версии разрешает диапазон ^2.3.1?
+            options: ["Только 2.3.1", ">=2.3.1 <2.4.0", ">=2.3.1 <3.0.0", "Любые"]
+            answer: 2
+          - type: fill
+            q: Установите vitest как dev-зависимость
+            code: |
+              npm install ___ vitest
+            answers: [["-D", "--save-dev"]]
+          - type: choice
+            q: Что нужно коммитить в git?
+            options: ["node_modules", "package.json и package-lock.json", "Только package.json", "Ничего из этого"]
+            answer: 1
+          - type: choice
+            q: Какая команда лучше подходит для установки в CI?
+            options: ["npm install", "npm ci", "npm update", "npm audit"]
+            answer: 1
+          - type: choice
+            q: Библиотека обновилась с 3.4.0 до 4.0.0. Что это значит по SemVer?
+            options: ["Исправлены баги", "Добавлены функции без поломок", "Есть ломающие изменения", "Ничего"]
+            answer: 2
+        homework:
+          task: |
+            Создайте проект `cli-weather`: `npm init`, `"type": "module"`, зависимости `chalk` (цветной вывод) и `dayjs`, dev-зависимость `vitest`. Скрипты `start` (запуск `node index.js`), `test`. Программа выводит текущую дату в формате «DD.MM.YYYY HH:mm» и «прогноз» из массива случайным цветом. Добавьте `bin` в package.json, чтобы запускать командой `weather` через `npm link`. Запустите `npm audit` и `npm outdated`.
+          checklist:
+            - Корректный package.json со scripts
+            - Разделены dependencies и devDependencies
+            - lock-файл в репозитории, node_modules в .gitignore
+          solution: |
+            // package.json
+            {
+              "name": "cli-weather",
+              "version": "1.0.0",
+              "type": "module",
+              "bin": { "weather": "./index.js" },
+              "scripts": {
+                "start": "node index.js",
+                "test": "vitest run"
+              },
+              "dependencies": { "chalk": "^5.3.0", "dayjs": "^1.11.10" },
+              "devDependencies": { "vitest": "^1.5.0" }
+            }
+
+            // index.js
+            #!/usr/bin/env node
+            import chalk from "chalk";
+            import dayjs from "dayjs";
+            export const forecasts = ["Солнечно ☀️", "Дождь 🌧", "Снег ❄️", "Облачно ☁️"];
+            export const pick = (arr, rnd = Math.random) => arr[Math.floor(rnd() * arr.length)];
+            const colors = [chalk.yellow, chalk.blue, chalk.cyan, chalk.gray];
+            console.log(chalk.bold(dayjs().format("DD.MM.YYYY HH:mm")));
+            console.log(pick(colors)(pick(forecasts)));
+
+            // .gitignore
+            node_modules/
+
+            // npm install && npm start && npm link && weather
+      - id: js-06-03
+        title: Сборщики — Vite
+        minutes: 35
+        xp: 40
+        theory: |
+          Браузер умеет ES-модули, но в реальных проектах нужно больше: импорт npm-пакетов по имени, TypeScript, JSX, CSS-модули, минификация, оптимизация картинок, хеши в именах файлов для кеширования. Это делает **сборщик**.
+
+          **Vite** — современный стандарт: мгновенный dev-сервер и сборка на Rollup.
+
+          ```bash
+          npm create vite@latest my-app -- --template vanilla   # или react-ts, vue-ts, svelte...
+          cd my-app
+          npm install
+          npm run dev        # dev-сервер на http://localhost:5173 с HMR
+          npm run build      # продакшен-сборка в dist/
+          npm run preview    # посмотреть собранную версию
+          ```
+
+          ## Как работает
+
+          - **Dev**: Vite не собирает всё заранее, а отдаёт браузеру ES-модули по запросу, преобразуя на лету (esbuild). Зависимости из `node_modules` один раз пре-бандлятся. Изменения применяются через **HMR** (Hot Module Replacement) без перезагрузки страницы.
+          - **Build**: Rollup собирает оптимизированные бандлы: tree shaking, минификация, разделение кода (code splitting) по динамическим импортам, файлы вида `index-a1b2c3.js`.
+
+          ## Структура
+
+          ```
+          my-app/
+          ├── index.html          ← точка входа (в корне, а не в public!)
+          ├── public/             ← копируется как есть (favicon, robots.txt)
+          ├── src/
+          │   ├── main.js
+          │   ├── style.css
+          │   └── assets/logo.svg
+          └── vite.config.js
+          ```
+
+          ```javascript
+          // src/main.js
+          import "./style.css";                       // CSS подключится автоматически
+          import logoUrl from "./assets/logo.svg";    // получим URL файла
+          import dayjs from "dayjs";                  // npm-пакет по имени
+          ```
+
+          ## Переменные окружения
+
+          `.env`: `VITE_API_URL=https://api.example.com` → в коде `import.meta.env.VITE_API_URL`. В клиентский код попадают **только** переменные с префиксом `VITE_` — не кладите туда секреты, их увидит любой пользователь.
+
+          ## vite.config.js
+
+          ```javascript
+          import { defineConfig } from "vite";
+          export default defineConfig({
+            base: "/my-app/",                         // если сайт не в корне домена
+            server: {
+              port: 3000,
+              proxy: { "/api": "http://localhost:8080" },   // обход CORS в разработке
+            },
+            build: { sourcemap: true },
+          });
+          ```
+
+          Другие инструменты: **webpack** (старый стандарт, много в легаси), **esbuild**, **Rollup** (библиотеки), **Turbopack**, **Rspack**. Мета-фреймворки (Next.js, Nuxt, SvelteKit) имеют сборщик внутри.
+        practice:
+          - type: choice
+            q: Что такое HMR?
+            options: ["Сжатие картинок", "Горячая замена модулей без перезагрузки страницы", "Формат модулей", "Минификация"]
+            answer: 1
+          - type: fill
+            q: Прочитайте переменную окружения в коде Vite
+            code: |
+              const api = import.meta.___.VITE_API_URL;
+            answers: ["env"]
+          - type: choice
+            q: Можно ли хранить секретный API-ключ в VITE_SECRET?
+            options: ["Да, он скрыт", "Нет, VITE_-переменные попадают в клиентский бандл", "Да, если .env в .gitignore", "Только в production"]
+            answer: 1
+          - type: order
+            q: Расставьте команды от создания до деплоя
+            lines:
+              - npm create vite@latest app
+              - npm install
+              - npm run dev
+              - npm run build
+              - загрузить папку dist на хостинг
+          - type: choice
+            q: Зачем в именах собранных файлов хеш (index-a1b2c3.js)?
+            options: ["Для безопасности", "Для долгого кеширования: новый файл — новое имя", "Чтобы файлы были меньше", "Требование браузеров"]
+            answer: 1
+        homework:
+          task: |
+            Создайте проект на Vite (шаблон vanilla), перенесите туда To-Do из модульной версии. Подключите npm-пакет `nanoid` для id и `dayjs` для дат создания. Импортируйте CSS и SVG-иконку. Настройте `.env` с `VITE_APP_TITLE` и выведите его в заголовок. Сделайте `npm run build`, изучите папку `dist` (размеры, хеши) и опубликуйте на GitHub Pages или Netlify (не забудьте `base`).
+          checklist:
+            - Проект запускается npm run dev
+            - Используются npm-пакеты
+            - Сборка опубликована
+          solution: |
+            // npm create vite@latest todo-vite -- --template vanilla
+            // npm i nanoid dayjs
+
+            // .env
+            VITE_APP_TITLE=Мои задачи
+
+            // vite.config.js
+            import { defineConfig } from "vite";
+            export default defineConfig({ base: "/todo-vite/" });   // имя репозитория для GitHub Pages
+
+            // src/main.js
+            import "./style.css";
+            import checkIcon from "./assets/check.svg";
+            import { nanoid } from "nanoid";
+            import dayjs from "dayjs";
+            import { getState, subscribe, actions } from "./state.js";
+
+            document.title = import.meta.env.VITE_APP_TITLE;
+            document.querySelector("h1").textContent = import.meta.env.VITE_APP_TITLE;
+            document.querySelector("#logo").src = checkIcon;
+            // в actions.add: { id: nanoid(), text, done: false, created: dayjs().format("DD.MM HH:mm") }
+
+            // npm run build → dist/index.html, dist/assets/index-XXXX.js, index-XXXX.css
+            // Деплой: npx gh-pages -d dist  или перетащить dist в Netlify Drop
+      - id: js-06-04
+        title: ESLint и Prettier
+        minutes: 30
+        xp: 35
+        theory: |
+          **Prettier** — автоформатирование (отступы, кавычки, переносы): споры о стиле исчезают. **ESLint** — анализ кода на ошибки и плохие практики: неиспользуемые переменные, `==` вместо `===`, забытый `await`, нарушения правил хуков React.
+
+          ## Установка
+
+          ```bash
+          npm i -D eslint @eslint/js globals prettier eslint-config-prettier
+          ```
+
+          ```javascript
+          // eslint.config.js — «плоский» конфиг ESLint 9
+          import js from "@eslint/js";
+          import globals from "globals";
+          import prettier from "eslint-config-prettier";
+
+          export default [
+            js.configs.recommended,
+            {
+              files: ["**/*.js"],
+              languageOptions: { globals: { ...globals.browser, ...globals.node } },
+              rules: {
+                "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+                eqeqeq: "error",
+                "no-console": ["warn", { allow: ["warn", "error"] }],
+                "prefer-const": "error",
+              },
+            },
+            prettier,                  // отключает правила, конфликтующие с Prettier
+            { ignores: ["dist/"] },
+          ];
+          ```
+
+          ```json
+          // .prettierrc
+          { "semi": true, "singleQuote": false, "printWidth": 100, "trailingComma": "all" }
+          ```
+
+          ```json
+          "scripts": {
+            "lint": "eslint .",
+            "lint:fix": "eslint . --fix",
+            "format": "prettier --write ."
+          }
+          ```
+
+          Уровни правил: `"off"`, `"warn"`, `"error"` (ошибка ломает CI). Отключить для строки: `// eslint-disable-next-line no-console` — с комментарием, почему.
+
+          ## Интеграция в работу
+
+          1. **Редактор**: расширения ESLint и Prettier в VS Code + «Format on Save».
+          2. **Pre-commit хук**: `husky` + `lint-staged` проверяют только изменённые файлы перед коммитом:
+             ```json
+             "lint-staged": { "*.{js,ts}": ["eslint --fix", "prettier --write"] }
+             ```
+          3. **CI**: `npm run lint` и `prettier --check .` на каждый Pull Request.
+
+          ## Почему это важно
+
+          Линтер находит баги до запуска (`no-undef` — опечатка в имени переменной), а единый стиль делает code review про логику, а не про пробелы. Для TypeScript используют `typescript-eslint`, для React — `eslint-plugin-react-hooks`. Альтернатива «всё в одном» — **Biome** (линтер + форматтер, очень быстрый).
+        practice:
+          - type: choice
+            q: Чем отличаются ESLint и Prettier?
+            options: ["Ничем", "Prettier форматирует код, ESLint ищет ошибки и плохие практики", "ESLint только для TypeScript", "Prettier ищет баги"]
+            answer: 1
+          - type: fill
+            q: Запретите нестрогое сравнение ==
+            code: |
+              rules: { ___: "error" }
+            answers: ["eqeqeq"]
+          - type: choice
+            q: Зачем eslint-config-prettier?
+            options: ["Ускоряет ESLint", "Отключает правила ESLint, конфликтующие с форматированием Prettier", "Добавляет правила React", "Форматирует CSS"]
+            answer: 1
+          - type: bug
+            q: На какую строку ESLint (recommended) укажет ошибкой no-undef?
+            code: |
+              const total = 100;
+              const discount = 0.1;
+              console.log(totl * (1 - discount));
+            bugLine: 3
+            fix: console.log(total * (1 - discount));
+            explain: Опечатка totl — необъявленная переменная, ESLint поймает её до запуска.
+          - type: order
+            q: Расставьте уровни проверки кода от самого раннего к позднему
+            lines:
+              - Подсветка в редакторе при наборе
+              - Pre-commit хук (lint-staged)
+              - Проверка в CI на Pull Request
+        homework:
+          task: |
+            Подключите к своему Vite-проекту ESLint 9 (flat config) и Prettier, настройте скрипты `lint`, `lint:fix`, `format`, `format:check`. Включите правила `eqeqeq`, `prefer-const`, `no-unused-vars`. Исправьте все найденные проблемы. Настройте husky + lint-staged для pre-commit и GitHub Actions workflow, который запускает lint и format:check на pull request.
+          checklist:
+            - npm run lint проходит без ошибок
+            - Коммит с ошибкой линтера блокируется
+            - CI проверяет PR
+          solution: |
+            // npm i -D eslint @eslint/js globals prettier eslint-config-prettier husky lint-staged
+            // npx husky init  → .husky/pre-commit: npx lint-staged
+
+            // eslint.config.js
+            import js from "@eslint/js";
+            import globals from "globals";
+            import prettier from "eslint-config-prettier";
+            export default [
+              { ignores: ["dist/", "node_modules/"] },
+              js.configs.recommended,
+              {
+                languageOptions: { ecmaVersion: "latest", sourceType: "module", globals: globals.browser },
+                rules: { eqeqeq: "error", "prefer-const": "error", "no-unused-vars": "error" },
+              },
+              prettier,
+            ];
+
+            // package.json
+            "scripts": {
+              "lint": "eslint .",
+              "lint:fix": "eslint . --fix",
+              "format": "prettier --write .",
+              "format:check": "prettier --check ."
+            },
+            "lint-staged": { "*.js": ["eslint --fix", "prettier --write"] }
+
+            # .github/workflows/lint.yml
+            name: lint
+            on: pull_request
+            jobs:
+              lint:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: actions/checkout@v4
+                  - uses: actions/setup-node@v4
+                    with: { node-version: 20, cache: npm }
+                  - run: npm ci
+                  - run: npm run lint
+                  - run: npm run format:check
+      - id: js-06-05
+        title: Тестирование — Vitest/Jest
+        minutes: 40
+        xp: 45
+        theory: |
+          **Vitest** — быстрый тест-раннер, совместимый по API с **Jest**, идеально работает с Vite.
+
+          ```bash
+          npm i -D vitest
+          # package.json: "test": "vitest"   (watch-режим), "test:run": "vitest run"
+          ```
+
+          ```javascript
+          // src/cart.js
+          export function total(items, discount = 0) {
+            if (discount < 0 || discount > 1) throw new RangeError("discount 0..1");
+            const sum = items.reduce((s, i) => s + i.price * i.qty, 0);
+            return Math.round(sum * (1 - discount));
+          }
+
+          // src/cart.test.js
+          import { describe, it, expect } from "vitest";
+          import { total } from "./cart.js";
+
+          describe("total", () => {
+            it("суммирует позиции", () => {
+              expect(total([{ price: 100, qty: 2 }, { price: 50, qty: 1 }])).toBe(250);
+            });
+            it("применяет скидку", () => {
+              expect(total([{ price: 1000, qty: 1 }], 0.1)).toBe(900);
+            });
+            it("пустая корзина — 0", () => {
+              expect(total([])).toBe(0);
+            });
+            it("ошибка при неверной скидке", () => {
+              expect(() => total([], 2)).toThrow(RangeError);
+            });
+          });
+          ```
+
+          ## Матчеры
+
+          `toBe` (строгое ===), `toEqual` (глубокое сравнение объектов), `toBeTruthy`, `toBeNull`, `toContain`, `toHaveLength`, `toMatch(/regex/)`, `toThrow`, `toBeCloseTo` (дробные), `resolves`/`rejects` для промисов, `not.` — отрицание.
+
+          ## Асинхронные тесты и моки
+
+          ```javascript
+          import { vi } from "vitest";
+
+          it("загружает пользователя", async () => {
+            const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ name: "Анна" }) });
+            vi.stubGlobal("fetch", fetchMock);
+            await expect(loadUser(1)).resolves.toEqual({ name: "Анна" });
+            expect(fetchMock).toHaveBeenCalledWith("/api/users/1");
+          });
+
+          it("debounce", () => {
+            vi.useFakeTimers();
+            const fn = vi.fn();
+            const d = debounce(fn, 300);
+            d(); d(); d();
+            vi.advanceTimersByTime(300);
+            expect(fn).toHaveBeenCalledTimes(1);
+            vi.useRealTimers();
+          });
+          ```
+
+          `beforeEach`/`afterEach` — подготовка и очистка; `vi.mock("./api.js")` — замена целого модуля.
+
+          ## DOM и компоненты
+
+          Окружение `jsdom` или `happy-dom` (`environment: "jsdom"` в конфиге) + **Testing Library**: ищем элементы так, как их видит пользователь (`getByRole("button", { name: "Добавить" })`). E2E-тесты в реальном браузере — **Playwright**.
+
+          Покрытие: `vitest run --coverage`. Цель — не 100%, а уверенность в важной логике.
+        practice:
+          - type: choice
+            q: Чем toEqual отличается от toBe?
+            options: ["Ничем", "toEqual сравнивает содержимое объектов, toBe — строгим равенством (===)", "toBe для строк", "toEqual только для чисел"]
+            answer: 1
+          - type: fill
+            q: Проверьте, что функция бросает ошибку
+            code: |
+              expect(() => parse("")).___(SyntaxError);
+            answers: ["toThrow"]
+          - type: bug
+            q: Почему тест неверный?
+            code: |
+              it("сумма дробей", () => {
+                expect(0.1 + 0.2).toBe(0.3);
+              });
+            bugLine: 2
+            fix: expect(0.1 + 0.2).toBeCloseTo(0.3);
+            explain: 0.1 + 0.2 = 0.30000000000000004 из-за двоичной арифметики — для дробей нужен toBeCloseTo.
+          - type: fill
+            q: Создайте функцию-шпион
+            code: |
+              const onSave = vi.___();
+            answers: ["fn"]
+          - type: choice
+            q: Как протестировать debounce без реального ожидания?
+            options: ["setTimeout в тесте", "Фейковые таймеры vi.useFakeTimers()", "Нельзя протестировать", "Увеличить таймаут теста"]
+            answer: 1
+        homework:
+          task: |
+            Покройте тестами Vitest утилиты из прошлых уроков: строковые функции (capitalize, slugify, truncate), `memoize` (проверить через `vi.fn`, что исходная функция вызвана один раз), `retry` (мок, падающий 2 раза), `debounce` (фейковые таймеры), API-клиент (мок fetch: успех, 404, сетевая ошибка). Используйте `describe`, `it.each` для табличных случаев. Добейтесь покрытия ≥ 90% и подключите тесты в CI.
+          checklist:
+            - Есть синхронные и асинхронные тесты
+            - Используются моки и фейковые таймеры
+            - Есть табличные тесты it.each
+          solution: |
+            import { describe, it, expect, vi, beforeEach } from "vitest";
+            import { slugify, truncate } from "./strings.js";
+            import { memoize, debounce, retry } from "./utils.js";
+            import { api } from "./api.js";
+
+            describe("strings", () => {
+              it.each([
+                ["Привет Мир", "привет-мир"],
+                ["  JS 2024! ", "js-2024"],
+              ])("slugify(%s) = %s", (input, out) => expect(slugify(input)).toBe(out));
+              it("truncate", () => expect(truncate("абвгд", 3)).toBe("абв…"));
+            });
+
+            describe("memoize", () => {
+              it("вызывает функцию один раз для одинаковых аргументов", () => {
+                const fn = vi.fn((x) => x * 2);
+                const m = memoize(fn);
+                expect(m(2)).toBe(4);
+                expect(m(2)).toBe(4);
+                expect(fn).toHaveBeenCalledTimes(1);
+              });
+            });
+
+            describe("debounce", () => {
+              beforeEach(() => vi.useFakeTimers());
+              it("вызывает после паузы один раз", () => {
+                const fn = vi.fn();
+                const d = debounce(fn, 300);
+                d(1); d(2); d(3);
+                vi.advanceTimersByTime(299);
+                expect(fn).not.toHaveBeenCalled();
+                vi.advanceTimersByTime(1);
+                expect(fn).toHaveBeenCalledWith(3);
+              });
+            });
+
+            describe("retry", () => {
+              it("повторяет до успеха", async () => {
+                const fn = vi.fn().mockRejectedValueOnce(new Error("1")).mockRejectedValueOnce(new Error("2")).mockResolvedValue("ok");
+                await expect(retry(fn, 3, 0)).resolves.toBe("ok");
+                expect(fn).toHaveBeenCalledTimes(3);
+              });
+            });
+
+            describe("api", () => {
+              it("бросает на 404", async () => {
+                vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+                await expect(api("/x")).rejects.toThrow("404");
+              });
+              it("сетевая ошибка", async () => {
+                vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+                await expect(api("/x")).rejects.toThrow("Нет соединения");
+              });
+            });

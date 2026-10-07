@@ -1,0 +1,801 @@
+id: javascript
+modules:
+  - id: js-m5
+    title: Асинхронность
+    level: Junior+
+    lessons:
+      - id: js-05-01
+        title: Колбэки
+        minutes: 30
+        xp: 35
+        theory: |
+          **Колбэк** — функция, переданная в другую функцию, чтобы её вызвали позже. Это первый и самый простой механизм асинхронности в JS.
+
+          ```javascript
+          setTimeout(() => console.log("прошла секунда"), 1000);
+          button.addEventListener("click", onClick);
+          [3, 1, 2].sort((a, b) => a - b);   // синхронный колбэк
+          ```
+
+          ## Error-first callbacks (стиль Node.js)
+
+          Первый аргумент — ошибка (или `null`), второй — результат:
+
+          ```javascript
+          const fs = require("fs");
+          fs.readFile("config.json", "utf8", (err, text) => {
+            if (err) {
+              console.error("Не удалось прочитать:", err.message);
+              return;                      // обязательно выйти!
+            }
+            console.log(JSON.parse(text));
+          });
+          ```
+
+          Свои функции в этом стиле:
+
+          ```javascript
+          function loadUser(id, cb) {
+            setTimeout(() => {
+              if (id <= 0) cb(new Error("Неверный id"));
+              else cb(null, { id, name: "Анна" });
+            }, 100);
+          }
+          ```
+
+          ## Callback hell
+
+          Когда шаги зависят друг от друга, код уходит вправо «пирамидой»:
+
+          ```javascript
+          loadUser(1, (err, user) => {
+            if (err) return handle(err);
+            loadOrders(user.id, (err, orders) => {
+              if (err) return handle(err);
+              loadItems(orders[0].id, (err, items) => {
+                if (err) return handle(err);
+                render(user, orders, items);     // ошибки обрабатываются на каждом уровне
+              });
+            });
+          });
+          ```
+
+          Проблемы: трудно читать, легко забыть обработку ошибки, сложно запускать параллельно, `try/catch` не ловит ошибки внутри асинхронных колбэков.
+
+          ## Подводные камни
+
+          - **Zalgo**: функция должна вызывать колбэк всегда асинхронно или всегда синхронно, но не «как получится».
+          - Колбэк нельзя вызывать дважды (частая ошибка — забытый `return` после `cb(err)`).
+
+          Решение всех этих проблем — **Promise** и **async/await** (следующие уроки). Для старых API есть `util.promisify` в Node.js.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              function compute(x, cb) { cb(null, x * 2); }
+              compute(21, (err, res) => console.log(err, res));
+            answer: null 42
+          - type: bug
+            q: Почему колбэк может вызваться дважды?
+            code: |
+              function parse(text, cb) {
+                let data;
+                try { data = JSON.parse(text); }
+                catch (e) { cb(e); }
+                cb(null, data);
+              }
+            bugLine: 4
+            fix: "catch (e) { return cb(e); }"
+            explain: После cb(e) выполнение продолжается, и cb вызывается второй раз с undefined.
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log("A");
+              setTimeout(() => console.log("B"), 0);
+              [1].forEach(() => console.log("C"));
+              console.log("D");
+            answer: |
+              A
+              C
+              D
+              B
+          - type: choice
+            q: Что принято передавать первым аргументом в колбэк в стиле Node.js?
+            options: ["Результат", "Ошибку или null", "Имя функции", "this"]
+            answer: 1
+          - type: choice
+            q: Поймает ли try/catch вокруг setTimeout ошибку, брошенную внутри колбэка?
+            options: ["Да", "Нет — колбэк выполнится позже, вне этого try", "Только в Node.js", "Только в строгом режиме"]
+            answer: 1
+        homework:
+          task: |
+            Напишите имитацию API на колбэках: `getUser(id, cb)`, `getPosts(userId, cb)`, `getComments(postId, cb)` (случайные задержки и 10% ошибок). Получите комментарии к первому посту пользователя «пирамидой». Затем напишите свою `promisify(fn)` и перепишите цепочку на промисах. Сравните читаемость.
+          checklist:
+            - Ошибки обрабатываются на каждом шаге
+            - promisify корректно передаёт ошибку и результат
+            - Версия на промисах короче
+          solution: |
+            const delay = () => 50 + Math.random() * 100;
+            const maybeFail = (cb, value) =>
+              setTimeout(() => (Math.random() < 0.1 ? cb(new Error("Сбой сети")) : cb(null, value)), delay());
+            const getUser = (id, cb) => maybeFail(cb, { id, name: "Анна" });
+            const getPosts = (userId, cb) => maybeFail(cb, [{ id: 10, title: "Пост" }]);
+            const getComments = (postId, cb) => maybeFail(cb, ["Круто!", "Спасибо"]);
+
+            getUser(1, (err, user) => {
+              if (err) return console.error(err.message);
+              getPosts(user.id, (err, posts) => {
+                if (err) return console.error(err.message);
+                getComments(posts[0].id, (err, comments) => {
+                  if (err) return console.error(err.message);
+                  console.log("Колбэки:", comments);
+                });
+              });
+            });
+
+            function promisify(fn) {
+              return (...args) => new Promise((resolve, reject) => {
+                fn(...args, (err, result) => (err ? reject(err) : resolve(result)));
+              });
+            }
+            const [userP, postsP, commentsP] = [getUser, getPosts, getComments].map(promisify);
+            userP(1)
+              .then((u) => postsP(u.id))
+              .then((posts) => commentsP(posts[0].id))
+              .then((c) => console.log("Промисы:", c))
+              .catch((e) => console.error("Ошибка:", e.message));
+      - id: js-05-02
+        title: Promise
+        minutes: 40
+        xp: 45
+        theory: |
+          **Promise** — объект-обещание результата асинхронной операции. Состояния: `pending` (ожидание) → `fulfilled` (выполнен со значением) или `rejected` (отклонён с ошибкой). Переход происходит **один раз**.
+
+          ```javascript
+          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          const loadUser = (id) => new Promise((resolve, reject) => {
+            setTimeout(() => {
+              if (id > 0) resolve({ id, name: "Анна" });
+              else reject(new Error("Неверный id"));
+            }, 100);
+          });
+          ```
+
+          ## Цепочки
+
+          ```javascript
+          loadUser(1)
+            .then((user) => user.name)              // вернуть значение → следующий then получит его
+            .then((name) => loadGreeting(name))     // вернуть промис → цепочка подождёт его
+            .then((text) => console.log(text))
+            .catch((err) => console.error(err))     // ловит ошибку из ЛЮБОГО шага выше
+            .finally(() => hideSpinner());          // выполнится в любом случае
+          ```
+
+          Ключевое правило: **всегда возвращайте** значение или промис из `then`, иначе цепочка «разорвётся».
+
+          ## Комбинаторы
+
+          ```javascript
+          const [user, orders] = await Promise.all([loadUser(1), loadOrders(1)]);
+          // все параллельно; отклоняется при первой же ошибке
+
+          const results = await Promise.allSettled([p1, p2, p3]);
+          // [{ status: "fulfilled", value }, { status: "rejected", reason }] — всегда ждёт все
+
+          const fastest = await Promise.race([fetchData(), timeout(3000)]);
+          // первый завершившийся (успехом или ошибкой)
+
+          const firstOk = await Promise.any([mirror1(), mirror2()]);
+          // первый успешный; AggregateError, если упали все
+          ```
+
+          ## Быстрые конструкторы
+
+          `Promise.resolve(42)` — сразу выполненный, `Promise.reject(err)` — сразу отклонённый.
+
+          ## Обработка ошибок
+
+          - Исключение, брошенное внутри `then`, превращается в rejection.
+          - `catch` возвращает новый промис: после него цепочка продолжается как успешная.
+          - Необработанный rejection → событие `unhandledrejection` (браузер), в Node.js — завершение процесса. Всегда завершайте цепочку `catch`.
+
+          Колбэки `then` всегда вызываются **асинхронно** (микрозадачи), даже если промис уже выполнен.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              Promise.resolve(2)
+                .then((x) => x * 3)
+                .then((x) => { throw new Error("стоп " + x); })
+                .then(() => console.log("не выполнится"))
+                .catch((e) => e.message)
+                .then((m) => console.log(m));
+            answer: стоп 6
+          - type: output
+            q: Что выведет код?
+            code: |
+              const p = (v, ms) => new Promise((r) => setTimeout(() => r(v), ms));
+              Promise.all([p("a", 30), p("b", 10), p("c", 20)]).then((r) => console.log(r.join("")));
+              Promise.race([p("a", 30), p("b", 10), p("c", 20)]).then((r) => console.log(r));
+            answer: |
+              b
+              abc
+          - type: output
+            q: Что выведет код?
+            code: |
+              Promise.allSettled([Promise.resolve(1), Promise.reject(new Error("x")), Promise.resolve(3)])
+                .then((rs) => console.log(rs.map((r) => r.status[0]).join("")));
+            answer: frf
+          - type: bug
+            q: Почему во втором then приходит undefined?
+            code: |
+              loadUser(1)
+                .then((user) => {
+                  loadOrders(user.id);
+                })
+                .then((orders) => console.log(orders.length));
+            bugLine: 3
+            fix: return loadOrders(user.id);
+            explain: Без return then возвращает undefined, и цепочка не ждёт загрузку заказов.
+          - type: choice
+            q: Какой комбинатор подождёт все промисы и не отклонится при ошибке одного из них?
+            options: ["Promise.all", "Promise.race", "Promise.allSettled", "Promise.any"]
+            answer: 2
+        homework:
+          task: |
+            Реализуйте утилиты на промисах: `delay(ms)`, `timeout(promise, ms)` — отклоняется с «Timeout», если не успел; `retry(fn, attempts, delayMs)` — повторяет асинхронную функцию при ошибке; `pLimit(tasks, limit)` — выполняет массив функций, возвращающих промисы, не более чем по `limit` одновременно, и возвращает результаты в исходном порядке. Проверьте на имитации нестабильного API.
+          checklist:
+            - timeout построен на Promise.race
+            - retry делает паузу между попытками
+            - pLimit сохраняет порядок результатов
+          solution: |
+            const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+            const timeout = (promise, ms) =>
+              Promise.race([promise, delay(ms).then(() => { throw new Error("Timeout"); })]);
+
+            async function retry(fn, attempts = 3, delayMs = 100) {
+              for (let i = 1; ; i++) {
+                try { return await fn(); }
+                catch (e) {
+                  if (i >= attempts) throw e;
+                  await delay(delayMs * i);
+                }
+              }
+            }
+
+            function pLimit(tasks, limit) {
+              return new Promise((resolve, reject) => {
+                const results = new Array(tasks.length);
+                let next = 0, done = 0;
+                if (!tasks.length) return resolve([]);
+                const run = () => {
+                  if (next >= tasks.length) return;
+                  const i = next++;
+                  tasks[i]().then((v) => {
+                    results[i] = v;
+                    if (++done === tasks.length) resolve(results);
+                    else run();
+                  }, reject);
+                };
+                for (let k = 0; k < Math.min(limit, tasks.length); k++) run();
+              });
+            }
+
+            let calls = 0;
+            const flaky = () => (++calls < 3 ? Promise.reject(new Error("сбой")) : Promise.resolve("ок"));
+            retry(flaky, 5, 50).then((r) => console.log("retry:", r, "попыток", calls));
+            timeout(delay(500), 100).catch((e) => console.log(e.message));          // Timeout
+            const tasks = [300, 100, 200, 50].map((ms, i) => () => delay(ms).then(() => i));
+            pLimit(tasks, 2).then((r) => console.log("pLimit:", r));               // [0, 1, 2, 3]
+      - id: js-05-03
+        title: async / await
+        minutes: 35
+        xp: 45
+        theory: |
+          `async/await` — синтаксис поверх промисов, позволяющий писать асинхронный код как синхронный.
+
+          ```javascript
+          async function showProfile(id) {
+            try {
+              const user = await loadUser(id);           // ждём результат промиса
+              const orders = await loadOrders(user.id);
+              return `${user.name}: ${orders.length} заказов`;   // async-функция всегда возвращает Promise
+            } catch (err) {
+              console.error("Ошибка:", err.message);     // rejection превращается в исключение
+              return "нет данных";
+            } finally {
+              hideSpinner();
+            }
+          }
+          showProfile(1).then(console.log);
+          ```
+
+          - `async` перед функцией → она возвращает Promise (значение `return` — результат, `throw` — rejection).
+          - `await` можно писать внутри `async`-функций и на верхнем уровне **ES-модулей**.
+          - `await` на не-промисе просто возвращает значение (но через микрозадачу).
+
+          ## Параллельно, а не последовательно
+
+          ```javascript
+          // ❌ медленно: 3 запроса по очереди (≈ 3 × 300 мс)
+          const a = await getA();
+          const b = await getB();
+          const c = await getC();
+
+          // ✅ быстро: одновременно (≈ 300 мс)
+          const [a2, b2, c2] = await Promise.all([getA(), getB(), getC()]);
+          ```
+
+          Последовательно — только когда следующий шаг зависит от предыдущего.
+
+          ## Циклы
+
+          ```javascript
+          for (const id of ids) {
+            await save(id);              // по одному, по порядку
+          }
+          await Promise.all(ids.map((id) => save(id)));   // все сразу
+
+          ids.forEach(async (id) => { await save(id); }); // ❌ forEach не ждёт!
+          ```
+
+          ## Асинхронные итераторы
+
+          ```javascript
+          async function* pages() {
+            let page = 1, data;
+            do {
+              data = await loadPage(page++);
+              yield data.items;
+            } while (data.hasNext);
+          }
+          for await (const items of pages()) render(items);
+          ```
+
+          ## Частые ошибки
+
+          - Забытый `await` → в переменной Promise вместо данных (`user.name` → undefined).
+          - Ошибка в «плавающем» промисе без `await`/`catch` → unhandled rejection.
+          - `try/catch` вокруг вызова без `await` не поймает ошибку.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              async function f() { return 5; }
+              const r = f();
+              console.log(r instanceof Promise);
+              r.then((v) => console.log(v));
+            answer: |
+              true
+              5
+          - type: output
+            q: Что выведет код?
+            code: |
+              async function g() { throw new Error("упс"); }
+              async function main() {
+                try { await g(); } catch (e) { console.log("поймали:", e.message); }
+              }
+              main();
+            answer: "поймали: упс"
+          - type: bug
+            q: Почему выводится «Готово» до сохранения всех элементов?
+            code: |
+              async function saveAll(items) {
+                items.forEach(async (item) => {
+                  await save(item);
+                });
+                console.log("Готово");
+              }
+            bugLine: 2
+            fix: await Promise.all(items.map((item) => save(item)));
+            explain: forEach не ждёт асинхронные колбэки — нужен for...of с await или Promise.all.
+          - type: output
+            q: Что выведет код?
+            code: |
+              const wait = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+              async function main() {
+                const t = Date.now();
+                const [a, b] = await Promise.all([wait(100, 1), wait(100, 2)]);
+                console.log(a + b, Date.now() - t < 180);
+              }
+              main();
+            answer: 3 true
+          - type: fill
+            q: Дождитесь результата промиса
+            code: |
+              async function load() {
+                const user = ___ getUser(1);
+                return user.name;
+              }
+            answers: ["await"]
+        homework:
+          task: |
+            Перепишите задание с колбэками/промисами (пользователь → посты → комментарии) на async/await с try/catch. Добавьте: загрузку комментариев ко **всем** постам параллельно через `Promise.all`; ограничение времени всей операции 2 секундами; асинхронный генератор `paginate(fetchPage)`, который отдаёт страницы, пока `hasNext`; функцию `sequential(tasks)`, выполняющую асинхронные задачи строго по очереди. Замерьте время последовательной и параллельной версий.
+          checklist:
+            - Нет then-цепочек
+            - Параллельная загрузка через Promise.all
+            - Используется for await
+            - Ошибки обработаны
+          solution: |
+            const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+            const api = {
+              async user(id) { await wait(100); return { id, name: "Анна" }; },
+              async posts() { await wait(100); return [{ id: 1 }, { id: 2 }, { id: 3 }]; },
+              async comments(postId) { await wait(200); return [`к посту ${postId}`]; },
+              async page(n) { await wait(50); return { items: [n * 10, n * 10 + 1], hasNext: n < 3 }; },
+            };
+            const withTimeout = (p, ms) => Promise.race([p, wait(ms).then(() => { throw new Error("Timeout"); })]);
+
+            async function loadAll(id) {
+              const user = await api.user(id);
+              const posts = await api.posts(user.id);
+              const comments = await Promise.all(posts.map((p) => api.comments(p.id)));
+              return { user, posts, comments: comments.flat() };
+            }
+            async function* paginate(fetchPage) {
+              let n = 1, page;
+              do { page = await fetchPage(n++); yield page.items; } while (page.hasNext);
+            }
+            async function sequential(tasks) {
+              const res = [];
+              for (const t of tasks) res.push(await t());
+              return res;
+            }
+            async function main() {
+              try {
+                let t = Date.now();
+                const data = await withTimeout(loadAll(1), 2000);
+                console.log(data.comments, `${Date.now() - t} мс`);       // ~400 мс
+                t = Date.now();
+                await sequential([1, 2, 3].map((id) => () => api.comments(id)));
+                console.log(`последовательно: ${Date.now() - t} мс`);      // ~600 мс
+                for await (const items of paginate(api.page)) console.log("страница", items);
+              } catch (e) {
+                console.error("Ошибка:", e.message);
+              }
+            }
+            main();
+      - id: js-05-04
+        title: fetch и работа с API
+        minutes: 40
+        xp: 45
+        theory: |
+          `fetch` — встроенный в браузеры (и Node.js 18+) способ делать HTTP-запросы. Возвращает Promise с объектом `Response`.
+
+          ```javascript
+          async function getUsers() {
+            const res = await fetch("https://jsonplaceholder.typicode.com/users");
+            if (!res.ok) {                                 // fetch НЕ бросает ошибку на 404/500!
+              throw new Error(`HTTP ${res.status}`);
+            }
+            return res.json();                             // тоже промис
+          }
+          ```
+
+          `fetch` отклоняется только при **сетевой ошибке** (нет соединения, CORS, DNS). Ответы 4xx/5xx считаются успешными — проверяйте `res.ok` (статус 200–299) и `res.status`.
+
+          ## Тело ответа
+
+          `res.json()`, `res.text()`, `res.blob()` (файлы), `res.formData()`. Тело можно прочитать **один раз**. Заголовки: `res.headers.get("Content-Type")`.
+
+          ## Отправка данных
+
+          ```javascript
+          const res = await fetch("/api/todos", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ title: "Учить fetch", done: false }),
+          });
+          const created = await res.json();
+
+          // Файлы — через FormData (Content-Type проставится сам)
+          const fd = new FormData();
+          fd.append("avatar", fileInput.files[0]);
+          await fetch("/api/avatar", { method: "POST", body: fd });
+          ```
+
+          ## Query-параметры
+
+          ```javascript
+          const url = new URL("https://api.example.com/search");
+          url.searchParams.set("q", "кофе и чай");      // автоматически кодирует
+          url.searchParams.set("page", 2);
+          fetch(url);                                    // ...search?q=%D0%BA...&page=2
+          ```
+
+          ## Обёртка над fetch
+
+          В проектах делают маленький API-клиент, чтобы не повторять код:
+
+          ```javascript
+          async function api(path, { method = "GET", body, ...opts } = {}) {
+            const res = await fetch(`/api${path}`, {
+              method,
+              headers: { "Content-Type": "application/json", ...opts.headers },
+              body: body ? JSON.stringify(body) : undefined,
+              credentials: "include",          // отправлять cookie
+            });
+            const data = res.status === 204 ? null : await res.json().catch(() => null);
+            if (!res.ok) throw Object.assign(new Error(data?.message ?? res.statusText), { status: res.status, data });
+            return data;
+          }
+          const todos = await api("/todos");
+          await api("/todos", { method: "POST", body: { title: "..." } });
+          ```
+
+          ## CORS
+
+          Браузер блокирует запросы на **другой origin**, если сервер не разрешил их заголовком `Access-Control-Allow-Origin`. Это настраивается на сервере, а не в fetch. Популярные альтернативы fetch — библиотеки **axios** и **ky**.
+        practice:
+          - type: choice
+            q: Что произойдёт, если сервер вернул 404?
+            options: ["fetch отклонит промис", "fetch выполнится успешно, res.ok === false", "Будет бесконечное ожидание", "Вернётся null"]
+            answer: 1
+          - type: fill
+            q: Отправьте JSON методом POST
+            code: |
+              await fetch("/api/items", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.___(item),
+              });
+            answers: ["stringify"]
+          - type: bug
+            q: Какая строка неправильно обрабатывает ошибку сервера?
+            code: |
+              async function load() {
+                const res = await fetch("/api/data");
+                const data = await res.json();
+                return data;
+              }
+            bugLine: 3
+            fix: "if (!res.ok) throw new Error(`HTTP ${res.status}`); перед чтением тела"
+            explain: Без проверки res.ok ответы 4xx/5xx будут обработаны как успешные.
+          - type: output
+            q: Что выведет код?
+            code: |
+              const url = new URL("https://api.ru/search");
+              url.searchParams.set("q", "js");
+              url.searchParams.set("page", 2);
+              console.log(url.toString());
+            answer: https://api.ru/search?q=js&page=2
+          - type: choice
+            q: Где решается проблема CORS?
+            options: ["В опциях fetch (mode)", "На сервере — заголовками Access-Control-Allow-*", "В localStorage", "Через setTimeout"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте страницу «Пользователи и посты» на открытом API https://jsonplaceholder.typicode.com: список пользователей; по клику — его посты (загрузка с индикатором); форма создания поста (POST, показать ответ сервера); поиск по имени с debounce, который фильтрует список. Вынесите запросы в модуль `api.js` с функцией-обёрткой, обрабатывающей ошибки HTTP. Покажите понятное сообщение при отсутствии сети.
+          checklist:
+            - Проверяется res.ok
+            - Есть индикатор загрузки и сообщения об ошибках
+            - Запросы вынесены в отдельную обёртку
+          solution: |
+            // api.js
+            const BASE = "https://jsonplaceholder.typicode.com";
+            export async function api(path, { method = "GET", body } = {}) {
+              let res;
+              try {
+                res = await fetch(BASE + path, {
+                  method,
+                  headers: { "Content-Type": "application/json" },
+                  body: body ? JSON.stringify(body) : undefined,
+                });
+              } catch {
+                throw new Error("Нет соединения с сервером");
+              }
+              if (!res.ok) throw new Error(`Ошибка сервера: ${res.status}`);
+              return res.json();
+            }
+
+            // main.js
+            import { api } from "./api.js";
+            const $ = (s) => document.querySelector(s);
+            let users = [];
+            const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+            function renderUsers(list) {
+              $("#users").replaceChildren(...list.map((u) => {
+                const li = document.createElement("li");
+                li.textContent = u.name;
+                li.dataset.id = u.id;
+                return li;
+              }));
+            }
+            async function withStatus(fn) {
+              $("#status").textContent = "Загрузка...";
+              try { await fn(); $("#status").textContent = ""; }
+              catch (e) { $("#status").textContent = e.message; }
+            }
+            $("#users").addEventListener("click", (e) => {
+              const id = e.target.dataset.id;
+              if (!id) return;
+              withStatus(async () => {
+                const posts = await api(`/posts?userId=${id}`);
+                $("#posts").replaceChildren(...posts.map((p) => Object.assign(document.createElement("li"), { textContent: p.title })));
+              });
+            });
+            $("#search").addEventListener("input", debounce((e) => {
+              const q = e.target.value.toLowerCase();
+              renderUsers(users.filter((u) => u.name.toLowerCase().includes(q)));
+            }, 300));
+            $("#new-post").addEventListener("submit", (e) => {
+              e.preventDefault();
+              const body = Object.fromEntries(new FormData(e.target));
+              withStatus(async () => {
+                const created = await api("/posts", { method: "POST", body: { ...body, userId: 1 } });
+                $("#created").textContent = `Создан пост id=${created.id}`;
+              });
+            });
+            withStatus(async () => { users = await api("/users"); renderUsers(users); });
+      - id: js-05-05
+        title: Обработка ошибок и AbortController
+        minutes: 35
+        xp: 45
+        theory: |
+          ## Классы ошибок
+
+          ```javascript
+          class HttpError extends Error {
+            constructor(status, message) {
+              super(message);
+              this.name = "HttpError";
+              this.status = status;
+            }
+          }
+          class ValidationError extends Error {
+            constructor(field, message) {
+              super(message, { cause: { field } });   // cause — причина (ES2022)
+              this.name = "ValidationError";
+            }
+          }
+
+          try {
+            await saveUser(data);
+          } catch (e) {
+            if (e instanceof ValidationError) showFieldError(e.cause.field, e.message);
+            else if (e instanceof HttpError && e.status === 401) redirectToLogin();
+            else throw e;                       // неизвестное — пробросить дальше
+          }
+          ```
+
+          Правила: бросайте объекты `Error` (не строки) — у них есть стек; не глотайте ошибки молча; ловите там, где знаете, что с ними делать.
+
+          ## Глобальные обработчики
+
+          ```javascript
+          window.addEventListener("error", (e) => report(e.error));
+          window.addEventListener("unhandledrejection", (e) => report(e.reason));
+          // Node.js: process.on("unhandledRejection", ...)
+          ```
+
+          В продакшене ошибки отправляют в сервис мониторинга (Sentry).
+
+          ## AbortController — отмена операций
+
+          ```javascript
+          const controller = new AbortController();
+          fetch("/api/big-report", { signal: controller.signal })
+            .then((r) => r.json())
+            .catch((e) => {
+              if (e.name === "AbortError") console.log("Запрос отменён");
+              else throw e;
+            });
+          controller.abort();                 // отменить запрос
+          ```
+
+          Таймаут одной строкой:
+
+          ```javascript
+          const res = await fetch(url, { signal: AbortSignal.timeout(5000) });   // TimeoutError через 5 с
+          ```
+
+          ## Отмена устаревших запросов
+
+          Поиск «на лету»: пользователь печатает быстро, ответы приходят в случайном порядке, и старый ответ может перезаписать новый. Решение — отменять предыдущий запрос:
+
+          ```javascript
+          let current;
+          async function search(q) {
+            current?.abort();
+            current = new AbortController();
+            try {
+              const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: current.signal });
+              render(await res.json());
+            } catch (e) {
+              if (e.name !== "AbortError") showError(e);
+            }
+          }
+          ```
+
+          `signal` также понимают `addEventListener(type, fn, { signal })` (удалить все обработчики разом) и многие библиотеки. Свои функции поддерживают отмену через `signal.aborted` и `signal.addEventListener("abort", ...)`. `AbortSignal.any([s1, s2])` объединяет сигналы.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class AppError extends Error {
+                constructor(msg) { super(msg); this.name = "AppError"; }
+              }
+              try { throw new AppError("сбой"); }
+              catch (e) { console.log(e.name, e.message, e instanceof Error); }
+            answer: AppError сбой true
+          - type: output
+            q: Что выведет код?
+            code: |
+              const c = new AbortController();
+              c.signal.addEventListener("abort", () => console.log("отмена:", c.signal.reason));
+              c.abort("пользователь ушёл");
+              console.log(c.signal.aborted);
+            answer: |
+              отмена: пользователь ушёл
+              true
+          - type: fill
+            q: Ограничьте запрос 3 секундами
+            code: |
+              const res = await fetch(url, { signal: AbortSignal.___(3000) });
+            answers: ["timeout"]
+          - type: bug
+            q: Какая строка — плохая практика?
+            code: |
+              async function load() {
+                try {
+                  return await api("/data");
+                } catch (e) {}
+              }
+            bugLine: 4
+            fix: обработать ошибку (показать/залогировать) или пробросить дальше
+            explain: Пустой catch молча «глотает» ошибку — функция вернёт undefined, а причину никто не узнает.
+          - type: choice
+            q: Как отличить отмену fetch от других ошибок?
+            options: ["e.status === 0", "e.name === 'AbortError'", "e.message === ''", "Никак"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте поиск по GitHub API (`https://api.github.com/search/repositories?q=`): ввод с debounce 300 мс, отмена предыдущего запроса через AbortController, таймаут 5 с, классы ошибок `HttpError`, `RateLimitError` (статус 403 с заголовком `x-ratelimit-remaining: 0`), `NetworkError`. Для каждой — своё сообщение пользователю. Кнопка «Отменить» прерывает текущий поиск. Глобальный обработчик `unhandledrejection` пишет ошибки в консоль.
+          checklist:
+            - Старые ответы не перезаписывают новые
+            - Есть свои классы ошибок
+            - Таймаут и ручная отмена работают
+          solution: |
+            class HttpError extends Error { constructor(s, m) { super(m); this.name = "HttpError"; this.status = s; } }
+            class RateLimitError extends HttpError { constructor() { super(403, "Превышен лимит запросов, попробуйте позже"); this.name = "RateLimitError"; } }
+            class NetworkError extends Error { constructor(cause) { super("Проблема с сетью", { cause }); this.name = "NetworkError"; } }
+
+            let controller;
+            async function searchRepos(q) {
+              controller?.abort();
+              controller = new AbortController();
+              const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]);
+              let res;
+              try {
+                res = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}`, { signal });
+              } catch (e) {
+                if (e.name === "AbortError" || e.name === "TimeoutError") throw e;
+                throw new NetworkError(e);
+              }
+              if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") throw new RateLimitError();
+              if (!res.ok) throw new HttpError(res.status, `Ошибка ${res.status}`);
+              return (await res.json()).items;
+            }
+
+            const input = document.querySelector("#q"), out = document.querySelector("#out"), status = document.querySelector("#status");
+            const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+            input.addEventListener("input", debounce(async () => {
+              if (!input.value.trim()) return;
+              status.textContent = "Ищем...";
+              try {
+                const items = await searchRepos(input.value);
+                out.replaceChildren(...items.map((r) => Object.assign(document.createElement("li"), { textContent: `${r.full_name} ★${r.stargazers_count}` })));
+                status.textContent = `Найдено: ${items.length}`;
+              } catch (e) {
+                if (e.name === "AbortError") return;                       // устаревший запрос
+                status.textContent = e.name === "TimeoutError" ? "Сервер долго не отвечает" : e.message;
+              }
+            }, 300));
+            document.querySelector("#cancel").addEventListener("click", () => { controller?.abort(); status.textContent = "Отменено"; });
+            window.addEventListener("unhandledrejection", (e) => console.error("Необработанная ошибка:", e.reason));

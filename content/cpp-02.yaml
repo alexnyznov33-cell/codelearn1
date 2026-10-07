@@ -1,0 +1,840 @@
+id: cpp
+modules:
+  - id: cpp-m2
+    title: Указатели и память
+    level: Junior
+    lessons:
+      - id: cpp-02-01
+        title: Указатели и адреса
+        minutes: 30
+        xp: 35
+        theory: |
+          Каждая переменная лежит в памяти по какому-то **адресу**. **Указатель** — переменная, которая хранит адрес.
+
+          ```cpp
+          int x = 42;
+          int* p = &x;        // & — взять адрес; p указывает на x
+          std::cout << p;     // адрес, например 0x7ffd5e8c
+          std::cout << *p;    // * — разыменование: 42
+          *p = 100;           // меняем x через указатель
+          std::cout << x;     // 100
+          ```
+
+          ## nullptr
+
+          Указатель «в никуда» — `nullptr` (не используйте `NULL` и `0`). Разыменование nullptr — **неопределённое поведение** (обычно падение).
+
+          ```cpp
+          int* q = nullptr;
+          if (q != nullptr) std::cout << *q;   // или просто if (q)
+          ```
+
+          ## Указатели и массивы
+
+          Имя массива неявно превращается в указатель на первый элемент. **Арифметика указателей** сдвигает адрес на размер типа:
+
+          ```cpp
+          int a[] = {10, 20, 30};
+          int* p = a;           // &a[0]
+          std::cout << *(p + 1);  // 20  (то же, что a[1] и p[1])
+          p++;                  // теперь указывает на a[1]
+          std::cout << p[1];    // 30
+          ```
+
+          ## const и указатели
+
+          ```cpp
+          const int* p1 = &x;   // нельзя менять *p1, можно менять сам p1
+          int* const p2 = &x;   // нельзя менять p2, можно *p2
+          const int* const p3 = &x; // ничего нельзя
+          ```
+
+          Читайте справа налево: `int* const` — «константный указатель на int».
+
+          ## Указатель на указатель и функции
+
+          ```cpp
+          void inc(int* v) { (*v)++; }
+          int n = 5;
+          inc(&n);              // n == 6
+
+          int** pp = &p;        // указатель на указатель
+          ```
+
+          ## Размер
+
+          `sizeof(int*)` — 8 байт на 64-битной системе независимо от типа, на который указывает.
+
+          > ⚠️ В современном C++ «сырые» указатели используют для **невладеющих** ссылок на объекты. Для владения памятью — умные указатели (урок 5 модуля).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int x = 5;
+              int* p = &x;
+              *p = *p * 2;
+              std::cout << x;
+            answer: "10"
+          - type: output
+            q: Что выведет код?
+            code: |
+              int a[] = {1, 2, 3, 4};
+              int* p = a + 1;
+              std::cout << *p + p[2];
+            answer: "6"
+            explain: "*p = a[1] = 2, p[2] = a[3] = 4."
+          - type: fill
+            q: Получите адрес переменной и разыменуйте указатель
+            code: |
+              int v = 7;
+              int* ptr = ___v;
+              std::cout << ___ptr;
+            answers: ["&", "*"]
+          - type: choice
+            q: Что означает `int* const p`?
+            options: ["Нельзя менять значение *p", "Нельзя менять сам указатель p", "Нельзя менять ни то, ни другое", "Это ошибка"]
+            answer: 1
+          - type: bug
+            q: Какая строка приведёт к неопределённому поведению?
+            code: |
+              int* p = nullptr;
+              int x = 3;
+              if (x > 5) p = &x;
+              std::cout << *p;
+            bugLine: 4
+            explain: p остаётся nullptr, разыменование — UB. Нужна проверка if (p).
+        homework:
+          task: |
+            Напишите функции без использования индексов `[]`, только через указатели: `int sum(const int* arr, size_t n)`, `void reverse(int* arr, size_t n)` (два указателя навстречу), `const int* find_max(const int* arr, size_t n)` (вернуть указатель на максимум или nullptr для пустого), `void swap(int* a, int* b)`.
+          checklist:
+            - Нет операций индексации
+            - Пустой массив обработан
+            - Используется const там, где массив не меняется
+          solution: |
+            #include <iostream>
+            #include <cstddef>
+
+            int sum(const int* arr, std::size_t n) {
+                int s = 0;
+                for (const int* p = arr; p != arr + n; ++p) s += *p;
+                return s;
+            }
+            void swap(int* a, int* b) { int t = *a; *a = *b; *b = t; }
+            void reverse(int* arr, std::size_t n) {
+                if (n == 0) return;
+                int* l = arr; int* r = arr + n - 1;
+                while (l < r) swap(l++, r--);
+            }
+            const int* find_max(const int* arr, std::size_t n) {
+                if (n == 0) return nullptr;
+                const int* best = arr;
+                for (const int* p = arr + 1; p != arr + n; ++p) if (*p > *best) best = p;
+                return best;
+            }
+
+            int main() {
+                int a[] = {3, 9, 1, 7};
+                reverse(a, 4);
+                std::cout << sum(a, 4) << " " << *find_max(a, 4) << "\n";  // 20 9
+            }
+      - id: cpp-02-02
+        title: Ссылки vs указатели
+        minutes: 25
+        xp: 30
+        theory: |
+          **Ссылка** — другое имя (псевдоним) для существующего объекта.
+
+          ```cpp
+          int x = 10;
+          int& r = x;      // r — это x
+          r = 20;          // x == 20
+          ```
+
+          ## Отличия от указателя
+
+          | | Ссылка `T&` | Указатель `T*` |
+          |---|---|---|
+          | Может быть «пустой» | нет (всегда связана) | да, `nullptr` |
+          | Перепривязать | нельзя | можно |
+          | Синтаксис доступа | как к обычной переменной | `*p`, `p->field` |
+          | Арифметика | нет | есть |
+          | Инициализация | обязательна | не обязательна |
+
+          ## Передача в функции
+
+          ```cpp
+          void byValue(std::string s);          // копия — дорого для больших объектов
+          void byRef(std::string& s);           // можно изменить оригинал
+          void byConstRef(const std::string& s); // без копии и без изменений — стандарт для чтения
+          void byPtr(std::string* s);           // может быть nullptr — «необязательный» параметр
+
+          void addTax(double& price) { price *= 1.2; }
+          double p = 100;
+          addTax(p);   // p == 120
+          ```
+
+          **Правило:** маленькие типы (`int`, `double`, указатели) — по значению; большие для чтения — `const T&`; для изменения — `T&`; «может отсутствовать» — `T*` или `std::optional`.
+
+          ## Возврат ссылки
+
+          ```cpp
+          int& at(std::vector<int>& v, size_t i) { return v[i]; }
+          at(v, 0) = 5;    // меняем элемент вектора
+
+          int& bad() {
+              int local = 1;
+              return local;   // ❌ висячая ссылка: local уничтожен после выхода
+          }
+          ```
+
+          ## Ссылки в range-for
+
+          ```cpp
+          std::vector<std::string> names{"a", "b"};
+          for (auto& n : names) n += "!";          // изменяем элементы
+          for (const auto& n : names) std::cout << n; // читаем без копий
+          for (auto n : names) { }                 // копия каждой строки
+          ```
+
+          ## rvalue-ссылки
+
+          `T&&` — ссылка на временный объект; основа move-семантики (модуль 5).
+
+          ```cpp
+          void take(std::string&& s);
+          take(std::string("tmp"));   // ок
+          ```
+
+          `->` для указателей на объекты: `p->name` то же, что `(*p).name`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int a = 1;
+              int& r = a;
+              r += 5;
+              std::cout << a;
+            answer: "6"
+          - type: output
+            q: Что выведет код?
+            code: |
+              void f(int x) { x = 100; }
+              void g(int& x) { x = 200; }
+              int main() {
+                  int v = 1;
+                  f(v); std::cout << v << " ";
+                  g(v); std::cout << v;
+              }
+            answer: 1 200
+          - type: choice
+            q: Как лучше передать большой std::vector в функцию, которая только читает его?
+            options: ["std::vector<int> v", "const std::vector<int>& v", "std::vector<int>* v", "std::vector<int>&& v"]
+            answer: 1
+          - type: choice
+            q: Что из этого возможно только с указателем, но не со ссылкой?
+            options: ["Изменить объект", "Быть nullptr и перепривязываться", "Передать в функцию", "Вернуть из функции"]
+            answer: 1
+          - type: bug
+            q: Какая строка создаёт висячую ссылку?
+            code: |
+              const std::string& getName() {
+                  std::string name = "Аня";
+                  return name;
+              }
+            bugLine: 3
+            fix: std::string getName() { return "Аня"; }
+            explain: Локальная переменная уничтожается при выходе из функции — возвращайте по значению.
+        homework:
+          task: |
+            Напишите функции: `void normalize(std::vector<double>& v)` (делит все элементы на максимум), `std::pair<int,int> minmax(const std::vector<int>& v)`, `bool parseInt(const std::string& s, int& out)` (возвращает успех), `void toUpper(std::string* s)` (ничего не делает при nullptr). Используйте range-for со ссылками.
+          checklist:
+            - Нет лишних копий векторов и строк
+            - nullptr обработан
+            - Правильный выбор & / const& / *
+          solution: |
+            #include <algorithm>
+            #include <cctype>
+            #include <string>
+            #include <vector>
+
+            void normalize(std::vector<double>& v) {
+                if (v.empty()) return;
+                double m = *std::max_element(v.begin(), v.end());
+                if (m == 0) return;
+                for (auto& x : v) x /= m;
+            }
+            std::pair<int, int> minmax(const std::vector<int>& v) {
+                int lo = v.at(0), hi = v.at(0);
+                for (const auto& x : v) { lo = std::min(lo, x); hi = std::max(hi, x); }
+                return {lo, hi};
+            }
+            bool parseInt(const std::string& s, int& out) {
+                try { size_t pos; out = std::stoi(s, &pos); return pos == s.size(); }
+                catch (...) { return false; }
+            }
+            void toUpper(std::string* s) {
+                if (!s) return;
+                for (auto& c : *s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            }
+      - id: cpp-02-03
+        title: Стек и куча, new/delete
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Стек (stack)
+
+          Локальные переменные живут на стеке: память выделяется при входе в блок и **автоматически** освобождается при выходе. Очень быстро, но размер ограничен (обычно 1–8 МБ).
+
+          ```cpp
+          void f() {
+              int a = 1;              // стек
+              std::array<int, 100> b; // стек
+          }                           // a и b уничтожены
+          ```
+
+          ## Куча (heap, free store)
+
+          Память, которую вы запрашиваете **вручную** и которая живёт, пока вы её не освободите. Размер ограничен только RAM, но выделение медленнее.
+
+          ```cpp
+          int* p = new int(42);       // выделить один int
+          std::cout << *p;
+          delete p;                   // освободить
+          p = nullptr;                // хорошая привычка
+
+          int* arr = new int[n];      // массив, размер известен только во время выполнения
+          arr[0] = 5;
+          delete[] arr;               // для массивов — delete[]!
+          ```
+
+          | | Стек | Куча |
+          |---|---|---|
+          | Управление | автоматическое | вручную (или умные указатели) |
+          | Скорость | очень быстро | медленнее |
+          | Размер | маленький | большой |
+          | Время жизни | до конца блока | пока не освободите |
+
+          ## Объекты в куче
+
+          ```cpp
+          struct Point { int x, y; };
+          Point* pt = new Point{1, 2};
+          pt->x = 10;
+          delete pt;
+          ```
+
+          `new` вызывает конструктор, `delete` — деструктор. Если памяти нет, `new` бросает `std::bad_alloc`.
+
+          ## Правила
+
+          - Каждому `new` — ровно один `delete`; каждому `new[]` — `delete[]`. Перепутать — UB.
+          - `delete nullptr` безопасен.
+          - Двойной `delete` — UB.
+          - Большие массивы на стеке (`int a[10'000'000]`) → stack overflow. Используйте `std::vector` — он сам хранит данные в куче и сам освобождает.
+
+          > 💡 В современном C++ код с голыми `new`/`delete` считается плохим стилем. Используйте `std::vector`, `std::string`, `std::make_unique`. Но понимать, что происходит под капотом, обязательно.
+        practice:
+          - type: choice
+            q: Где хранится локальная переменная `int x = 5;` внутри функции?
+            options: ["В куче", "На стеке", "В сегменте кода", "В регистре всегда"]
+            answer: 1
+          - type: fill
+            q: Освободите массив
+            code: |
+              int* data = new int[100];
+              ___ data;
+            answers: ["delete[]"]
+          - type: bug
+            q: Какая строка вызовет неопределённое поведение?
+            code: |
+              int* p = new int(5);
+              std::cout << *p;
+              delete p;
+              delete p;
+            bugLine: 4
+            explain: Двойное освобождение памяти — UB. После delete присваивайте nullptr.
+          - type: choice
+            q: Что бросает new при нехватке памяти?
+            options: ["Возвращает nullptr", "std::bad_alloc", "std::out_of_range", "Ничего"]
+            answer: 1
+          - type: choice
+            q: Почему `int big[50000000];` внутри функции опасен?
+            options: ["Нельзя такие массивы", "Переполнение стека", "Медленно компилируется", "Утечка памяти"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте вручную динамический массив `IntArray` (без std::vector): поля `int* data`, `size_t size`, `size_t capacity`; функции `push_back` (удваивает ёмкость через new[] + копирование + delete[]), `at(i)` с проверкой, `free()`. Добавьте отладочный вывод при каждом выделении/освобождении и убедитесь, что количество совпадает.
+          checklist:
+            - new[] в паре с delete[]
+            - Нет утечек при росте массива
+            - at() бросает std::out_of_range
+          solution: |
+            #include <cstddef>
+            #include <iostream>
+            #include <stdexcept>
+
+            struct IntArray {
+                int* data = nullptr;
+                std::size_t size = 0, capacity = 0;
+
+                void push_back(int v) {
+                    if (size == capacity) {
+                        std::size_t nc = capacity ? capacity * 2 : 4;
+                        int* nd = new int[nc];
+                        std::cout << "alloc " << nc << "\n";
+                        for (std::size_t i = 0; i < size; ++i) nd[i] = data[i];
+                        if (data) std::cout << "free " << capacity << "\n";
+                        delete[] data;
+                        data = nd; capacity = nc;
+                    }
+                    data[size++] = v;
+                }
+                int& at(std::size_t i) {
+                    if (i >= size) throw std::out_of_range("index");
+                    return data[i];
+                }
+                void free() { if (data) std::cout << "free " << capacity << "\n"; delete[] data; data = nullptr; size = capacity = 0; }
+            };
+
+            int main() {
+                IntArray a;
+                for (int i = 0; i < 10; ++i) a.push_back(i);
+                std::cout << a.at(9) << "\n";
+                a.free();
+            }
+      - id: cpp-02-04
+        title: Утечки и висячие указатели
+        minutes: 30
+        xp: 35
+        theory: |
+          Ручное управление памятью порождает классы ошибок, которые — главная причина падений и уязвимостей в C/C++.
+
+          ## Утечка памяти (memory leak)
+
+          Память выделили, а освободить забыли (или потеряли указатель).
+
+          ```cpp
+          void process() {
+              int* buf = new int[1000];
+              if (error()) return;     // ❌ утечка: delete не вызван
+              delete[] buf;
+          }
+
+          int* p = new int(1);
+          p = new int(2);              // ❌ первый int потерян навсегда
+          ```
+
+          Исключение между `new` и `delete` — тоже утечка.
+
+          ## Висячий указатель (dangling pointer)
+
+          Указатель ссылается на уже освобождённую память.
+
+          ```cpp
+          int* p = new int(5);
+          delete p;
+          *p = 10;                     // ❌ use-after-free: UB, может «работать» годами
+
+          int* make() { int x = 1; return &x; }   // ❌ адрес локальной переменной
+
+          std::vector<int> v{1, 2, 3};
+          int* first = &v[0];
+          v.push_back(4);              // ❌ вектор мог перевыделить память — first висит
+          ```
+
+          Последний случай — **инвалидация итераторов/указателей** — очень частая ошибка с контейнерами STL.
+
+          ## Другие ошибки
+
+          - **Double free** — двойной `delete`.
+          - **Buffer overflow** — запись за границы массива: `arr[10]` при размере 10.
+          - **Неинициализированный указатель** — `int* p; *p = 1;`.
+          - Несоответствие `new[]`/`delete`.
+
+          ## Почему это опасно
+
+          Неопределённое поведение (UB) не гарантирует падения. Программа может работать на вашей машине и падать у клиента, или стать дырой для эксплойта.
+
+          ## Как бороться
+
+          1. **RAII и умные указатели** — память освобождается автоматически (следующие уроки).
+          2. Контейнеры STL вместо ручных массивов.
+          3. Инструменты: **AddressSanitizer** (`-fsanitize=address`), **Valgrind**, статические анализаторы (clang-tidy, PVS-Studio).
+
+          ```bash
+          g++ -g -fsanitize=address -fno-omit-frame-pointer main.cpp -o app && ./app
+          # ==12345==ERROR: AddressSanitizer: heap-use-after-free ...
+          ```
+
+          > 💡 Правило: сырой указатель никогда не должен **владеть** памятью.
+        practice:
+          - type: bug
+            q: Где утечка памяти?
+            code: |
+              void load(bool fail) {
+                  char* buf = new char[4096];
+                  if (fail) return;
+                  read(buf);
+                  delete[] buf;
+              }
+            bugLine: 3
+            explain: При раннем return delete[] не вызывается. Решение — std::vector<char> или unique_ptr.
+          - type: bug
+            q: Какая строка использует висячий указатель?
+            code: |
+              std::vector<int> v{1, 2, 3};
+              int* p = &v[0];
+              v.push_back(4);
+              std::cout << *p;
+            bugLine: 4
+            explain: push_back мог перевыделить память — p указывает на освобождённый буфер.
+          - type: choice
+            q: Какой инструмент находит use-after-free при запуске?
+            options: ["-O2", "AddressSanitizer", "-Wall", "strip"]
+            answer: 1
+          - type: choice
+            q: Что гарантирует неопределённое поведение (UB)?
+            options: ["Падение программы", "Ничего — может произойти что угодно", "Вывод ошибки компилятора", "Значение 0"]
+            answer: 1
+          - type: fill
+            q: Включите AddressSanitizer
+            code: |
+              g++ -g -fsanitize=___ main.cpp
+            answers: ["address"]
+        homework:
+          task: |
+            Возьмите приложенную ниже «плохую» программу, найдите все ошибки работы с памятью, проверьте их с `-fsanitize=address` и исправьте, заменив ручную память на `std::vector`/`std::string`.
+          hints:
+            - Ошибок как минимум четыре
+          checklist:
+            - ASan не выдаёт ошибок
+            - Нет ни одного new/delete
+          solution: |
+            // Было:
+            // char* name = new char[5]; strcpy(name, "Hello");      // overflow: нужно 6 байт
+            // int* nums = new int[3]; delete nums;                    // delete вместо delete[]
+            // int* p = new int(1); p = new int(2);                    // утечка
+            // delete p; std::cout << *p;                              // use-after-free
+
+            #include <iostream>
+            #include <string>
+            #include <vector>
+
+            int main() {
+                std::string name = "Hello";
+                std::vector<int> nums(3);
+                int value = 2;
+                std::cout << name << " " << nums.size() << " " << value << "\n";
+            }
+      - id: cpp-02-05
+        title: unique_ptr и shared_ptr
+        minutes: 35
+        xp: 40
+        theory: |
+          **Умные указатели** (`<memory>`) владеют объектом и автоматически удаляют его, когда больше не нужен.
+
+          ## std::unique_ptr — единоличное владение
+
+          ```cpp
+          #include <memory>
+
+          auto p = std::make_unique<Player>("Аня", 100);   // вместо new
+          p->heal(10);
+          // delete не нужен: объект удалится при выходе p из области видимости
+
+          // копировать нельзя, только перемещать
+          // auto q = p;              // ❌ ошибка компиляции
+          auto q = std::move(p);      // ✅ теперь владеет q, p == nullptr
+
+          auto arr = std::make_unique<int[]>(100);   // массив
+          ```
+
+          Размер и скорость — как у сырого указателя. **Выбор по умолчанию.**
+
+          Передача в функции:
+
+          ```cpp
+          void use(const Player& p);                 // просто пользоваться
+          void use(Player* p);                       // может быть nullptr, не владеет
+          void sink(std::unique_ptr<Player> p);      // забирает владение: sink(std::move(p))
+          std::unique_ptr<Player> create();          // фабрика возвращает владение
+          ```
+
+          ## std::shared_ptr — совместное владение
+
+          Объект удаляется, когда уничтожен **последний** shared_ptr. Внутри — счётчик ссылок (атомарный).
+
+          ```cpp
+          auto a = std::make_shared<Texture>("hero.png");
+          {
+              auto b = a;                          // копия: счётчик = 2
+              std::cout << a.use_count();          // 2
+          }                                        // b уничтожен: счётчик = 1
+          std::cout << a.use_count();              // 1
+          ```
+
+          Дороже unique_ptr: блок управления, атомарные операции. Используйте, только когда владельцев действительно несколько (кеш ресурсов, граф объектов).
+
+          ## std::weak_ptr — наблюдатель
+
+          Не увеличивает счётчик. Решает проблему **циклических ссылок** (A → B → A никогда не удалятся).
+
+          ```cpp
+          struct Node {
+              std::shared_ptr<Node> next;
+              std::weak_ptr<Node> prev;          // обратная ссылка — weak
+          };
+
+          std::weak_ptr<Texture> w = a;
+          if (auto locked = w.lock()) { /* объект ещё жив */ }
+          ```
+
+          ## Правила
+
+          - `make_unique`/`make_shared` вместо `new` (безопасно при исключениях, одна аллокация для shared).
+          - Не создавайте два shared_ptr из одного сырого указателя — двойное удаление.
+          - Сырой указатель / ссылка — для невладеющего доступа: `p.get()`, `*p`.
+        practice:
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              auto a = std::make_unique<int>(5);
+              auto b = a;
+              std::cout << *b;
+            bugLine: 2
+            fix: auto b = std::move(a);
+            explain: unique_ptr нельзя копировать, только перемещать.
+          - type: output
+            q: Что выведет код?
+            code: |
+              auto a = std::make_shared<int>(1);
+              auto b = a;
+              auto c = b;
+              c.reset();
+              std::cout << a.use_count();
+            answer: "2"
+          - type: fill
+            q: Создайте объект через умный указатель с единоличным владением
+            code: |
+              auto user = std::___<User>("Аня");
+            answers: ["make_unique"]
+          - type: choice
+            q: Как разорвать циклическую ссылку между двумя shared_ptr?
+            options: ["Использовать unique_ptr в обе стороны", "Одну из ссылок сделать weak_ptr", "Вызвать delete вручную", "Никак"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              auto p = std::make_unique<int>(7);
+              auto q = std::move(p);
+              std::cout << (p == nullptr) << " " << *q;
+            answer: 1 7
+        homework:
+          task: |
+            Смоделируйте сцену игры: `class Scene` владеет объектами `std::vector<std::unique_ptr<Entity>>`; `TextureCache` хранит `std::unordered_map<std::string, std::weak_ptr<Texture>>` и выдаёт `shared_ptr` (загружает заново, если текстура уже удалена); у сущностей — `shared_ptr<Texture>`. Деструкторы выводят сообщения — проверьте, что все объекты удаляются и текстура грузится один раз при общем использовании.
+          checklist:
+            - Нет new/delete
+            - Кеш не продлевает жизнь текстур (weak_ptr)
+            - Деструкторы вызываются для всех объектов
+          solution: |
+            #include <iostream>
+            #include <memory>
+            #include <string>
+            #include <unordered_map>
+            #include <vector>
+
+            struct Texture {
+                std::string name;
+                explicit Texture(std::string n) : name(std::move(n)) { std::cout << "load " << name << "\n"; }
+                ~Texture() { std::cout << "unload " << name << "\n"; }
+            };
+
+            class TextureCache {
+                std::unordered_map<std::string, std::weak_ptr<Texture>> cache;
+            public:
+                std::shared_ptr<Texture> get(const std::string& name) {
+                    if (auto t = cache[name].lock()) return t;
+                    auto t = std::make_shared<Texture>(name);
+                    cache[name] = t;
+                    return t;
+                }
+            };
+
+            struct Entity {
+                std::string name; std::shared_ptr<Texture> tex;
+                ~Entity() { std::cout << "~" << name << "\n"; }
+            };
+
+            struct Scene { std::vector<std::unique_ptr<Entity>> items; };
+
+            int main() {
+                TextureCache cache;
+                {
+                    Scene s;
+                    s.items.push_back(std::make_unique<Entity>(Entity{"orc1", cache.get("orc.png")}));
+                    s.items.push_back(std::make_unique<Entity>(Entity{"orc2", cache.get("orc.png")}));
+                }   // все удалены, текстура выгружена
+                cache.get("orc.png");  // загрузится снова
+            }
+      - id: cpp-02-06
+        title: RAII
+        minutes: 30
+        xp: 40
+        theory: |
+          **RAII** (Resource Acquisition Is Initialization) — главная идиома C++: ресурс захватывается в **конструкторе** объекта и освобождается в **деструкторе**. Деструктор вызывается автоматически при выходе из области видимости — даже при исключении.
+
+          ```cpp
+          class File {
+              std::FILE* f;
+          public:
+              explicit File(const char* path) : f(std::fopen(path, "r")) {
+                  if (!f) throw std::runtime_error("Не открыть файл");
+              }
+              ~File() { std::fclose(f); }
+
+              File(const File&) = delete;              // запрет копирования (иначе двойной fclose)
+              File& operator=(const File&) = delete;
+
+              std::FILE* get() const { return f; }
+          };
+
+          void read() {
+              File file("data.txt");
+              parse(file.get());     // если parse бросит исключение — файл всё равно закроется
+          }
+          ```
+
+          ## RAII в стандартной библиотеке
+
+          | Ресурс | RAII-класс |
+          |---|---|
+          | Память | `std::vector`, `std::string`, `unique_ptr`, `shared_ptr` |
+          | Файлы | `std::ifstream`, `std::ofstream` |
+          | Мьютексы | `std::lock_guard`, `std::unique_lock`, `std::scoped_lock` |
+          | Потоки | `std::jthread` (сам делает join) |
+
+          ```cpp
+          {
+              std::lock_guard lock(mtx);    // захват мьютекса
+              shared_data++;
+          }                                 // автоматическое освобождение
+          ```
+
+          ## Порядок уничтожения
+
+          Локальные объекты уничтожаются в порядке, **обратном** созданию. Члены класса — в порядке, обратном объявлению.
+
+          ## Свой scope guard
+
+          ```cpp
+          template <class F>
+          struct ScopeExit {
+              F f;
+              ~ScopeExit() { f(); }
+          };
+
+          {
+              auto start = now();
+              ScopeExit guard{[&] { log(now() - start); }};
+              work();
+          }   // лог выполнится при любом выходе
+          ```
+
+          ## unique_ptr с собственным удалителем
+
+          ```cpp
+          auto file = std::unique_ptr<std::FILE, decltype(&std::fclose)>(std::fopen("a.txt", "w"), &std::fclose);
+          ```
+
+          ## Почему это важно
+
+          В C++ нет `finally` и сборщика мусора — RAII решает обе задачи детерминированно: вы точно знаете, **когда** ресурс освободится. Это делает код безопасным при исключениях (exception safety).
+
+          > ⚠️ Деструкторы не должны бросать исключения (они по умолчанию `noexcept`). Исключение из деструктора во время раскрутки стека → `std::terminate`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct T {
+                  char c;
+                  T(char x) : c(x) { std::cout << "+" << c; }
+                  ~T() { std::cout << "-" << c; }
+              };
+              int main() {
+                  T a('a');
+                  T b('b');
+              }
+            answer: +a+b-b-a
+          - type: choice
+            q: Когда вызывается деструктор локального объекта?
+            options: ["При вызове delete", "При выходе из области видимости, в том числе при исключении", "Когда сработает сборщик мусора", "Никогда автоматически"]
+            answer: 1
+          - type: fill
+            q: Запретите копирование RAII-класса
+            code: |
+              Socket(const Socket&) = ___;
+            answers: ["delete"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct G { ~G() { std::cout << "G"; } };
+              int main() {
+                  try {
+                      G g;
+                      throw 1;
+                  } catch (int) { std::cout << "C"; }
+              }
+            answer: GC
+            explain: Деструктор вызывается при раскрутке стека, до входа в catch.
+          - type: choice
+            q: Какой RAII-класс освобождает мьютекс?
+            options: ["std::thread", "std::lock_guard", "std::atomic", "std::mutex"]
+            answer: 1
+        homework:
+          task: |
+            Напишите RAII-обёртки: (1) `Timer` — в деструкторе печатает время жизни блока; (2) `TempFile` — создаёт файл со случайным именем в конструкторе и удаляет в деструкторе (`std::filesystem::remove`), поддерживает перемещение, но не копирование; (3) `ScopeExit` с лямбдой. Покажите, что при исключении все ресурсы освобождаются.
+          checklist:
+            - Копирование TempFile запрещено, перемещение работает
+            - Деструкторы noexcept
+            - Демонстрация с исключением
+          solution: |
+            #include <chrono>
+            #include <filesystem>
+            #include <fstream>
+            #include <iostream>
+            #include <random>
+            #include <string>
+
+            namespace fs = std::filesystem;
+
+            class Timer {
+                std::string name; std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+            public:
+                explicit Timer(std::string n) : name(std::move(n)) {}
+                ~Timer() {
+                    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+                    std::cout << name << ": " << ms << " ms\n";
+                }
+            };
+
+            class TempFile {
+                fs::path p;
+            public:
+                TempFile() : p(fs::temp_directory_path() / ("tmp" + std::to_string(std::random_device{}()))) { std::ofstream(p) << ""; }
+                ~TempFile() { if (!p.empty()) { std::error_code ec; fs::remove(p, ec); } }
+                TempFile(const TempFile&) = delete;
+                TempFile& operator=(const TempFile&) = delete;
+                TempFile(TempFile&& o) noexcept : p(std::move(o.p)) { o.p.clear(); }
+                const fs::path& path() const { return p; }
+            };
+
+            template <class F> struct ScopeExit { F f; ~ScopeExit() { f(); } };
+
+            int main() {
+                try {
+                    Timer t("block");
+                    TempFile tmp;
+                    ScopeExit g{[] { std::cout << "cleanup\n"; }};
+                    throw std::runtime_error("boom");
+                } catch (const std::exception& e) { std::cout << e.what() << "\n"; }
+            }

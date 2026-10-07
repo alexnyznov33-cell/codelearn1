@@ -1,0 +1,447 @@
+id: java
+modules:
+  - id: java-m7
+    title: JVM изнутри
+    level: Middle
+    lessons:
+      - id: java-07-01
+        title: Память JVM — стек, куча, metaspace
+        minutes: 35
+        xp: 45
+        theory: |
+          JVM делит память на несколько областей:
+
+          | Область | Что хранит | Общая для потоков? |
+          |---|---|---|
+          | **Стек потока** | кадры методов: локальные переменные, примитивы, ссылки | нет, у каждого свой |
+          | **Куча (heap)** | все объекты и массивы | да |
+          | **Metaspace** | метаданные классов, байткод методов | да (нативная память) |
+          | **Code cache** | машинный код от JIT | да |
+
+          ```java
+          void demo() {
+              int n = 5;                    // в стеке
+              String s = new String("hi");  // ссылка s — в стеке, объект — в куче
+              int[] arr = new int[1000];    // массив — в куче
+          }   // кадр снят, объекты станут мусором, если на них нет ссылок
+          ```
+
+          ## Куча и поколения
+
+          Большинство объектов «умирают молодыми», поэтому куча делится на **Young** (Eden + два Survivor) и **Old**. Новые объекты создаются в Eden; выжившие после нескольких сборок переезжают в Old.
+
+          ## Ошибки памяти
+
+          - `StackOverflowError` — слишком глубокая рекурсия (стек переполнен).
+          - `OutOfMemoryError: Java heap space` — куча заполнена живыми объектами (часто — утечка).
+          - `OutOfMemoryError: Metaspace` — слишком много загруженных классов (утечка загрузчиков).
+
+          ## Ключевые флаги
+
+          ```bash
+          java -Xms512m -Xmx2g -Xss1m -XX:MaxMetaspaceSize=256m \
+               -XX:+HeapDumpOnOutOfMemoryError -jar app.jar
+          ```
+
+          `-Xms`/`-Xmx` — начальный/максимальный размер кучи, `-Xss` — размер стека потока. В контейнерах JVM учитывает лимиты cgroup; удобно задавать `-XX:MaxRAMPercentage=75`.
+
+          ## Утечки памяти в Java
+
+          GC убирает только **недостижимые** объекты. Утечка — это когда ненужные объекты всё ещё достижимы: статическая коллекция-кеш без очистки, незакрытые слушатели, `ThreadLocal` в пуле потоков. Решения: ограниченные кеши (Caffeine), `WeakHashMap`, `remove()` для ThreadLocal, try-with-resources.
+
+          ## Escape analysis
+
+          JIT может выяснить, что объект не «убегает» из метода, и разместить его поля прямо в регистрах/стеке (scalar replacement) — без нагрузки на GC.
+        practice:
+          - type: choice
+            q: Где хранится объект, созданный через new?
+            options: ["В стеке", "В куче", "В metaspace", "В code cache"]
+            answer: 1
+          - type: choice
+            q: Какая ошибка возникнет при бесконечной рекурсии?
+            options: ["OutOfMemoryError", "StackOverflowError", "NullPointerException", "ClassCastException"]
+            answer: 1
+          - type: fill
+            q: Задайте максимальный размер кучи 2 ГБ
+            code: |
+              java ___2g -jar app.jar
+            answers: ["-Xmx"]
+          - type: bug
+            q: Какая строка вызывает утечку памяти?
+            code: |
+              class Cache {
+                  static final Map<String, byte[]> DATA = new HashMap<>();
+                  byte[] load(String key) {
+                      return DATA.computeIfAbsent(key, k -> new byte[1_000_000]);
+                  }
+              }
+            bugLine: 2
+            fix: использовать ограниченный кеш (например, Caffeine с maximumSize)
+            explain: Статическая карта без вытеснения растёт бесконечно — объекты всегда достижимы.
+          - type: choice
+            q: Где хранятся метаданные классов в Java 8+?
+            options: ["PermGen", "Metaspace", "Eden", "Стек"]
+            answer: 1
+        homework:
+          task: |
+            Напишите программу, которая намеренно вызывает (а) `StackOverflowError` рекурсией и печатает достигнутую глубину; (б) `OutOfMemoryError`, складывая массивы по 1 МБ в список. Запустите с `-Xss256k` и `-Xmx64m`, затем с `-Xss2m` и `-Xmx256m`. Запишите, как меняются глубина рекурсии и число мегабайт. Добавьте `-XX:+HeapDumpOnOutOfMemoryError` и найдите созданный .hprof файл.
+          checklist:
+            - Глубина рекурсии зависит от -Xss
+            - Объём до OOM зависит от -Xmx
+            - Получен heap dump
+          solution: |
+            import java.util.*;
+
+            public class MemoryDemo {
+                static int depth = 0;
+                static void recurse() { depth++; recurse(); }
+
+                public static void main(String[] args) {
+                    try { recurse(); }
+                    catch (StackOverflowError e) { System.out.println("Глубина: " + depth); }
+
+                    List<byte[]> hog = new ArrayList<>();
+                    try {
+                        while (true) hog.add(new byte[1024 * 1024]);
+                    } catch (OutOfMemoryError e) {
+                        int mb = hog.size();
+                        hog.clear();   // освобождаем, чтобы спокойно напечатать
+                        System.out.println("Выделено до OOM: " + mb + " МБ");
+                    }
+                }
+            }
+            // java -Xss256k -Xmx64m -XX:+HeapDumpOnOutOfMemoryError MemoryDemo.java
+      - id: java-07-02
+        title: Сборщики мусора
+        minutes: 35
+        xp: 45
+        theory: |
+          **Сборщик мусора (GC)** находит объекты, недостижимые от **корней** (локальные переменные стеков, статические поля, JNI), и освобождает память. Циклические ссылки не проблема — важна достижимость.
+
+          ## Этапы
+
+          1. **Mark** — пометить живые объекты, обходя граф от корней.
+          2. **Sweep/Compact** — освободить остальное и (при необходимости) уплотнить.
+          3. Остановка приложения на время работы GC — **stop-the-world (STW)** пауза.
+
+          **Minor GC** чистит Young-поколение (быстро, часто), **Major/Full GC** — Old (дольше).
+
+          ## Сборщики HotSpot
+
+          | GC | Флаг | Сильные стороны |
+          |---|---|---|
+          | Serial | `-XX:+UseSerialGC` | один поток, маленькие приложения |
+          | Parallel | `-XX:+UseParallelGC` | максимальная пропускная способность (batch) |
+          | **G1** | `-XX:+UseG1GC` | по умолчанию с Java 9; баланс, цель паузы `-XX:MaxGCPauseMillis=200` |
+          | **ZGC** | `-XX:+UseZGC` | паузы < 1 мс на кучах в терабайты (Java 21: generational) |
+          | Shenandoah | `-XX:+UseShenandoahGC` | низкие паузы, конкурентное уплотнение |
+
+          G1 делит кучу на **регионы** и сначала собирает те, где больше мусора (отсюда Garbage-First).
+
+          ## Логи GC
+
+          ```bash
+          java -Xlog:gc*:file=gc.log:time,uptime -jar app.jar
+          ```
+
+          Анализ: GCEasy, GCViewer. Смотрим частоту, длительность пауз и сколько памяти остаётся после Full GC (если растёт — утечка).
+
+          ## Ссылки разной силы
+
+          ```java
+          WeakReference<Image> weak = new WeakReference<>(img);   // соберётся при ближайшем GC
+          SoftReference<byte[]> soft = new SoftReference<>(buf);  // соберётся при нехватке памяти
+          Image i = weak.get();   // может вернуть null
+          ```
+
+          ## Как помочь GC
+
+          - Меньше временных объектов в горячих циклах (StringBuilder вместо `+` в цикле).
+          - Не вызывайте `System.gc()` — это лишь подсказка, которая часто вредит.
+          - `finalize()` устарел и удаляется — используйте `try-with-resources` и `Cleaner`.
+        practice:
+          - type: choice
+            q: Какой GC используется по умолчанию в современных JDK (серверный режим)?
+            options: ["Serial", "Parallel", "G1", "CMS"]
+            answer: 2
+          - type: choice
+            q: Будут ли собраны два объекта, ссылающиеся друг на друга, если на них нет ссылок от корней?
+            options: ["Нет, циклы мешают", "Да, они недостижимы", "Только при Full GC с флагом", "Только в ZGC"]
+            answer: 1
+          - type: fill
+            q: Включите ZGC
+            code: |
+              java -XX:+___ -jar app.jar
+            answers: ["UseZGC"]
+          - type: choice
+            q: Какая ссылка очищается только при нехватке памяти?
+            options: ["WeakReference", "SoftReference", "PhantomReference", "Обычная ссылка"]
+            answer: 1
+          - type: order
+            q: Расставьте этапы классической сборки мусора
+            lines:
+              - Остановка потоков приложения (STW)
+              - Пометка достижимых объектов от корней
+              - Освобождение недостижимых объектов
+              - Уплотнение памяти
+              - Возобновление работы приложения
+        homework:
+          task: |
+            Напишите программу-«генератор мусора»: в цикле 30 секунд создаёт строки и списки, часть объектов (1%) складывает в долгоживущий список. Запустите её с `-XX:+UseSerialGC`, `-XX:+UseG1GC` и `-XX:+UseZGC`, каждый раз с `-Xmx256m -Xlog:gc:file=gc-<name>.log`. Сравните количество сборок и максимальные паузы (найдите строки Pause в логах). Сделайте вывод, какой GC лучше для веб-сервиса, а какой — для пакетной обработки.
+          checklist:
+            - Получены три лога
+            - Сравнены паузы и частота
+            - Сделан обоснованный вывод
+          solution: |
+            import java.util.*;
+
+            public class GarbageGen {
+                public static void main(String[] args) {
+                    List<String> longLived = new ArrayList<>();
+                    long end = System.currentTimeMillis() + 30_000;
+                    long created = 0;
+                    Random r = new Random();
+                    while (System.currentTimeMillis() < end) {
+                        List<String> tmp = new ArrayList<>();
+                        for (int i = 0; i < 100; i++) tmp.add("item-" + r.nextInt());
+                        if (r.nextInt(100) == 0) longLived.add(tmp.get(0));
+                        if (longLived.size() > 200_000) longLived.subList(0, 100_000).clear();
+                        created += tmp.size();
+                    }
+                    System.out.println("Создано объектов: " + created + ", живых: " + longLived.size());
+                }
+            }
+            // grep -c Pause gc-g1.log  — число пауз
+            // Вывод: ZGC/G1 — короткие паузы для веб-сервиса; Parallel — максимальная пропускная способность для batch.
+      - id: java-07-03
+        title: Загрузчики классов
+        minutes: 30
+        xp: 40
+        theory: |
+          Класс загружается **лениво** — при первом использовании. Этапы: **Loading** (чтение .class) → **Linking** (verification, preparation — статические поля по умолчанию, resolution) → **Initialization** (выполнение `static`-блоков и инициализаторов).
+
+          ```java
+          class Config {
+              static { System.out.println("Config загружен"); }
+              static final int SIZE = 10;            // константа — подставляется компилятором
+              static int counter = 0;
+          }
+          // Config.SIZE  — НЕ инициализирует класс (compile-time константа)
+          // Config.counter — инициализирует
+          ```
+
+          ## Иерархия загрузчиков
+
+          1. **Bootstrap** — классы JDK (`java.base`), написан на C++, в Java виден как `null`.
+          2. **Platform** — остальные модули платформы (`java.sql` и т.д.).
+          3. **Application (System)** — classpath/modulepath вашего приложения.
+
+          **Делегирование родителю**: загрузчик сначала просит родителя, и только если тот не нашёл — грузит сам. Поэтому нельзя подменить `java.lang.String` своим классом.
+
+          ```java
+          System.out.println(String.class.getClassLoader());        // null (bootstrap)
+          System.out.println(MyApp.class.getClassLoader().getName()); // app
+          ```
+
+          ## Идентичность класса
+
+          Класс определяется парой **(имя, загрузчик)**. Один и тот же .class, загруженный двумя загрузчиками, — это два разных класса: приведение между ними даст `ClassCastException`. Так работают изоляция плагинов и «горячая перезагрузка» в серверах приложений.
+
+          ## Динамическая загрузка и рефлексия
+
+          ```java
+          Class<?> c = Class.forName("com.example.Plugin");
+          Object p = c.getDeclaredConstructor().newInstance();
+          Method m = c.getMethod("run");
+          m.invoke(p);
+          ```
+
+          `ServiceLoader` находит реализации интерфейса по файлам `META-INF/services/...` — так подключаются драйверы JDBC и плагины.
+
+          ## Типичные ошибки
+
+          - `ClassNotFoundException` — класс не найден при динамической загрузке (`forName`).
+          - `NoClassDefFoundError` — класс был при компиляции, но отсутствует в рантайме (или упала его статическая инициализация).
+        practice:
+          - type: choice
+            q: Что вернёт String.class.getClassLoader()?
+            options: ["AppClassLoader", "PlatformClassLoader", "null", "Исключение"]
+            answer: 2
+          - type: choice
+            q: Почему нельзя подменить java.lang.String своим классом с тем же именем?
+            options: ["Запрещено лицензией", "Делегирование родителю: bootstrap загрузит настоящий String первым", "String — final", "Имя зарезервировано компилятором"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A {
+                  static { System.out.print("init "); }
+                  static int x = 5;
+              }
+              // в main:
+              System.out.print("start ");
+              System.out.print(A.x);
+            answer: start init 5
+          - type: fill
+            q: Загрузите класс по имени
+            code: |
+              Class<?> c = Class.___("com.example.Plugin");
+            answers: ["forName"]
+          - type: choice
+            q: Класс был при компиляции, но jar отсутствует при запуске. Какая ошибка?
+            options: ["ClassNotFoundException", "NoClassDefFoundError", "ClassCastException", "LinkageError: duplicate"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте систему плагинов: интерфейс `Plugin { String name(); String apply(String s); }`, две реализации (`UpperPlugin`, `ReversePlugin`) и `META-INF/services/Plugin` со списком реализаций. Главная программа через `ServiceLoader` находит все плагины и применяет их к введённой строке. Дополнительно: загрузите класс плагина по имени через `Class.forName` и выведите его загрузчик.
+          checklist:
+            - Плагины находятся через ServiceLoader
+            - Главный код не знает конкретных классов
+            - Выведен загрузчик класса
+          solution: |
+            // Plugin.java
+            public interface Plugin { String name(); String apply(String s); }
+
+            // UpperPlugin.java
+            public class UpperPlugin implements Plugin {
+                public String name() { return "upper"; }
+                public String apply(String s) { return s.toUpperCase(); }
+            }
+            // ReversePlugin.java
+            public class ReversePlugin implements Plugin {
+                public String name() { return "reverse"; }
+                public String apply(String s) { return new StringBuilder(s).reverse().toString(); }
+            }
+
+            // src/main/resources/META-INF/services/Plugin:
+            // UpperPlugin
+            // ReversePlugin
+
+            // Main.java
+            import java.util.ServiceLoader;
+            public class Main {
+                public static void main(String[] args) throws Exception {
+                    String input = args.length > 0 ? args[0] : "привет";
+                    for (Plugin p : ServiceLoader.load(Plugin.class))
+                        System.out.println(p.name() + ": " + p.apply(input));
+                    Class<?> c = Class.forName("UpperPlugin");
+                    System.out.println("Загрузчик: " + c.getClassLoader().getName());
+                }
+            }
+      - id: java-07-04
+        title: Профилирование и JFR
+        minutes: 35
+        xp: 45
+        theory: |
+          «Преждевременная оптимизация — корень зла». Сначала **измеряем**, потом оптимизируем то, что реально тормозит.
+
+          ## Инструменты JDK
+
+          | Команда | Назначение |
+          |---|---|
+          | `jps -l` | список Java-процессов |
+          | `jcmd <pid> help` | универсальный инструмент управления |
+          | `jcmd <pid> Thread.print` / `jstack` | дамп потоков (поиск deadlock, зависаний) |
+          | `jcmd <pid> GC.heap_dump file.hprof` | снимок кучи |
+          | `jstat -gcutil <pid> 1000` | статистика GC раз в секунду |
+          | `jcmd <pid> VM.flags` | флаги запущенной JVM |
+
+          ## Java Flight Recorder (JFR)
+
+          Встроенный профайлер с накладными расходами ~1%, можно включать в продакшене.
+
+          ```bash
+          java -XX:StartFlightRecording=duration=60s,filename=rec.jfr -jar app.jar
+          # или к работающему процессу:
+          jcmd <pid> JFR.start duration=60s filename=rec.jfr
+          jfr print --events jdk.ExecutionSample rec.jfr | head
+          ```
+
+          Запись открывают в **JDK Mission Control (JMC)**: горячие методы, аллокации, блокировки, GC-паузы, I/O.
+
+          ## Другие профайлеры
+
+          - **VisualVM** — бесплатный GUI: CPU/память/потоки.
+          - **async-profiler** — точный сэмплирующий профайлер, строит **flame graph** (ширина «пламени» = доля времени).
+          - IntelliJ IDEA Profiler — встроенный в IDE.
+
+          ## Анализ heap dump
+
+          Eclipse MAT или VisualVM: отчёт **Leak Suspects**, **Dominator tree** — какие объекты удерживают больше всего памяти, и **путь до GC root** — кто держит ссылку.
+
+          ## Микробенчмарки — только JMH
+
+          ```java
+          @Benchmark
+          public int sum(MyState s) { return s.list.stream().mapToInt(i -> i).sum(); }
+          ```
+
+          Ручной замер `System.nanoTime()` обманчив: прогрев JIT, удаление «мёртвого» кода, GC. JMH решает эти проблемы (`@Warmup`, `@Measurement`, `Blackhole`).
+        practice:
+          - type: choice
+            q: Какой инструмент встроен в JDK и подходит для профилирования в продакшене с минимальными накладными расходами?
+            options: ["System.out.println", "Java Flight Recorder", "Debugger IDE", "javap"]
+            answer: 1
+          - type: fill
+            q: Сделайте дамп потоков процесса 1234
+            code: |
+              jcmd 1234 ___
+            answers: ["Thread.print"]
+          - type: choice
+            q: Что показывает ширина блока на flame graph?
+            options: ["Глубину стека", "Долю времени, проведённого в функции", "Количество объектов", "Номер потока"]
+            answer: 1
+          - type: choice
+            q: Чем правильно измерять производительность маленького метода?
+            options: ["System.currentTimeMillis в цикле", "JMH", "Логами", "jps"]
+            answer: 1
+          - type: order
+            q: Расставьте шаги поиска утечки памяти
+            lines:
+              - Заметить рост памяти после Full GC (jstat, логи GC)
+              - Снять heap dump (jcmd GC.heap_dump)
+              - Открыть дамп в Eclipse MAT
+              - Найти доминирующие объекты и путь до GC root
+              - Исправить код и проверить повторно
+        homework:
+          task: |
+            Возьмите программу, которая медленно работает: подсчёт частоты слов в большом тексте (сгенерируйте 5 млн слов), где строки склеиваются через `+=`, а поиск идёт по `ArrayList.contains`. Запишите профиль через JFR, найдите горячие методы в JMC (или `jfr print`), оптимизируйте (HashMap, StringBuilder) и сравните время и аллокации до и после.
+          checklist:
+            - Снят JFR-профиль
+            - Найдены горячие места
+            - Оптимизация подтверждена измерением
+          solution: |
+            import java.util.*;
+
+            public class WordFreq {
+                // медленная версия
+                static Map<String, Integer> slow(List<String> words) {
+                    List<String> keys = new ArrayList<>();
+                    List<Integer> counts = new ArrayList<>();
+                    for (String w : words) {
+                        int i = keys.indexOf(w);          // O(n) поиск
+                        if (i < 0) { keys.add(w); counts.add(1); }
+                        else counts.set(i, counts.get(i) + 1);
+                    }
+                    Map<String, Integer> m = new HashMap<>();
+                    for (int i = 0; i < keys.size(); i++) m.put(keys.get(i), counts.get(i));
+                    return m;
+                }
+                // быстрая версия
+                static Map<String, Integer> fast(List<String> words) {
+                    Map<String, Integer> m = new HashMap<>();
+                    for (String w : words) m.merge(w, 1, Integer::sum);
+                    return m;
+                }
+                public static void main(String[] args) {
+                    Random r = new Random(1);
+                    List<String> words = new ArrayList<>();
+                    for (int i = 0; i < 5_000_000; i++) words.add("w" + r.nextInt(5000));
+                    long t = System.nanoTime(); slow(words);
+                    System.out.println("slow: " + (System.nanoTime() - t) / 1_000_000 + " мс");
+                    t = System.nanoTime(); fast(words);
+                    System.out.println("fast: " + (System.nanoTime() - t) / 1_000_000 + " мс");
+                }
+            }
+            // java -XX:StartFlightRecording=filename=rec.jfr WordFreq.java
+            // jfr print --events jdk.ExecutionSample rec.jfr | grep "at " | sort | uniq -c | sort -rn | head

@@ -1,0 +1,67 @@
+{
+  "name": "codelearn",
+  "productName": "CodeLearn",
+  "version": "1.1.0",
+  "description": "Кроссплатформенное приложение для изучения Python, C#, C++, Java, JavaScript, 1С, Arduino и ESP32",
+  "main": "electron/main.js",
+  "author": "CodeLearn",
+  "license": "MIT",
+  "scripts": {
+    "content": "node tools/build-content.cjs",
+    "web": "node tools/serve.cjs",
+    "start": "electron .",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "dist:mac": "electron-builder --mac",
+    "android:init": "cap add android && node tools/android-icons.cjs",
+    "android:sync": "cap sync android",
+    "android:open": "cap open android",
+    "android:apk": "cap sync android && cd android && gradlew assembleDebug",
+    "android:release": "cap sync android && cd android && gradlew bundleRelease assembleRelease",
+    "test:embedded": "node tools/test-embedded.cjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "js-yaml": "^4.1.0",
+    "markdown-it": "^14.1.0"
+  },
+  "build": {
+    "appId": "com.codelearn.app",
+    "productName": "CodeLearn",
+    "files": [
+      "electron/**",
+      "www/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "www/icons/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "www/icons/icon-512.png",
+      "category": "Education"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "www/icons/icon-512.png",
+      "category": "public.app-category.education"
+    }
+  }
+}

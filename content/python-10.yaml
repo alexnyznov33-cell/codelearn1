@@ -1,0 +1,516 @@
+id: python
+modules:
+  - id: py-m10
+    title: Базы данных
+    level: Middle
+    lessons:
+      - id: py-10-01
+        title: SQL-основы и sqlite3
+        minutes: 30
+        xp: 35
+        theory: |
+          **Реляционная БД** хранит данные в таблицах (строки и столбцы), связанных ключами. Язык запросов — **SQL**. SQLite встроена в Python — сервер не нужен.
+
+          ## Основные команды SQL
+
+          ```sql
+          CREATE TABLE users (
+              id INTEGER PRIMARY KEY,
+              name TEXT NOT NULL,
+              email TEXT UNIQUE,
+              age INTEGER
+          );
+          INSERT INTO users (name, email, age) VALUES ('Аня', 'a@x.ru', 25);
+          SELECT name, age FROM users WHERE age > 18 ORDER BY age DESC LIMIT 10;
+          UPDATE users SET age = 26 WHERE id = 1;
+          DELETE FROM users WHERE id = 1;
+          SELECT city, COUNT(*), AVG(age) FROM users GROUP BY city HAVING COUNT(*) > 5;
+          ```
+
+          ## JOIN — соединение таблиц
+
+          ```sql
+          SELECT u.name, o.total
+          FROM orders o
+          JOIN users u ON u.id = o.user_id        -- INNER: только совпадения
+          LEFT JOIN payments p ON p.order_id = o.id;  -- LEFT: все заказы, даже без оплаты
+          ```
+
+          ## sqlite3 в Python
+
+          ```python
+          import sqlite3
+
+          with sqlite3.connect("shop.db") as conn:      # коммит при выходе без ошибок
+              conn.row_factory = sqlite3.Row             # доступ к полям по имени
+              conn.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)")
+              conn.execute("INSERT INTO users (name) VALUES (?)", ("Аня",))
+              conn.executemany("INSERT INTO users (name) VALUES (?)", [("Боб",), ("Вика",)])
+              for row in conn.execute("SELECT id, name FROM users WHERE name LIKE ?", ("%а%",)):
+                  print(row["id"], row["name"])
+          ```
+
+          ## ⚠️ SQL-инъекции
+
+          ```python
+          # ❌ НИКОГДА: пользователь введёт  ' OR 1=1 --
+          conn.execute(f"SELECT * FROM users WHERE name = '{name}'")
+          # ✅ параметры — драйвер экранирует сам
+          conn.execute("SELECT * FROM users WHERE name = ?", (name,))
+          ```
+        practice:
+          - type: choice
+            q: Какой JOIN вернёт все заказы, даже без найденного пользователя?
+            options: ["INNER JOIN", "LEFT JOIN orders → users", "CROSS JOIN", "Никакой"]
+            answer: 1
+          - type: fill
+            q: Безопасный запрос с параметром
+            code: |
+              cur = conn.execute("SELECT * FROM users WHERE email = ___", (email,))
+            answers: ["?"]
+          - type: choice
+            q: Чем опасна f-строка в SQL-запросе с пользовательским вводом?
+            options: ["Медленно работает", "SQL-инъекция", "Не поддерживается SQLite", "Ничем"]
+            answer: 1
+          - type: choice
+            q: Чем WHERE отличается от HAVING?
+            options: ["Ничем", "WHERE фильтрует строки до группировки, HAVING — группы после", "HAVING быстрее", "WHERE только для чисел"]
+            answer: 1
+          - type: order
+            q: Расставьте части SQL-запроса в правильном порядке
+            lines:
+              - SELECT city, COUNT(*)
+              - FROM users
+              - WHERE age >= 18
+              - GROUP BY city
+              - HAVING COUNT(*) > 2
+              - ORDER BY city
+        homework:
+          task: |
+            Создайте базу «Библиотека»: таблицы `authors`, `books` (с `author_id`), `readers`, `loans` (выдачи). Наполните данными через `executemany`. Напишите запросы: книги автора; топ-3 самых читаемых книг; читатели, не вернувшие книги; количество книг по авторам (включая авторов без книг — LEFT JOIN).
+          checklist:
+            - Все запросы параметризованы
+            - Есть внешние ключи
+          solution: |
+            import sqlite3
+
+            conn = sqlite3.connect(":memory:")
+            conn.executescript("""
+            CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+            CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, author_id INTEGER REFERENCES authors(id));
+            CREATE TABLE readers (id INTEGER PRIMARY KEY, name TEXT);
+            CREATE TABLE loans (id INTEGER PRIMARY KEY, book_id INTEGER REFERENCES books(id),
+                                reader_id INTEGER REFERENCES readers(id), returned INTEGER DEFAULT 0);
+            """)
+            conn.executemany("INSERT INTO authors VALUES (?, ?)", [(1, "Пушкин"), (2, "Толстой"), (3, "Чехов")])
+            conn.executemany("INSERT INTO books VALUES (?, ?, ?)", [(1, "Онегин", 1), (2, "Война и мир", 2)])
+            conn.executemany("INSERT INTO readers VALUES (?, ?)", [(1, "Аня"), (2, "Боб")])
+            conn.executemany("INSERT INTO loans (book_id, reader_id, returned) VALUES (?, ?, ?)",
+                             [(1, 1, 1), (1, 2, 0), (2, 1, 0)])
+            print(conn.execute("""SELECT b.title, COUNT(*) c FROM loans l JOIN books b ON b.id = l.book_id
+                                  GROUP BY b.id ORDER BY c DESC LIMIT 3""").fetchall())
+            print(conn.execute("""SELECT DISTINCT r.name FROM loans l JOIN readers r ON r.id = l.reader_id
+                                  WHERE l.returned = ?""", (0,)).fetchall())
+            print(conn.execute("""SELECT a.name, COUNT(b.id) FROM authors a LEFT JOIN books b
+                                  ON b.author_id = a.id GROUP BY a.id""").fetchall())
+
+      - id: py-10-02
+        title: PostgreSQL и psycopg
+        minutes: 25
+        xp: 30
+        theory: |
+          **PostgreSQL** — самая популярная open-source СУБД для продакшена: надёжность, транзакции, JSONB, полнотекстовый поиск, расширения.
+
+          ## Запуск через Docker
+
+          ```
+          docker run -d --name pg -e POSTGRES_PASSWORD=secret -p 5432:5432 postgres:16
+          ```
+
+          ## psycopg 3
+
+          ```
+          pip install "psycopg[binary]"
+          ```
+
+          ```python
+          import psycopg
+
+          DSN = "postgresql://postgres:secret@localhost:5432/postgres"
+
+          with psycopg.connect(DSN) as conn:          # транзакция; commit при успешном выходе
+              with conn.cursor() as cur:
+                  cur.execute("""
+                      CREATE TABLE IF NOT EXISTS products (
+                          id SERIAL PRIMARY KEY,
+                          name TEXT NOT NULL,
+                          price NUMERIC(10, 2) CHECK (price >= 0),
+                          created_at TIMESTAMPTZ DEFAULT now()
+                      )""")
+                  cur.execute("INSERT INTO products (name, price) VALUES (%s, %s) RETURNING id",
+                              ("Мышь", 990))
+                  new_id = cur.fetchone()[0]
+                  cur.execute("SELECT name, price FROM products WHERE price < %s", (5000,))
+                  for name, price in cur.fetchall():
+                      print(name, price)            # price — Decimal
+          ```
+
+          Плейсхолдер в psycopg — `%s` (не `?`), и всегда передавайте параметры вторым аргументом.
+
+          ## Пул соединений
+
+          Открывать соединение на каждый запрос дорого. В веб-приложениях используют пул: `psycopg_pool.ConnectionPool` (или встроенный пул ORM).
+
+          ## Async
+
+          `psycopg.AsyncConnection` или драйвер `asyncpg` — для FastAPI/asyncio.
+
+          ## Особенности PostgreSQL
+
+          `SERIAL`/`IDENTITY` для автоинкремента, `RETURNING`, `ON CONFLICT DO UPDATE` (upsert), типы `JSONB`, `UUID`, `ARRAY`, `TIMESTAMPTZ`.
+        practice:
+          - type: choice
+            q: Какой плейсхолдер параметров в psycopg?
+            options: ["`?`", "`%s`", "`$name`", "`{}`"]
+            answer: 1
+          - type: choice
+            q: Что делает `RETURNING id` в INSERT?
+            options: ["Откатывает вставку", "Возвращает значение id вставленной строки", "Удаляет строку", "Создаёт индекс"]
+            answer: 1
+          - type: choice
+            q: Зачем пул соединений?
+            options: ["Для шифрования", "Чтобы переиспользовать соединения и не открывать новое на каждый запрос", "Для бэкапов", "Для миграций"]
+            answer: 1
+          - type: choice
+            q: Какой тип лучше для денег в PostgreSQL?
+            options: ["`REAL`", "`FLOAT`", "`NUMERIC(10, 2)`", "`TEXT`"]
+            answer: 2
+        homework:
+          task: |
+            Поднимите PostgreSQL в Docker. Перенесите базу «Библиотека» в PostgreSQL: таблицы с `IDENTITY`, `NOT NULL`, `CHECK`, `FOREIGN KEY ... ON DELETE CASCADE`. Реализуйте функцию `upsert_reader(email, name)` через `ON CONFLICT (email) DO UPDATE`.
+          checklist:
+            - Используется psycopg 3 и параметры %s
+            - Upsert работает повторно без ошибок
+          solution: |
+            import psycopg
+
+            DSN = "postgresql://postgres:secret@localhost:5432/postgres"
+
+            def upsert_reader(conn, email, name):
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO readers (email, name) VALUES (%s, %s)
+                        ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+                        RETURNING id""", (email, name))
+                    return cur.fetchone()[0]
+
+            with psycopg.connect(DSN) as conn:
+                conn.execute("""CREATE TABLE IF NOT EXISTS readers (
+                    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL CHECK (length(name) > 0))""")
+                print(upsert_reader(conn, "a@x.ru", "Аня"), upsert_reader(conn, "a@x.ru", "Анна"))
+
+      - id: py-10-03
+        title: ORM SQLAlchemy
+        minutes: 30
+        xp: 35
+        theory: |
+          **ORM** (Object-Relational Mapping) — таблицы описываются классами, строки — объектами. SQLAlchemy 2.0 — стандарт в Python.
+
+          ## Модели
+
+          ```python
+          from sqlalchemy import ForeignKey, String, create_engine, select
+          from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
+
+          class Base(DeclarativeBase):
+              pass
+
+          class User(Base):
+              __tablename__ = "users"
+              id: Mapped[int] = mapped_column(primary_key=True)
+              name: Mapped[str] = mapped_column(String(100))
+              email: Mapped[str] = mapped_column(unique=True)
+              orders: Mapped[list["Order"]] = relationship(back_populates="user")
+
+          class Order(Base):
+              __tablename__ = "orders"
+              id: Mapped[int] = mapped_column(primary_key=True)
+              total: Mapped[float]
+              user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+              user: Mapped[User] = relationship(back_populates="orders")
+
+          engine = create_engine("sqlite:///shop.db", echo=True)   # echo — печатать SQL
+          Base.metadata.create_all(engine)
+          ```
+
+          ## Работа с данными
+
+          ```python
+          with Session(engine) as session:
+              anna = User(name="Аня", email="a@x.ru")
+              anna.orders.append(Order(total=1500))
+              session.add(anna)
+              session.commit()
+
+              stmt = select(User).where(User.name == "Аня")
+              user = session.scalars(stmt).first()
+              print([o.total for o in user.orders])
+
+              big = session.scalars(select(Order).where(Order.total > 1000).order_by(Order.total.desc())).all()
+              user.name = "Анна"          # изменение отслеживается
+              session.delete(big[0])
+              session.commit()
+          ```
+
+          ## Проблема N+1
+
+          Перебор `user.orders` для 100 пользователей = 1 + 100 запросов. Решение — жадная загрузка:
+
+          ```python
+          from sqlalchemy.orm import selectinload
+          users = session.scalars(select(User).options(selectinload(User.orders))).all()   # 2 запроса
+          ```
+
+          Включайте `echo=True` при разработке и смотрите, какие запросы реально выполняются.
+        practice:
+          - type: choice
+            q: Что такое ORM?
+            options: ["Язык запросов", "Отображение таблиц БД на классы и объекты", "Тип базы данных", "Драйвер сети"]
+            answer: 1
+          - type: choice
+            q: Что такое проблема N+1?
+            options: ["Ошибка нумерации", "Лишний запрос к БД для каждого связанного объекта в цикле", "Переполнение int", "Дубли в таблице"]
+            answer: 1
+          - type: fill
+            q: Выберите пользователей старше 18 лет
+            code: |
+              stmt = ___(User).___(User.age > 18)
+              users = session.scalars(stmt).all()
+            answers: [select, where]
+          - type: choice
+            q: Как решить N+1 при загрузке пользователей с заказами?
+            options: ["`selectinload(User.orders)`", "Больше памяти", "Отключить ORM", "`time.sleep`"]
+            answer: 0
+        homework:
+          task: |
+            Опишите базу «Библиотека» моделями SQLAlchemy 2.0 (Author, Book, Reader, Loan с relationship). Реализуйте функции: `lend_book(session, book_id, reader_id)`, `return_book(...)`, `popular_books(session, limit)` (с group_by и func.count). Убедитесь через echo=True, что нет N+1 при выводе читателей с их книгами.
+          checklist:
+            - Используется стиль 2.0 (Mapped, select)
+            - Применён selectinload или joinedload
+          solution: |
+            from sqlalchemy import ForeignKey, func, select, create_engine
+            from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session, selectinload
+
+            class Base(DeclarativeBase): pass
+
+            class Book(Base):
+                __tablename__ = "books"
+                id: Mapped[int] = mapped_column(primary_key=True)
+                title: Mapped[str]
+                loans: Mapped[list["Loan"]] = relationship(back_populates="book")
+
+            class Reader(Base):
+                __tablename__ = "readers"
+                id: Mapped[int] = mapped_column(primary_key=True)
+                name: Mapped[str]
+                loans: Mapped[list["Loan"]] = relationship(back_populates="reader")
+
+            class Loan(Base):
+                __tablename__ = "loans"
+                id: Mapped[int] = mapped_column(primary_key=True)
+                book_id: Mapped[int] = mapped_column(ForeignKey("books.id"))
+                reader_id: Mapped[int] = mapped_column(ForeignKey("readers.id"))
+                returned: Mapped[bool] = mapped_column(default=False)
+                book: Mapped[Book] = relationship(back_populates="loans")
+                reader: Mapped[Reader] = relationship(back_populates="loans")
+
+            def popular_books(session, limit=3):
+                stmt = (select(Book.title, func.count(Loan.id).label("n")).join(Loan)
+                        .group_by(Book.id).order_by(func.count(Loan.id).desc()).limit(limit))
+                return session.execute(stmt).all()
+
+            def readers_with_books(session):
+                stmt = select(Reader).options(selectinload(Reader.loans).selectinload(Loan.book))
+                return [(r.name, [l.book.title for l in r.loans]) for r in session.scalars(stmt)]
+
+      - id: py-10-04
+        title: Миграции с Alembic
+        minutes: 20
+        xp: 25
+        theory: |
+          `create_all()` создаёт таблицы, но не умеет изменять существующие. В реальном проекте схема БД меняется постоянно, и эти изменения должны быть **версионированы** вместе с кодом. Для этого — **миграции**.
+
+          ## Alembic
+
+          ```
+          pip install alembic
+          alembic init migrations
+          ```
+
+          В `migrations/env.py` укажите метаданные моделей: `target_metadata = Base.metadata`, а в `alembic.ini` — адрес БД (или берите его из переменной окружения).
+
+          ## Рабочий цикл
+
+          ```
+          alembic revision --autogenerate -m "add phone to users"   # сгенерировать миграцию по изменениям моделей
+          alembic upgrade head        # применить все миграции
+          alembic downgrade -1        # откатить последнюю
+          alembic history             # список
+          alembic current             # текущая версия БД
+          ```
+
+          ## Файл миграции
+
+          ```python
+          def upgrade():
+              op.add_column("users", sa.Column("phone", sa.String(20), nullable=True))
+              op.create_index("ix_users_email", "users", ["email"], unique=True)
+
+          def downgrade():
+              op.drop_index("ix_users_email", table_name="users")
+              op.drop_column("users", "phone")
+          ```
+
+          ## Правила
+
+          - **всегда проверяйте** автосгенерированную миграцию глазами — autogenerate не видит переименования (считает их удалением + созданием) и некоторые изменения типов;
+          - миграции коммитятся в Git и применяются в CI/CD перед запуском новой версии;
+          - не редактируйте уже применённые на проде миграции — создавайте новые;
+          - добавление NOT NULL колонки в заполненную таблицу: сначала nullable + заполнение данных, потом NOT NULL;
+          - пишите `downgrade`, чтобы можно было откатиться.
+        practice:
+          - type: choice
+            q: Зачем нужны миграции?
+            options: ["Для бэкапа данных", "Для версионированного изменения схемы БД", "Для ускорения запросов", "Для тестов"]
+            answer: 1
+          - type: fill
+            q: Применить все миграции
+            code: |
+              alembic ___ head
+            answers: [upgrade]
+          - type: choice
+            q: Что autogenerate часто определяет неверно?
+            options: ["Новые таблицы", "Переименование колонки (видит как удаление и создание)", "Новые колонки", "Индексы всегда"]
+            answer: 1
+          - type: choice
+            q: Как безопасно добавить NOT NULL колонку в большую заполненную таблицу?
+            options: ["Сразу NOT NULL", "Сначала nullable, заполнить данные, затем сделать NOT NULL", "Удалить таблицу", "Никак"]
+            answer: 1
+        homework:
+          task: |
+            Подключите Alembic к проекту «Библиотека». Создайте начальную миграцию, затем добавьте в модель `Reader` поле `email` (уникальное) и `created_at`, сгенерируйте вторую миграцию, проверьте её код, примените и откатите.
+          checklist:
+            - Две миграции в истории
+            - downgrade работает
+          solution: |
+            # alembic init migrations
+            # env.py: from models import Base; target_metadata = Base.metadata
+            # alembic revision --autogenerate -m "initial"
+            # ... добавили поля в модель ...
+            # alembic revision --autogenerate -m "reader email and created_at"
+
+            def upgrade():
+                op.add_column("readers", sa.Column("email", sa.String(), nullable=True))
+                op.add_column("readers", sa.Column("created_at", sa.DateTime(),
+                              server_default=sa.func.now(), nullable=False))
+                op.create_unique_constraint("uq_readers_email", "readers", ["email"])
+
+            def downgrade():
+                op.drop_constraint("uq_readers_email", "readers", type_="unique")
+                op.drop_column("readers", "created_at")
+                op.drop_column("readers", "email")
+
+      - id: py-10-05
+        title: Транзакции и индексы
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Транзакции и ACID
+
+          **Транзакция** — группа операций, которая выполняется целиком или не выполняется вовсе.
+
+          - **A**tomicity — атомарность: всё или ничего;
+          - **C**onsistency — согласованность: ограничения БД соблюдаются;
+          - **I**solation — изоляция: параллельные транзакции не мешают друг другу;
+          - **D**urability — после коммита данные не потеряются.
+
+          ```python
+          with Session(engine) as session:
+              with session.begin():                    # commit при успехе, rollback при исключении
+                  sender = session.get(Account, 1, with_for_update=True)   # блокировка строки
+                  receiver = session.get(Account, 2, with_for_update=True)
+                  if sender.balance < 100:
+                      raise ValueError("Недостаточно средств")
+                  sender.balance -= 100
+                  receiver.balance += 100
+          ```
+
+          ## Уровни изоляции
+
+          `READ COMMITTED` (по умолчанию в PostgreSQL) → `REPEATABLE READ` → `SERIALIZABLE`. Чем выше уровень, тем меньше аномалий (грязное чтение, неповторяющееся чтение, фантомы), но больше блокировок и конфликтов.
+
+          ## Индексы
+
+          Индекс (обычно B-дерево) ускоряет поиск с O(n) до O(log n), но замедляет вставку и занимает место.
+
+          ```sql
+          CREATE INDEX ix_orders_user_id ON orders (user_id);
+          CREATE INDEX ix_orders_user_date ON orders (user_id, created_at);   -- составной
+          CREATE UNIQUE INDEX ix_users_email ON users (email);
+          ```
+
+          Индексируйте поля из `WHERE`, `JOIN`, `ORDER BY`. Составной индекс `(a, b)` работает для фильтра по `a` и по `a + b`, но не по одному `b`.
+
+          ## EXPLAIN
+
+          ```sql
+          EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 42;
+          ```
+
+          `Seq Scan` — полный перебор таблицы (плохо на больших таблицах), `Index Scan` — используется индекс.
+        practice:
+          - type: choice
+            q: Что гарантирует атомарность транзакции?
+            options: ["Скорость", "Все операции выполнятся целиком или ни одна", "Шифрование", "Бэкап"]
+            answer: 1
+          - type: choice
+            q: Есть индекс `(user_id, created_at)`. Для какого фильтра он НЕ поможет?
+            options: ["`WHERE user_id = 1`", "`WHERE user_id = 1 AND created_at > ...`", "`WHERE created_at > ...` (только по дате)", "Поможет всем"]
+            answer: 2
+          - type: choice
+            q: Минус индексов?
+            options: ["Замедляют чтение", "Замедляют вставку/обновление и занимают место", "Ломают JOIN", "Нет минусов"]
+            answer: 1
+          - type: choice
+            q: Что показывает `Seq Scan` в плане запроса?
+            options: ["Использование индекса", "Полный перебор таблицы", "Ошибку", "Кэширование"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте перевод денег между счетами в PostgreSQL через SQLAlchemy с `SELECT ... FOR UPDATE`. Запустите 50 одновременных переводов в потоках и проверьте, что суммарный баланс не изменился. Создайте таблицу на 1 млн заказов, сравните `EXPLAIN ANALYZE` запроса по `user_id` до и после создания индекса.
+          checklist:
+            - Сумма балансов сохраняется при конкурентных переводах
+            - Зафиксировано ускорение после индекса
+          solution: |
+            from concurrent.futures import ThreadPoolExecutor
+            from sqlalchemy import select, func
+
+            def transfer(engine, from_id, to_id, amount):
+                with Session(engine) as s, s.begin():
+                    ids = sorted([from_id, to_id])            # одинаковый порядок блокировок — нет дедлоков
+                    accs = {a.id: a for a in s.scalars(
+                        select(Account).where(Account.id.in_(ids)).with_for_update())}
+                    if accs[from_id].balance >= amount:
+                        accs[from_id].balance -= amount
+                        accs[to_id].balance += amount
+
+            with ThreadPoolExecutor(10) as pool:
+                for i in range(50):
+                    pool.submit(transfer, engine, 1 + i % 2, 2 - i % 2, 10)
+
+            with Session(engine) as s:
+                print(s.scalar(select(func.sum(Account.balance))))
+            # CREATE INDEX ix_orders_user_id ON orders(user_id);
+            # EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 42;

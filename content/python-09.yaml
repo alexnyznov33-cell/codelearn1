@@ -1,0 +1,514 @@
+id: python
+modules:
+  - id: py-m9
+    title: Асинхронность и параллелизм
+    level: Middle
+    lessons:
+      - id: py-09-01
+        title: GIL, потоки и процессы
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Конкурентность и параллелизм
+
+          - **Конкурентность** — несколько задач продвигаются, чередуясь (одно ядро может переключаться).
+          - **Параллелизм** — задачи буквально выполняются одновременно на разных ядрах.
+
+          ## Типы нагрузки
+
+          - **I/O-bound** — программа в основном ждёт: сеть, диск, БД. Пример: скачать 100 страниц.
+          - **CPU-bound** — программа считает: обработка изображений, математика, сжатие.
+
+          ## GIL
+
+          **Global Interpreter Lock** в CPython — блокировка, из-за которой в один момент времени байт-код Python выполняет только **один поток**.
+
+          Следствия:
+          - потоки **ускоряют I/O-bound** задачи: во время ожидания сети GIL отпускается и работают другие потоки;
+          - потоки **не ускоряют CPU-bound** задачи на чистом Python;
+          - для CPU-bound используют **процессы** (у каждого свой интерпретатор и свой GIL) или библиотеки на C (NumPy отпускает GIL).
+
+          > 💡 В Python 3.13 появилась экспериментальная сборка без GIL (free-threading), но по умолчанию GIL есть.
+
+          ## Что выбрать
+
+          | Задача | Инструмент |
+          |---|---|
+          | Много сетевых запросов, тысячи соединений | `asyncio` |
+          | I/O с блокирующими библиотеками | `threading` / `ThreadPoolExecutor` |
+          | Тяжёлые вычисления | `multiprocessing` / `ProcessPoolExecutor` |
+
+          ## Процесс vs поток
+
+          | | Поток | Процесс |
+          |---|---|---|
+          | Память | общая | раздельная |
+          | Создание | дёшево | дорого |
+          | Обмен данными | через общие объекты (нужны блокировки) | через очереди/pickle |
+          | GIL | общий | у каждого свой |
+        practice:
+          - type: choice
+            q: Что из этого — I/O-bound задача?
+            options: ["Скачивание 500 веб-страниц", "Подсчёт простых чисел до 10⁸", "Сжатие видео", "Умножение матриц на чистом Python"]
+            answer: 0
+          - type: choice
+            q: Почему потоки не ускоряют CPU-bound код на чистом Python?
+            options: ["Потоки запрещены", "Из-за GIL байт-код выполняет один поток за раз", "Не хватает памяти", "Потоки работают только на Linux"]
+            answer: 1
+          - type: choice
+            q: Что выбрать для параллельных тяжёлых вычислений?
+            options: ["threading", "asyncio", "multiprocessing", "Генераторы"]
+            answer: 2
+          - type: choice
+            q: Чем процессы отличаются от потоков?
+            options: ["У процессов общая память", "У каждого процесса своя память и свой GIL", "Процессы создаются быстрее", "Ничем"]
+            answer: 1
+        homework:
+          task: |
+            Напишите функцию `count_primes(limit)` (CPU-bound) и функцию `fake_download(i)`, которая делает `time.sleep(1)` (I/O-bound). Запустите каждую 4 раза: последовательно, в 4 потоках и в 4 процессах. Замерьте время и объясните результаты в комментарии.
+          checklist:
+            - Для sleep потоки дают ускорение ~4x
+            - Для простых чисел ускорение дают только процессы
+          solution: |
+            import time
+            from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+            def count_primes(limit):
+                return sum(all(n % d for d in range(2, int(n ** 0.5) + 1)) for n in range(2, limit))
+
+            def fake_download(i):
+                time.sleep(1)
+                return i
+
+            def bench(name, executor_cls, fn, arg):
+                t = time.perf_counter()
+                if executor_cls is None:
+                    [fn(arg) for _ in range(4)]
+                else:
+                    with executor_cls(4) as ex:
+                        list(ex.map(fn, [arg] * 4))
+                print(f"{name}: {time.perf_counter() - t:.2f} с")
+
+            if __name__ == "__main__":
+                for fn, arg in ((fake_download, 0), (count_primes, 200_000)):
+                    bench(f"{fn.__name__} seq", None, fn, arg)
+                    bench(f"{fn.__name__} threads", ThreadPoolExecutor, fn, arg)
+                    bench(f"{fn.__name__} procs", ProcessPoolExecutor, fn, arg)
+
+      - id: py-09-02
+        title: threading и concurrent.futures
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Модуль threading
+
+          ```python
+          import threading, time
+
+          def worker(name):
+              time.sleep(1)
+              print(f"{name} готов")
+
+          threads = [threading.Thread(target=worker, args=(f"T{i}",)) for i in range(3)]
+          for t in threads:
+              t.start()
+          for t in threads:
+              t.join()          # дождаться завершения
+          ```
+
+          ## Гонка данных и Lock
+
+          `counter += 1` — не атомарная операция (прочитать → прибавить → записать). Несколько потоков могут перетереть результаты друг друга.
+
+          ```python
+          counter = 0
+          lock = threading.Lock()
+
+          def inc():
+              global counter
+              for _ in range(100_000):
+                  with lock:            # только один поток внутри
+                      counter += 1
+          ```
+
+          Другие примитивы: `RLock`, `Semaphore` (ограничить число одновременных доступов), `Event`, потокобезопасная очередь `queue.Queue`.
+
+          ## concurrent.futures — высокоуровневый API
+
+          ```python
+          from concurrent.futures import ThreadPoolExecutor, as_completed
+          import requests
+
+          urls = ["https://example.com"] * 10
+
+          def fetch(url):
+              return requests.get(url, timeout=10).status_code
+
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              results = list(pool.map(fetch, urls))          # результаты в порядке urls
+
+          with ThreadPoolExecutor(max_workers=5) as pool:
+              futures = {pool.submit(fetch, u): u for u in urls}
+              for f in as_completed(futures):                # по мере готовности
+                  try:
+                      print(futures[f], f.result())
+                  except Exception as e:
+                      print("ошибка", e)
+          ```
+
+          `Future` — «обещание» результата: `result()`, `done()`, `exception()`. Пул сам переиспользует потоки — не создавайте тысячи `Thread` вручную.
+        practice:
+          - type: choice
+            q: Что делает `t.join()`?
+            options: ["Запускает поток", "Ждёт завершения потока", "Объединяет два потока", "Убивает поток"]
+            answer: 1
+          - type: choice
+            q: Почему `counter += 1` в нескольких потоках без блокировки опасен?
+            options: ["Это синтаксическая ошибка", "Операция не атомарна — возможна гонка данных", "Python запрещает", "Безопасно"]
+            answer: 1
+          - type: fill
+            q: Защитите критическую секцию
+            code: |
+              lock = threading.Lock()
+              def add(x):
+                  ___ lock:
+                      shared.append(x)
+            answers: [with]
+          - type: choice
+            q: Чем `pool.map` отличается от `as_completed`?
+            options: ["Ничем", "map возвращает результаты в порядке входных данных, as_completed — по мере готовности", "as_completed медленнее", "map работает только с процессами"]
+            answer: 1
+        homework:
+          task: |
+            Напишите многопоточный «проверятор ссылок»: читает список URL из файла, проверяет их в пуле из 10 потоков (статус-код или ошибка), выводит результаты по мере готовности и итоговую статистику (сколько ок, сколько ошибок). Общий счётчик защитите Lock'ом.
+          checklist:
+            - Используется ThreadPoolExecutor и as_completed
+            - Ошибки сети не роняют программу
+          solution: |
+            import threading
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import requests
+
+            stats = {"ok": 0, "fail": 0}
+            lock = threading.Lock()
+
+            def check(url):
+                try:
+                    code = requests.head(url, timeout=5, allow_redirects=True).status_code
+                    ok = code < 400
+                except requests.RequestException as e:
+                    code, ok = type(e).__name__, False
+                with lock:
+                    stats["ok" if ok else "fail"] += 1
+                return url, code
+
+            urls = [u.strip() for u in open("urls.txt", encoding="utf-8") if u.strip()]
+            with ThreadPoolExecutor(10) as pool:
+                for f in as_completed(pool.submit(check, u) for u in urls):
+                    print(*f.result())
+            print(stats)
+
+      - id: py-09-03
+        title: multiprocessing
+        minutes: 20
+        xp: 30
+        theory: |
+          `multiprocessing` запускает отдельные процессы — каждый со своим интерпретатором и GIL. Так CPU-bound задачи используют все ядра.
+
+          ## ProcessPoolExecutor — проще всего
+
+          ```python
+          from concurrent.futures import ProcessPoolExecutor
+          import os
+
+          def heavy(n):
+              return sum(i * i for i in range(n))
+
+          if __name__ == "__main__":            # ОБЯЗАТЕЛЬНО на Windows и macOS
+              with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
+                  results = list(pool.map(heavy, [10**7] * 8))
+          ```
+
+          Без `if __name__ == "__main__"` дочерние процессы при импорте модуля снова начнут создавать процессы.
+
+          ## multiprocessing.Pool
+
+          ```python
+          from multiprocessing import Pool
+
+          with Pool(4) as p:
+              print(p.map(heavy, [10**6, 10**7]))
+              p.starmap(pow, [(2, 10), (3, 5)])   # несколько аргументов
+          ```
+
+          ## Особенности
+
+          - аргументы и результаты передаются между процессами через **pickle**: lambda и локальные функции нельзя передать — функция должна быть на уровне модуля;
+          - накладные расходы на создание процесса и передачу данных значительны — дробите работу на крупные куски (`chunksize`);
+          - общая память: `multiprocessing.Queue`, `Manager`, `shared_memory`; но лучше проектировать задачи без общего состояния.
+
+          ## Когда это не нужно
+
+          Если вычисления можно векторизовать через NumPy/pandas — это часто быстрее любых процессов, потому что код выполняется на C.
+        practice:
+          - type: choice
+            q: Зачем `if __name__ == "__main__":` при использовании multiprocessing?
+            options: ["Для красоты", "Чтобы дочерние процессы не запускали создание процессов повторно при импорте", "Ускоряет код", "Только для Linux"]
+            answer: 1
+          - type: choice
+            q: Почему в `pool.map` нельзя передать lambda?
+            options: ["lambda медленная", "Функции передаются через pickle, а lambda не сериализуется", "Ограничение Windows", "Можно"]
+            answer: 1
+          - type: fill
+            q: Вызов функции с несколькими аргументами в пуле
+            code: |
+              with Pool(4) as p:
+                  res = p.___(pow, [(2, 3), (5, 2)])
+            answers: [starmap]
+          - type: choice
+            q: Что выгоднее для CPU-bound задачи из миллиона крошечных вычислений?
+            options: ["Отдельный процесс на каждое вычисление", "Крупные чанки работы на процесс", "Потоки", "asyncio"]
+            answer: 1
+        homework:
+          task: |
+            Есть папка с 1000 текстовыми файлами (сгенерируйте). Посчитайте частоту слов во всех файлах: однопоточно и через `ProcessPoolExecutor` (каждый процесс считает Counter для своей части файлов, затем результаты объединяются). Сравните время.
+          checklist:
+            - Функция обработки на уровне модуля
+            - Результаты объединяются через Counter.update / сумму
+          solution: |
+            from collections import Counter
+            from concurrent.futures import ProcessPoolExecutor
+            from pathlib import Path
+            import time
+
+            def count_words(paths):
+                c = Counter()
+                for p in paths:
+                    c.update(Path(p).read_text(encoding="utf-8").lower().split())
+                return c
+
+            if __name__ == "__main__":
+                files = [str(p) for p in Path("texts").glob("*.txt")]
+                chunks = [files[i::8] for i in range(8)]
+                t = time.perf_counter()
+                total = Counter()
+                with ProcessPoolExecutor() as pool:
+                    for c in pool.map(count_words, chunks):
+                        total.update(c)
+                print(total.most_common(5), time.perf_counter() - t)
+
+      - id: py-09-04
+        title: asyncio, async и await
+        minutes: 30
+        xp: 35
+        theory: |
+          **asyncio** — однопоточная конкурентность на **корутинах**. Пока одна задача ждёт ответа сети, цикл событий (event loop) выполняет другие. Тысячи соединений — в одном потоке.
+
+          ```python
+          import asyncio
+
+          async def fetch(name, delay):        # корутина
+              print(f"{name}: старт")
+              await asyncio.sleep(delay)       # точка ожидания — управление отдаётся циклу
+              print(f"{name}: готово")
+              return name
+
+          async def main():
+              # последовательно — 3 секунды
+              await fetch("A", 1)
+              await fetch("B", 2)
+
+              # конкурентно — 2 секунды
+              results = await asyncio.gather(fetch("A", 1), fetch("B", 2))
+              print(results)                   # ['A', 'B']
+
+          asyncio.run(main())                  # точка входа
+          ```
+
+          - `async def` создаёт корутину; её вызов **не выполняет** код, а возвращает объект корутины;
+          - `await` можно писать только внутри `async def`;
+          - `asyncio.gather` запускает несколько корутин конкурентно.
+
+          ## Задачи
+
+          ```python
+          task = asyncio.create_task(fetch("C", 1))   # запустить в фоне
+          ...
+          result = await task
+
+          async with asyncio.TaskGroup() as tg:       # 3.11+: структурная конкурентность
+              t1 = tg.create_task(fetch("x", 1))
+              t2 = tg.create_task(fetch("y", 1))
+          ```
+
+          ## Тайм-ауты и ограничения
+
+          ```python
+          async with asyncio.timeout(5):              # 3.11+
+              await slow_call()
+
+          sem = asyncio.Semaphore(10)                 # не более 10 одновременно
+          async def limited(url):
+              async with sem:
+                  return await download(url)
+          ```
+
+          > ⚠️ Никогда не вызывайте блокирующий код (`time.sleep`, `requests.get`) внутри корутины — он остановит весь цикл событий. Используйте асинхронные библиотеки или `await asyncio.to_thread(func)`.
+        practice:
+          - type: choice
+            q: Что вернёт вызов `fetch()` для `async def fetch()` без await?
+            options: ["Результат функции", "Объект корутины — код не выполнится", "None", "Ошибку"]
+            answer: 1
+          - type: choice
+            q: Сколько примерно займёт `await asyncio.gather(sleep(1), sleep(2), sleep(3))`?
+            options: ["6 секунд", "3 секунды", "1 секунду", "0 секунд"]
+            answer: 1
+          - type: bug
+            q: Какая строка заблокирует весь event loop?
+            code: |
+              import asyncio, time
+              async def job():
+                  time.sleep(2)
+                  return 1
+              asyncio.run(job())
+            bugLine: 3
+            fix: "    await asyncio.sleep(2)"
+          - type: fill
+            q: Запустите корутины конкурентно
+            code: |
+              async def main():
+                  a, b = ___ asyncio.___(load("x"), load("y"))
+            answers: [await, gather]
+          - type: choice
+            q: Как ограничить число одновременных запросов в asyncio?
+            options: ["`asyncio.Lock`", "`asyncio.Semaphore`", "`time.sleep`", "Никак"]
+            answer: 1
+        homework:
+          task: |
+            Смоделируйте асинхронный «агрегатор цен»: 20 магазинов, у каждого корутина `get_price(shop)` с случайной задержкой 0.5–3 с и шансом ошибки 10%. Соберите цены конкурентно с тайм-аутом 2 с на магазин и не более 5 одновременных запросов. Выведите минимальную цену и список магазинов, не ответивших вовремя.
+          checklist:
+            - Используются gather (или TaskGroup), Semaphore, timeout
+            - Ошибка одного магазина не ломает остальные
+          solution: |
+            import asyncio, random
+
+            async def get_price(shop):
+                await asyncio.sleep(random.uniform(0.5, 3))
+                if random.random() < 0.1:
+                    raise ConnectionError(shop)
+                return shop, random.randint(900, 1500)
+
+            async def safe(shop, sem):
+                async with sem:
+                    try:
+                        async with asyncio.timeout(2):
+                            return await get_price(shop)
+                    except (TimeoutError, ConnectionError):
+                        return shop, None
+
+            async def main():
+                sem = asyncio.Semaphore(5)
+                results = await asyncio.gather(*(safe(f"shop{i}", sem) for i in range(20)))
+                ok = [r for r in results if r[1] is not None]
+                print("Мин:", min(ok, key=lambda r: r[1]) if ok else None)
+                print("Не ответили:", [s for s, p in results if p is None])
+
+            asyncio.run(main())
+
+      - id: py-09-05
+        title: aiohttp и асинхронные HTTP-запросы
+        minutes: 25
+        xp: 30
+        theory: |
+          `requests` блокирующий, поэтому в asyncio используют **aiohttp** или **httpx**.
+
+          ## httpx — как requests, но с async
+
+          ```python
+          import asyncio, httpx
+
+          async def main():
+              async with httpx.AsyncClient(timeout=10) as client:
+                  r = await client.get("https://api.github.com/repos/python/cpython")
+                  r.raise_for_status()
+                  print(r.json()["stargazers_count"])
+
+          asyncio.run(main())
+          ```
+
+          ## aiohttp
+
+          ```python
+          import aiohttp, asyncio
+
+          async def fetch(session, url):
+              async with session.get(url) as resp:
+                  resp.raise_for_status()
+                  return await resp.json()
+
+          async def main(urls):
+              timeout = aiohttp.ClientTimeout(total=15)
+              async with aiohttp.ClientSession(timeout=timeout) as session:   # одна сессия на все запросы
+                  return await asyncio.gather(*(fetch(session, u) for u in urls),
+                                              return_exceptions=True)
+          ```
+
+          `return_exceptions=True` — исключения возвращаются как значения, а не обрывают весь gather.
+
+          ## Практики
+
+          - создавайте **один** клиент/сессию на приложение — она держит пул соединений;
+          - всегда ставьте тайм-ауты;
+          - ограничивайте конкурентность (`Semaphore`) — иначе вас заблокирует API (rate limit);
+          - повторяйте временные ошибки с экспоненциальной задержкой (библиотека `tenacity`);
+          - aiohttp также умеет быть **сервером**, но для API чаще берут FastAPI.
+        practice:
+          - type: choice
+            q: Почему в asyncio нельзя использовать requests напрямую?
+            options: ["requests не умеет JSON", "requests блокирующий и остановит event loop", "requests запрещён", "Можно без проблем"]
+            answer: 1
+          - type: choice
+            q: Что даёт `return_exceptions=True` в gather?
+            options: ["Подавляет все ошибки", "Исключения возвращаются в списке результатов, остальные задачи продолжаются", "Повторяет запросы", "Логирует ошибки"]
+            answer: 1
+          - type: fill
+            q: Асинхронный клиент httpx
+            code: |
+              async with httpx.___() as client:
+                  r = ___ client.get(url)
+            answers: [AsyncClient, await]
+          - type: choice
+            q: Сколько ClientSession создавать на 1000 запросов?
+            options: ["1000 — по одной на запрос", "Одну на всё приложение", "10", "Не важно"]
+            answer: 1
+        homework:
+          task: |
+            Используя httpx.AsyncClient, загрузите данные о 10 популярных репозиториях GitHub (`https://api.github.com/repos/{owner}/{name}`) конкурентно, не более 3 одновременно. Выведите таблицу: название, звёзды, язык, дата последнего обновления — отсортированную по звёздам. Обработайте ошибки 404 и тайм-ауты.
+          checklist:
+            - Один клиент на все запросы
+            - Ошибки отдельных репозиториев не прерывают остальные
+          solution: |
+            import asyncio, httpx
+
+            REPOS = ["python/cpython", "django/django", "pallets/flask", "fastapi/fastapi",
+                     "psf/requests", "pandas-dev/pandas", "numpy/numpy", "nonexistent/repo",
+                     "tiangolo/sqlmodel", "astral-sh/ruff"]
+
+            async def fetch(client, sem, repo):
+                async with sem:
+                    try:
+                        r = await client.get(f"https://api.github.com/repos/{repo}")
+                        r.raise_for_status()
+                        d = r.json()
+                        return d["full_name"], d["stargazers_count"], d["language"], d["updated_at"][:10]
+                    except (httpx.HTTPStatusError, httpx.TimeoutException) as e:
+                        print(repo, "ошибка:", type(e).__name__)
+
+            async def main():
+                sem = asyncio.Semaphore(3)
+                async with httpx.AsyncClient(timeout=10) as client:
+                    rows = await asyncio.gather(*(fetch(client, sem, r) for r in REPOS))
+                for row in sorted(filter(None, rows), key=lambda r: -r[1]):
+                    print(*row, sep=" | ")
+
+            asyncio.run(main())

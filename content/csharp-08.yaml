@@ -1,0 +1,678 @@
+id: csharp
+modules:
+  - id: cs-m8
+    title: Базы данных
+    level: Middle
+    lessons:
+      - id: cs-08-01
+        title: SQL и ADO.NET
+        minutes: 35
+        xp: 40
+        theory: |
+          ## Минимум SQL, который нужен всегда
+
+          ```sql
+          CREATE TABLE products (
+              id     SERIAL PRIMARY KEY,
+              name   VARCHAR(100) NOT NULL,
+              price  NUMERIC(10,2) NOT NULL CHECK (price >= 0),
+              cat_id INT REFERENCES categories(id)
+          );
+
+          INSERT INTO products (name, price, cat_id) VALUES ('Чай', 150, 1);
+          SELECT p.name, c.title FROM products p JOIN categories c ON c.id = p.cat_id WHERE p.price > 100 ORDER BY p.price DESC;
+          SELECT cat_id, COUNT(*), AVG(price) FROM products GROUP BY cat_id HAVING COUNT(*) > 2;
+          UPDATE products SET price = price * 1.1 WHERE cat_id = 1;
+          DELETE FROM products WHERE id = 7;
+          CREATE INDEX ix_products_cat ON products(cat_id);
+          ```
+
+          ## ADO.NET — низкоуровневый доступ
+
+          Провайдеры: `Microsoft.Data.SqlClient` (SQL Server), `Npgsql` (PostgreSQL), `Microsoft.Data.Sqlite`.
+
+          ```csharp
+          await using var conn = new NpgsqlConnection(connectionString);
+          await conn.OpenAsync();
+
+          await using var cmd = new NpgsqlCommand(
+              "SELECT id, name, price FROM products WHERE price > @min", conn);
+          cmd.Parameters.AddWithValue("min", 100m);
+
+          await using var reader = await cmd.ExecuteReaderAsync();
+          while (await reader.ReadAsync())
+          {
+              int id = reader.GetInt32(0);
+              string name = reader.GetString(1);
+              decimal price = reader.GetDecimal(2);
+              Console.WriteLine($"{id} {name} {price}");
+          }
+          ```
+
+          - `ExecuteReaderAsync` — выборка строк; `ExecuteNonQueryAsync` — INSERT/UPDATE/DELETE (вернёт число строк); `ExecuteScalarAsync` — одно значение.
+          - Соединения берутся из **пула** — открывайте поздно, закрывайте рано (`using`).
+
+          ## SQL-инъекции
+
+          ```csharp
+          // ❌ НИКОГДА
+          var sql = $"SELECT * FROM users WHERE login = '{login}'";   // login = "' OR 1=1 --"
+          // ✅ параметры
+          cmd.CommandText = "SELECT * FROM users WHERE login = @login";
+          cmd.Parameters.AddWithValue("login", login);
+          ```
+
+          ## Транзакции
+
+          ```csharp
+          await using var tx = await conn.BeginTransactionAsync();
+          try
+          {
+              await Exec(conn, tx, "UPDATE accounts SET balance = balance - 100 WHERE id = 1");
+              await Exec(conn, tx, "UPDATE accounts SET balance = balance + 100 WHERE id = 2");
+              await tx.CommitAsync();
+          }
+          catch { await tx.RollbackAsync(); throw; }
+          ```
+
+          ACID: атомарность, согласованность, изолированность, долговечность. Уровни изоляции: Read Committed (по умолчанию), Repeatable Read, Serializable.
+
+          Строку подключения храните в конфигурации/секретах, не в коде.
+        practice:
+          - type: choice
+            q: Какой метод выполнит UPDATE и вернёт число изменённых строк?
+            options: ["ExecuteReaderAsync", "ExecuteNonQueryAsync", "ExecuteScalarAsync", "ReadAsync"]
+            answer: 1
+          - type: bug
+            q: Какая строка уязвима для SQL-инъекции?
+            code: |
+              await using var conn = new NpgsqlConnection(cs);
+              await conn.OpenAsync();
+              var cmd = new NpgsqlCommand($"DELETE FROM posts WHERE id = {id} AND author = '{user}'", conn);
+              await cmd.ExecuteNonQueryAsync();
+            bugLine: 3
+            fix: 'new NpgsqlCommand("DELETE FROM posts WHERE id = @id AND author = @user", conn) + Parameters'
+          - type: fill
+            q: Посчитайте количество товаров по категориям
+            code: |
+              SELECT cat_id, COUNT(*) FROM products ___ BY cat_id;
+            answers: ["GROUP"]
+          - type: choice
+            q: Что делает пул соединений?
+            options: ["Шифрует соединение", "Переиспользует физические соединения с БД", "Кеширует результаты запросов", "Создаёт индексы"]
+            answer: 1
+          - type: fill
+            q: Отфильтруйте группы по агрегату
+            code: |
+              SELECT cat_id, AVG(price) FROM products GROUP BY cat_id ___ AVG(price) > 500;
+            answers: ["HAVING"]
+        homework:
+          task: |
+            С SQLite (`Microsoft.Data.Sqlite`) создайте таблицы `accounts(id, owner, balance)` и `transfers(id, from_id, to_id, amount, created_at)`. Напишите класс `BankRepository` с методами `CreateAccountAsync`, `GetBalanceAsync`, `TransferAsync` (в транзакции: проверить баланс, списать, зачислить, записать перевод; при ошибке — rollback). Только параметризованные запросы.
+          checklist:
+            - Все запросы с параметрами
+            - Перевод атомарен
+            - Соединения в using
+          solution: |
+            using Microsoft.Data.Sqlite;
+
+            public class BankRepository(string cs)
+            {
+                public async Task InitAsync()
+                {
+                    await using var c = new SqliteConnection(cs); await c.OpenAsync();
+                    var cmd = c.CreateCommand();
+                    cmd.CommandText = """
+                        CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY, owner TEXT NOT NULL, balance REAL NOT NULL);
+                        CREATE TABLE IF NOT EXISTS transfers(id INTEGER PRIMARY KEY, from_id INT, to_id INT, amount REAL, created_at TEXT);
+                        """;
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                public async Task TransferAsync(long from, long to, double amount)
+                {
+                    await using var c = new SqliteConnection(cs); await c.OpenAsync();
+                    await using var tx = (SqliteTransaction)await c.BeginTransactionAsync();
+                    try
+                    {
+                        var check = c.CreateCommand(); check.Transaction = tx;
+                        check.CommandText = "SELECT balance FROM accounts WHERE id = $id";
+                        check.Parameters.AddWithValue("$id", from);
+                        var bal = (double)(await check.ExecuteScalarAsync() ?? throw new InvalidOperationException("Нет счёта"));
+                        if (bal < amount) throw new InvalidOperationException("Недостаточно средств");
+
+                        var upd = c.CreateCommand(); upd.Transaction = tx;
+                        upd.CommandText = """
+                            UPDATE accounts SET balance = balance - $a WHERE id = $f;
+                            UPDATE accounts SET balance = balance + $a WHERE id = $t;
+                            INSERT INTO transfers(from_id, to_id, amount, created_at) VALUES ($f, $t, $a, datetime('now'));
+                            """;
+                        upd.Parameters.AddWithValue("$a", amount);
+                        upd.Parameters.AddWithValue("$f", from);
+                        upd.Parameters.AddWithValue("$t", to);
+                        await upd.ExecuteNonQueryAsync();
+                        await tx.CommitAsync();
+                    }
+                    catch { await tx.RollbackAsync(); throw; }
+                }
+            }
+      - id: cs-08-02
+        title: EF Core модели и контекст
+        minutes: 35
+        xp: 40
+        theory: |
+          **Entity Framework Core** — ORM: вы работаете с C#-объектами, а EF генерирует SQL.
+
+          ```bash
+          dotnet add package Microsoft.EntityFrameworkCore.Sqlite   # или .SqlServer / Npgsql.EntityFrameworkCore.PostgreSQL
+          dotnet add package Microsoft.EntityFrameworkCore.Design
+          ```
+
+          ## Сущности
+
+          ```csharp
+          public class Product
+          {
+              public int Id { get; set; }                  // по соглашению — первичный ключ
+              public required string Name { get; set; }
+              public decimal Price { get; set; }
+              public int CategoryId { get; set; }          // внешний ключ
+              public Category Category { get; set; } = null!; // навигационное свойство
+          }
+
+          public class Category
+          {
+              public int Id { get; set; }
+              public required string Title { get; set; }
+              public List<Product> Products { get; set; } = [];
+          }
+          ```
+
+          ## DbContext
+
+          ```csharp
+          public class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)
+          {
+              public DbSet<Product> Products => Set<Product>();
+              public DbSet<Category> Categories => Set<Category>();
+
+              protected override void OnModelCreating(ModelBuilder b)
+              {
+                  b.Entity<Product>(e =>
+                  {
+                      e.Property(p => p.Name).HasMaxLength(200).IsRequired();
+                      e.Property(p => p.Price).HasPrecision(10, 2);
+                      e.HasIndex(p => p.Name);
+                  });
+              }
+          }
+
+          // регистрация в ASP.NET Core
+          builder.Services.AddDbContext<ShopContext>(o => o.UseSqlite("Data Source=shop.db"));
+          ```
+
+          ## CRUD
+
+          ```csharp
+          db.Products.Add(new Product { Name = "Чай", Price = 150, CategoryId = 1 });
+          await db.SaveChangesAsync();                      // INSERT
+
+          var cheap = await db.Products
+              .Where(p => p.Price < 500)
+              .OrderBy(p => p.Name)
+              .Select(p => new { p.Name, p.Price })          // проекция — выбираются только нужные колонки
+              .ToListAsync();
+
+          var p = await db.Products.FindAsync(1);           // по ключу
+          p!.Price = 200;
+          await db.SaveChangesAsync();                      // UPDATE только изменённых полей
+
+          db.Products.Remove(p);
+          await db.SaveChangesAsync();                      // DELETE
+
+          await db.Products.Where(x => x.Price == 0).ExecuteDeleteAsync();     // массово, без загрузки (EF 7+)
+          await db.Products.ExecuteUpdateAsync(s => s.SetProperty(x => x.Price, x => x.Price * 1.1m));
+          ```
+
+          LINQ-запрос к `DbSet` — это `IQueryable`: он транслируется в SQL и выполняется только при `ToListAsync`, `FirstAsync`, `CountAsync` и т.д.
+
+          `DbContext` — **не потокобезопасен** и рассчитан на короткую жизнь (одна единица работы/запрос). В ASP.NET Core он Scoped.
+
+          > 💡 Логируйте SQL: `o.UseSqlite(...).LogTo(Console.WriteLine, LogLevel.Information)`.
+        practice:
+          - type: choice
+            q: Какое свойство EF Core по соглашению сделает первичным ключом?
+            options: ["Key", "Id или <Имя>Id", "Первое свойство", "Name"]
+            answer: 1
+          - type: fill
+            q: Сохраните изменения в БД
+            code: |
+              db.Products.Add(product);
+              await db.___();
+            answers: ["SaveChangesAsync"]
+          - type: choice
+            q: Когда реально выполняется SQL для `db.Products.Where(p => p.Price > 10)`?
+            options: ["Сразу при вызове Where", "При материализации: ToListAsync, FirstAsync, foreach", "При SaveChanges", "Никогда"]
+            answer: 1
+          - type: choice
+            q: Какое время жизни DbContext в ASP.NET Core?
+            options: ["Singleton", "Scoped (на запрос)", "Transient", "Static"]
+            answer: 1
+          - type: order
+            q: Расставьте шаги изменения цены товара
+            lines:
+              - var p = await db.Products.FindAsync(id);
+              - p!.Price = newPrice;
+              - await db.SaveChangesAsync();
+        homework:
+          task: |
+            Создайте консольное приложение «Библиотека» на EF Core + SQLite: сущности `Author`, `Book` (Title, Year, AuthorId), `DbContext` с Fluent API (max length, индекс по Title). Реализуйте: добавление автора с книгами, поиск книг по части названия, список авторов с количеством книг (проекция), массовое удаление книг старше 1900 года через ExecuteDelete.
+          checklist:
+            - Конфигурация в OnModelCreating
+            - Используются async-методы EF
+            - Проекция через Select
+          solution: |
+            using Microsoft.EntityFrameworkCore;
+
+            await using var db = new LibContext();
+            await db.Database.EnsureCreatedAsync();
+
+            db.Authors.Add(new Author { Name = "Толстой", Books = [new() { Title = "Война и мир", Year = 1869 }, new() { Title = "Анна Каренина", Year = 1878 }] });
+            await db.SaveChangesAsync();
+
+            var found = await db.Books.Where(b => b.Title.Contains("мир")).ToListAsync();
+            var stats = await db.Authors.Select(a => new { a.Name, Count = a.Books.Count }).ToListAsync();
+            stats.ForEach(s => Console.WriteLine($"{s.Name}: {s.Count}"));
+            await db.Books.Where(b => b.Year < 1900).ExecuteDeleteAsync();
+
+            public class Author { public int Id { get; set; } public required string Name { get; set; } public List<Book> Books { get; set; } = []; }
+            public class Book { public int Id { get; set; } public required string Title { get; set; } public int Year { get; set; } public int AuthorId { get; set; } public Author Author { get; set; } = null!; }
+
+            public class LibContext : DbContext
+            {
+                public DbSet<Author> Authors => Set<Author>();
+                public DbSet<Book> Books => Set<Book>();
+                protected override void OnConfiguring(DbContextOptionsBuilder o) => o.UseSqlite("Data Source=lib.db");
+                protected override void OnModelCreating(ModelBuilder b)
+                {
+                    b.Entity<Book>().Property(x => x.Title).HasMaxLength(300);
+                    b.Entity<Book>().HasIndex(x => x.Title);
+                    b.Entity<Author>().Property(x => x.Name).HasMaxLength(150);
+                }
+            }
+      - id: cs-08-03
+        title: Миграции EF Core
+        minutes: 25
+        xp: 35
+        theory: |
+          Схема БД должна меняться вместе с кодом — версионированно и воспроизводимо. **Миграции** EF Core — это C#-файлы с описанием изменений схемы, которые хранятся в Git.
+
+          ## Инструмент
+
+          ```bash
+          dotnet tool install --global dotnet-ef
+          dotnet add package Microsoft.EntityFrameworkCore.Design
+          ```
+
+          ## Основной цикл
+
+          ```bash
+          dotnet ef migrations add InitialCreate      # создать миграцию по разнице модели и снапшота
+          dotnet ef database update                   # применить все неприменённые
+          # поменяли модель (добавили свойство Product.Sku)
+          dotnet ef migrations add AddProductSku
+          dotnet ef database update
+          dotnet ef migrations remove                 # удалить последнюю НЕприменённую
+          dotnet ef database update AddProductSku     # откатиться/накатиться до конкретной
+          dotnet ef migrations script --idempotent -o migrate.sql   # SQL-скрипт для прода
+          ```
+
+          ## Что внутри
+
+          ```csharp
+          public partial class AddProductSku : Migration
+          {
+              protected override void Up(MigrationBuilder mb)
+              {
+                  mb.AddColumn<string>("Sku", "Products", maxLength: 50, nullable: false, defaultValue: "");
+                  mb.CreateIndex("IX_Products_Sku", "Products", "Sku", unique: true);
+              }
+              protected override void Down(MigrationBuilder mb)
+              {
+                  mb.DropIndex("IX_Products_Sku", "Products");
+                  mb.DropColumn("Sku", "Products");
+              }
+          }
+          ```
+
+          Рядом лежит `ShopContextModelSnapshot.cs` — текущее состояние модели. В БД таблица `__EFMigrationsHistory` хранит список применённых миграций.
+
+          ## Данные в миграциях
+
+          ```csharp
+          mb.Sql("UPDATE Products SET Sku = 'SKU-' || Id");     // произвольный SQL
+          ```
+
+          Начальные данные: `modelBuilder.Entity<Category>().HasData(new Category { Id = 1, Title = "Еда" });`
+
+          ## Практика в команде
+
+          - Одна миграция = одно логическое изменение, понятное имя.
+          - **Проверяйте** сгенерированный код: переименование свойства EF может понять как drop + add column (потеря данных!) — замените на `RenameColumn`.
+          - Не редактируйте уже применённые на проде миграции — создавайте новую.
+          - В проде применяйте скриптом в CI/CD или `migration bundle` (`dotnet ef migrations bundle`), а не `Database.Migrate()` при старте нескольких инстансов.
+          - `EnsureCreated()` несовместим с миграциями — только для прототипов и тестов.
+        practice:
+          - type: fill
+            q: Создайте миграцию после изменения модели
+            code: |
+              dotnet ef migrations ___ AddUserEmail
+            answers: ["add"]
+          - type: fill
+            q: Примените миграции к базе
+            code: |
+              dotnet ef database ___
+            answers: ["update"]
+          - type: choice
+            q: Где EF хранит список применённых миграций?
+            options: ["В appsettings.json", "В таблице __EFMigrationsHistory", "В файле .csproj", "В снапшоте"]
+            answer: 1
+          - type: choice
+            q: Вы переименовали свойство FullName → Name. Что проверить в миграции?
+            options: ["Ничего", "Что EF не сделал DropColumn + AddColumn вместо RenameColumn", "Что удалён снапшот", "Что миграция пустая"]
+            answer: 1
+          - type: choice
+            q: Как безопаснее всего применять миграции в продакшене?
+            options: ["EnsureCreated при старте", "Идемпотентный SQL-скрипт или bundle в CI/CD", "Вручную менять таблицы", "Удалить БД и создать заново"]
+            answer: 1
+        homework:
+          task: |
+            В проекте «Библиотека» перейдите с EnsureCreated на миграции: InitialCreate; затем добавьте `Book.Isbn` (уникальный индекс) — миграция с заполнением существующих строк через `mb.Sql`; затем переименуйте `Author.Name` → `FullName` так, чтобы данные сохранились. Сгенерируйте идемпотентный SQL-скрипт.
+          checklist:
+            - Три миграции в Git
+            - Переименование через RenameColumn
+            - Есть migrate.sql
+          solution: |
+            dotnet ef migrations add InitialCreate
+            dotnet ef database update
+
+            # Book: public string Isbn { get; set; } = ""; + HasIndex(b => b.Isbn).IsUnique()
+            dotnet ef migrations add AddBookIsbn
+            # в Up() перед CreateIndex:
+            # mb.Sql("UPDATE Books SET Isbn = 'TMP-' || Id");
+
+            # Author.Name -> FullName
+            dotnet ef migrations add RenameAuthorName
+            # проверить Up(): должно быть
+            # mb.RenameColumn(name: "Name", table: "Authors", newName: "FullName");
+
+            dotnet ef database update
+            dotnet ef migrations script --idempotent -o migrate.sql
+      - id: cs-08-04
+        title: Связи, Include, отслеживание
+        minutes: 35
+        xp: 40
+        theory: |
+          ## Связи
+
+          ```csharp
+          // один-ко-многим: Category 1 — * Product (по навигации и FK)
+          // один-к-одному
+          b.Entity<User>().HasOne(u => u.Profile).WithOne(p => p.User).HasForeignKey<Profile>(p => p.UserId);
+          // многие-ко-многим (EF 5+): таблица-связка создаётся сама
+          public class Student { public int Id { get; set; } public List<Course> Courses { get; set; } = []; }
+          public class Course  { public int Id { get; set; } public List<Student> Students { get; set; } = []; }
+          // поведение удаления
+          b.Entity<Product>().HasOne(p => p.Category).WithMany(c => c.Products).OnDelete(DeleteBehavior.Restrict);
+          ```
+
+          ## Загрузка связанных данных
+
+          По умолчанию навигационные свойства **не загружаются** (будут `null` / пустыми).
+
+          ```csharp
+          // Eager loading — JOIN
+          var cats = await db.Categories
+              .Include(c => c.Products.Where(p => p.Price > 0))   // filtered include
+              .ThenInclude(p => p.Reviews)
+              .ToListAsync();
+
+          // Проекция — часто лучше Include: только нужные поля
+          var dto = await db.Categories.Select(c => new { c.Title, Count = c.Products.Count }).ToListAsync();
+
+          // Explicit loading
+          await db.Entry(cat).Collection(c => c.Products).LoadAsync();
+          ```
+
+          Много `Include` коллекций → «картезианский взрыв» (строки перемножаются). Решение: `.AsSplitQuery()`.
+
+          ## Проблема N+1
+
+          ```csharp
+          // ❌ 1 запрос за категории + N запросов за товары (при lazy loading)
+          foreach (var c in db.Categories.ToList())
+              Console.WriteLine(c.Products.Count);
+          // ✅ один запрос
+          var data = db.Categories.Select(c => new { c.Title, c.Products.Count }).ToList();
+          ```
+
+          Lazy loading (`UseLazyLoadingProxies`) удобен, но легко порождает N+1 — в вебе обычно выключен.
+
+          ## Change Tracker
+
+          `DbContext` запоминает загруженные сущности и их исходные значения. При `SaveChanges` сравнивает и генерирует UPDATE только для изменённого.
+
+          ```csharp
+          var p = await db.Products.FirstAsync();
+          Console.WriteLine(db.Entry(p).State);  // Unchanged
+          p.Price = 10;
+          Console.WriteLine(db.Entry(p).State);  // Modified
+          ```
+
+          Состояния: `Added`, `Unchanged`, `Modified`, `Deleted`, `Detached`.
+
+          Для **чтения** отслеживание не нужно и стоит памяти/времени:
+
+          ```csharp
+          var list = await db.Products.AsNoTracking().ToListAsync();
+          ```
+
+          Обновление «отсоединённой» сущности (пришла из API): `db.Update(entity)` пометит все поля Modified; лучше загрузить сущность и изменить нужные поля.
+
+          ## Конкурентность
+
+          `[Timestamp] public byte[] RowVersion { get; set; }` (или `IsConcurrencyToken`) — оптимистическая блокировка: при одновременном изменении будет `DbUpdateConcurrencyException`.
+        practice:
+          - type: choice
+            q: Что вернёт `category.Products` без Include и без lazy loading?
+            options: ["Все товары категории", "Пустую коллекцию / null", "Исключение", "Первый товар"]
+            answer: 1
+          - type: fill
+            q: Загрузите товары вместе с категориями
+            code: |
+              var cats = await db.Categories.___(c => c.Products).ToListAsync();
+            answers: ["Include"]
+          - type: fill
+            q: Отключите отслеживание для запроса только на чтение
+            code: |
+              var list = await db.Products.___().ToListAsync();
+            answers: ["AsNoTracking"]
+          - type: output
+            q: Какое состояние выведет код?
+            code: |
+              var p = new Product { Name = "X" };
+              db.Products.Add(p);
+              Console.WriteLine(db.Entry(p).State);
+            answer: Added
+          - type: bug
+            q: Где проблема N+1 (с включённым lazy loading)?
+            code: |
+              var orders = await db.Orders.ToListAsync();
+              foreach (var o in orders)
+              {
+                  Console.WriteLine($"{o.Id}: {o.Customer.Name}");
+              }
+            bugLine: 4
+            fix: db.Orders.Include(o => o.Customer) или Select(o => new { o.Id, o.Customer.Name })
+            explain: Каждое обращение к o.Customer — отдельный SQL-запрос.
+        homework:
+          task: |
+            Модель «Курсы»: Student *–* Course, Course 1–* Lesson, Student 1–1 Profile. Напишите запросы: (1) курсы с уроками и студентами (Include + AsSplitQuery), (2) топ-3 курса по числу студентов (проекция), (3) список студентов без курсов, (4) изменение email студента с оптимистической блокировкой (RowVersion) и обработкой DbUpdateConcurrencyException. Включите логирование SQL и убедитесь, что нет N+1.
+          checklist:
+            - Many-to-many без явной связующей сущности
+            - Чтение через AsNoTracking
+            - Обработан конфликт конкурентности
+          solution: |
+            var full = await db.Courses.AsNoTracking()
+                .Include(c => c.Lessons).Include(c => c.Students)
+                .AsSplitQuery().ToListAsync();
+
+            var top = await db.Courses.AsNoTracking()
+                .OrderByDescending(c => c.Students.Count)
+                .Select(c => new { c.Title, Students = c.Students.Count })
+                .Take(3).ToListAsync();
+
+            var lonely = await db.Students.AsNoTracking().Where(s => !s.Courses.Any()).ToListAsync();
+
+            var st = await db.Students.FirstAsync(s => s.Id == id);
+            st.Email = newEmail;
+            try { await db.SaveChangesAsync(); }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                var entry = ex.Entries.Single();
+                var dbValues = await entry.GetDatabaseValuesAsync();
+                Console.WriteLine($"Кто-то уже изменил запись: {dbValues?["Email"]}");
+            }
+
+            // Student: [Timestamp] public byte[] RowVersion { get; set; } = [];
+      - id: cs-08-05
+        title: Dapper
+        minutes: 25
+        xp: 35
+        theory: |
+          **Dapper** — микро-ORM от Stack Overflow: вы пишете SQL сами, а Dapper быстро превращает строки в объекты. Почти так же быстро, как ручной ADO.NET, и гораздо удобнее.
+
+          ```bash
+          dotnet add package Dapper
+          ```
+
+          ```csharp
+          using Dapper;
+
+          await using var conn = new NpgsqlConnection(cs);
+
+          // множество строк → объекты (сопоставление по именам колонок)
+          var products = await conn.QueryAsync<Product>(
+              "SELECT id, name, price FROM products WHERE price > @Min ORDER BY price",
+              new { Min = 100 });
+
+          // одна строка
+          var p = await conn.QuerySingleOrDefaultAsync<Product>(
+              "SELECT * FROM products WHERE id = @id", new { id });
+
+          // скаляр
+          int count = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM products");
+
+          // изменения
+          int rows = await conn.ExecuteAsync(
+              "UPDATE products SET price = @Price WHERE id = @Id", product);
+
+          // пакетная вставка: Dapper выполнит команду для каждого элемента
+          await conn.ExecuteAsync("INSERT INTO tags(name) VALUES (@Name)", tags);
+
+          // IN-список
+          var some = await conn.QueryAsync<Product>("SELECT * FROM products WHERE id = ANY(@ids)", new { ids = new[] { 1, 2, 3 } });
+          ```
+
+          Параметры через анонимный объект — защита от SQL-инъекций.
+
+          ## Multi-mapping (JOIN)
+
+          ```csharp
+          var sql = "SELECT p.*, c.* FROM products p JOIN categories c ON c.id = p.category_id";
+          var list = await conn.QueryAsync<Product, Category, Product>(sql,
+              (p, c) => { p.Category = c; return p; },
+              splitOn: "id");
+          ```
+
+          ## Несколько результатов
+
+          ```csharp
+          using var multi = await conn.QueryMultipleAsync("SELECT * FROM a; SELECT * FROM b;");
+          var a = await multi.ReadAsync<A>();
+          var b = await multi.ReadAsync<B>();
+          ```
+
+          ## EF Core или Dapper?
+
+          | | EF Core | Dapper |
+          |---|---|---|
+          | SQL | генерируется | пишете сами |
+          | Миграции, change tracking | есть | нет |
+          | Сложные отчёты | неудобно | отлично |
+          | Скорость | хорошая | максимальная |
+
+          Частый подход: **EF Core для команд** (создание/изменение с бизнес-правилами), **Dapper для сложных чтений и отчётов** (CQRS-стиль). Также EF Core умеет `db.Database.SqlQuery<T>($"...")`.
+        practice:
+          - type: fill
+            q: Получите список объектов из запроса
+            code: |
+              var users = await conn.___<User>("SELECT * FROM users");
+            answers: ["QueryAsync"]
+          - type: choice
+            q: Как Dapper сопоставляет колонки со свойствами?
+            options: ["По порядку", "По именам колонок и свойств", "Через атрибуты обязательно", "Через XML-маппинг"]
+            answer: 1
+          - type: fill
+            q: Передайте параметр безопасно
+            code: |
+              await conn.QueryAsync<Order>("SELECT * FROM orders WHERE user_id = @UserId", new { ___ = id });
+            answers: ["UserId"]
+          - type: choice
+            q: Чего НЕТ в Dapper по сравнению с EF Core?
+            options: ["Параметризованных запросов", "Маппинга в объекты", "Change tracking и миграций", "Асинхронных методов"]
+            answer: 2
+        homework:
+          task: |
+            Для БД «Магазин» напишите `ReportRepository` на Dapper: (1) выручка по дням за период, (2) топ-10 товаров с категорией (multi-mapping), (3) карточка заказа с позициями (QueryMultiple), (4) массовая вставка 1000 позиций в транзакции. Сравните время отчёта (1) с аналогом на EF Core.
+          checklist:
+            - Все параметры через объекты
+            - Multi-mapping с splitOn
+            - Вставка в одной транзакции
+          solution: |
+            public class ReportRepository(string cs)
+            {
+                public async Task<IEnumerable<(DateTime Day, decimal Revenue)>> RevenueAsync(DateTime from, DateTime to)
+                {
+                    await using var c = new NpgsqlConnection(cs);
+                    return await c.QueryAsync<(DateTime, decimal)>(
+                        "SELECT date_trunc('day', created_at), SUM(total) FROM orders WHERE created_at BETWEEN @from AND @to GROUP BY 1 ORDER BY 1",
+                        new { from, to });
+                }
+
+                public async Task<IEnumerable<Product>> TopAsync()
+                {
+                    await using var c = new NpgsqlConnection(cs);
+                    return await c.QueryAsync<Product, Category, Product>("""
+                        SELECT p.id, p.name, p.sold, c.id, c.title
+                        FROM products p JOIN categories c ON c.id = p.category_id
+                        ORDER BY p.sold DESC LIMIT 10
+                        """, (p, cat) => { p.Category = cat; return p; }, splitOn: "id");
+                }
+
+                public async Task<(Order, IEnumerable<OrderItem>)> OrderAsync(int id)
+                {
+                    await using var c = new NpgsqlConnection(cs);
+                    using var m = await c.QueryMultipleAsync(
+                        "SELECT * FROM orders WHERE id = @id; SELECT * FROM order_items WHERE order_id = @id", new { id });
+                    return (await m.ReadSingleAsync<Order>(), await m.ReadAsync<OrderItem>());
+                }
+
+                public async Task BulkAsync(IEnumerable<OrderItem> items)
+                {
+                    await using var c = new NpgsqlConnection(cs); await c.OpenAsync();
+                    await using var tx = await c.BeginTransactionAsync();
+                    await c.ExecuteAsync("INSERT INTO order_items(order_id, product_id, qty) VALUES (@OrderId, @ProductId, @Qty)", items, tx);
+                    await tx.CommitAsync();
+                }
+            }

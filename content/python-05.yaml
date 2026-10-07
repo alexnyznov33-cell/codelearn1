@@ -1,0 +1,866 @@
+id: python
+modules:
+  - id: py-m5
+    title: ООП
+    level: Junior+
+    lessons:
+      - id: py-05-01
+        title: Классы и объекты, __init__, self
+        minutes: 25
+        xp: 30
+        theory: |
+          **Класс** — шаблон, описывающий данные (атрибуты) и поведение (методы). **Объект** (экземпляр) — конкретный представитель класса.
+
+          ```python
+          class Dog:
+              species = "Canis familiaris"     # атрибут класса — общий для всех
+
+              def __init__(self, name, age):   # конструктор
+                  self.name = name             # атрибуты экземпляра
+                  self.age = age
+
+              def bark(self):                  # метод
+                  return f"{self.name}: Гав!"
+
+          rex = Dog("Рекс", 3)
+          print(rex.bark())        # Рекс: Гав!
+          print(rex.age)           # 3
+          rex.age += 1
+          ```
+
+          - `__init__` вызывается автоматически при создании объекта;
+          - `self` — ссылка на текущий объект; Python передаёт его сам: `rex.bark()` → `Dog.bark(rex)`;
+          - имена классов — `PascalCase`.
+
+          ## Атрибуты класса и экземпляра
+
+          ```python
+          a, b = Dog("A", 1), Dog("B", 2)
+          Dog.species = "Собака"
+          print(a.species, b.species)   # обе изменились — атрибут общий
+          a.species = "Своя"            # создаёт атрибут у экземпляра a, класс не меняется
+          ```
+
+          ## Зачем ООП
+
+          Объединить данные и функции, которые с ними работают, в одну сущность. Вместо `deposit(account_dict, 100)` — `account.deposit(100)`.
+
+          > ⚠️ Не храните изменяемые значения (списки) в атрибутах класса, если они должны быть у каждого объекта свои — создавайте их в `__init__`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Counter:
+                  def __init__(self):
+                      self.n = 0
+                  def inc(self):
+                      self.n += 1
+              c = Counter()
+              c.inc(); c.inc()
+              print(c.n)
+            answer: "2"
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A:
+                  items = []
+              x, y = A(), A()
+              x.items.append(1)
+              print(y.items)
+            answer: "[1]"
+            explain: "`items` — атрибут класса, общий для всех экземпляров."
+          - type: fill
+            q: Допишите конструктор
+            code: |
+              class User:
+                  def ___(self, name):
+                      ___.name = name
+            answers: [__init__, self]
+          - type: bug
+            q: Где ошибка?
+            code: |
+              class Cat:
+                  def __init__(self, name):
+                      self.name = name
+                  def meow():
+                      return "Мяу"
+              print(Cat("Том").meow())
+            bugLine: 4
+            explain: Метод экземпляра должен принимать `self` первым параметром.
+            fix: "    def meow(self):"
+          - type: choice
+            q: Что такое `self`?
+            options: ["Ключевое слово для создания класса", "Ссылка на текущий объект", "Родительский класс", "Глобальная переменная"]
+            answer: 1
+        homework:
+          task: |
+            Создайте класс `BankAccount` с атрибутами `owner`, `balance` (по умолчанию 0) и списком `history`. Методы: `deposit(amount)`, `withdraw(amount)` (запрет ухода в минус — исключение), `statement()` — возвращает историю операций строкой. Создайте два счёта и метод `transfer_to(other, amount)`.
+          checklist:
+            - История у каждого счёта своя
+            - Некорректные суммы вызывают ValueError
+          solution: |
+            class BankAccount:
+                def __init__(self, owner, balance=0):
+                    self.owner = owner
+                    self.balance = balance
+                    self.history = []
+
+                def deposit(self, amount):
+                    if amount <= 0:
+                        raise ValueError("Сумма должна быть > 0")
+                    self.balance += amount
+                    self.history.append(f"+{amount}")
+
+                def withdraw(self, amount):
+                    if amount <= 0 or amount > self.balance:
+                        raise ValueError("Неверная сумма")
+                    self.balance -= amount
+                    self.history.append(f"-{amount}")
+
+                def transfer_to(self, other, amount):
+                    self.withdraw(amount)
+                    other.deposit(amount)
+
+                def statement(self):
+                    return f"{self.owner}: {', '.join(self.history)} | баланс {self.balance}"
+
+            a, b = BankAccount("Аня", 500), BankAccount("Боб")
+            a.transfer_to(b, 200)
+            print(a.statement()); print(b.statement())
+
+      - id: py-05-02
+        title: Инкапсуляция и property
+        minutes: 25
+        xp: 30
+        theory: |
+          **Инкапсуляция** — скрытие внутреннего состояния и доступ к нему только через продуманный интерфейс.
+
+          ## Соглашения об именах
+
+          - `name` — публичный атрибут;
+          - `_name` — «внутренний», не трогайте снаружи (соглашение, Python не запрещает);
+          - `__name` — искажение имени (name mangling): станет `_Class__name`, защищает от случайного переопределения в наследниках.
+
+          ## property — контролируемый доступ
+
+          ```python
+          class Temperature:
+              def __init__(self, celsius):
+                  self.celsius = celsius        # пройдёт через сеттер
+
+              @property
+              def celsius(self):                # геттер
+                  return self._celsius
+
+              @celsius.setter
+              def celsius(self, value):         # сеттер с валидацией
+                  if value < -273.15:
+                      raise ValueError("Ниже абсолютного нуля")
+                  self._celsius = value
+
+              @property
+              def fahrenheit(self):             # вычисляемое свойство только для чтения
+                  return self._celsius * 9 / 5 + 32
+
+          t = Temperature(25)
+          t.celsius = 30          # вызов сеттера — синтаксис как у атрибута
+          print(t.fahrenheit)     # 86.0
+          t.fahrenheit = 100      # AttributeError — сеттера нет
+          ```
+
+          Преимущество: можно начать с простого атрибута, а потом добавить проверку через `property`, не меняя код, который использует класс.
+
+          > 💡 Не пишите Java-стиль `get_name()` / `set_name()` — в Python для этого есть `property`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Box:
+                  def __init__(self, w, h):
+                      self.w, self.h = w, h
+                  @property
+                  def area(self):
+                      return self.w * self.h
+              b = Box(3, 4)
+              b.w = 5
+              print(b.area)
+            answer: "20"
+          - type: fill
+            q: Объявите сеттер для свойства price
+            code: |
+              @price.___
+              def price(self, value):
+                  self._price = value
+            answers: [setter]
+          - type: choice
+            q: Во что превратится атрибут `__secret` внутри класса `User`?
+            options: ["`secret`", "`_secret`", "`_User__secret`", "Станет недоступным совсем"]
+            answer: 2
+          - type: bug
+            q: Где ошибка, вызывающая бесконечную рекурсию?
+            code: |
+              class P:
+                  @property
+                  def name(self):
+                      return self.name
+            bugLine: 4
+            explain: Геттер обращается сам к себе. Значение нужно хранить в `self._name`.
+            fix: "        return self._name"
+          - type: choice
+            q: Что произойдёт при присваивании свойству без сеттера?
+            options: ["Значение запишется", "AttributeError", "Ничего", "Создастся новый атрибут"]
+            answer: 1
+        homework:
+          task: |
+            Перепишите `BankAccount`: баланс хранится в `_balance` и доступен только для чтения через `property balance`. Добавьте свойство `owner` с проверкой (непустая строка, обрезка пробелов) и вычисляемое свойство `is_vip` (баланс ≥ 1 000 000).
+          checklist:
+            - Баланс нельзя присвоить напрямую
+            - Валидация в сеттере owner
+          solution: |
+            class BankAccount:
+                def __init__(self, owner, balance=0):
+                    self.owner = owner
+                    self._balance = balance
+
+                @property
+                def owner(self):
+                    return self._owner
+
+                @owner.setter
+                def owner(self, value):
+                    value = str(value).strip()
+                    if not value:
+                        raise ValueError("Имя не может быть пустым")
+                    self._owner = value
+
+                @property
+                def balance(self):
+                    return self._balance
+
+                @property
+                def is_vip(self):
+                    return self._balance >= 1_000_000
+
+                def deposit(self, amount):
+                    if amount <= 0:
+                        raise ValueError("Сумма должна быть > 0")
+                    self._balance += amount
+
+      - id: py-05-03
+        title: Наследование и super()
+        minutes: 25
+        xp: 30
+        theory: |
+          **Наследование** позволяет создать класс на основе существующего: дочерний класс получает атрибуты и методы родителя и может их расширять или переопределять.
+
+          ```python
+          class Animal:
+              def __init__(self, name):
+                  self.name = name
+
+              def speak(self):
+                  return "..."
+
+              def describe(self):
+                  return f"{self.name} говорит {self.speak()}"
+
+          class Dog(Animal):
+              def speak(self):                  # переопределение
+                  return "Гав"
+
+          class Cat(Animal):
+              def __init__(self, name, indoor=True):
+                  super().__init__(name)        # вызов конструктора родителя
+                  self.indoor = indoor
+
+              def speak(self):
+                  return "Мяу"
+
+          print(Dog("Рекс").describe())   # Рекс говорит Гав
+          ```
+
+          ## Проверки
+
+          ```python
+          isinstance(rex, Animal)    # True — объект класса или наследника
+          issubclass(Dog, Animal)    # True
+          ```
+
+          ## Множественное наследование и MRO
+
+          ```python
+          class A: ...
+          class B(A): ...
+          class C(A): ...
+          class D(B, C): ...
+          D.__mro__   # D → B → C → A → object — порядок поиска методов
+          ```
+
+          `super()` идёт по MRO, а не просто к «родителю». Используйте множественное наследование осторожно — чаще для **миксинов** (маленьких классов с одной функцией).
+
+          ## Наследование vs композиция
+
+          Наследование — отношение «является» (Собака **является** Животным). Если отношение «имеет» (Машина **имеет** Двигатель) — используйте композицию: объект хранит другой объект в атрибуте.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A:
+                  def hi(self): return "A"
+              class B(A):
+                  def hi(self): return "B" + super().hi()
+              print(B().hi())
+            answer: BA
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A: pass
+              class B(A): pass
+              print(isinstance(B(), A), issubclass(A, B))
+            answer: True False
+          - type: fill
+            q: Вызовите конструктор родителя
+            code: |
+              class Student(Person):
+                  def __init__(self, name, group):
+                      ___().__init__(name)
+                      self.group = group
+            answers: [super]
+          - type: bug
+            q: Почему у Cat не будет атрибута name?
+            code: |
+              class Animal:
+                  def __init__(self, name):
+                      self.name = name
+              class Cat(Animal):
+                  def __init__(self, name, color):
+                      self.color = color
+            bugLine: 6
+            explain: Конструктор родителя не вызван — добавьте `super().__init__(name)`.
+          - type: choice
+            q: Машина и двигатель — какое отношение лучше выразить?
+            options: ["Наследование: Car(Engine)", "Композиция: у Car есть атрибут engine", "Множественное наследование", "Никакое"]
+            answer: 1
+        homework:
+          task: |
+            Создайте иерархию сотрудников: `Employee` (имя, базовая ставка, метод `salary()`), `Manager` (+ бонус 20% и список подчинённых), `Developer` (+ надбавка за каждый язык программирования 5000). Посчитайте фонд оплаты труда для списка сотрудников полиморфно — одним циклом.
+          checklist:
+            - Используется super()
+            - Нет проверок типа через if в цикле подсчёта
+          solution: |
+            class Employee:
+                def __init__(self, name, rate):
+                    self.name, self.rate = name, rate
+                def salary(self):
+                    return self.rate
+
+            class Manager(Employee):
+                def __init__(self, name, rate, team=None):
+                    super().__init__(name, rate)
+                    self.team = team or []
+                def salary(self):
+                    return super().salary() * 1.2
+
+            class Developer(Employee):
+                def __init__(self, name, rate, languages):
+                    super().__init__(name, rate)
+                    self.languages = languages
+                def salary(self):
+                    return super().salary() + 5000 * len(self.languages)
+
+            devs = [Developer("Аня", 150000, ["Python", "SQL"]), Developer("Боб", 120000, ["JS"])]
+            staff = devs + [Manager("Вика", 200000, devs)]
+            print(sum(e.salary() for e in staff))
+
+      - id: py-05-04
+        title: Полиморфизм и абстрактные классы
+        minutes: 25
+        xp: 30
+        theory: |
+          **Полиморфизм** — один интерфейс, разные реализации. Код работает с объектами через общие методы, не зная их конкретного класса.
+
+          ```python
+          shapes = [Circle(2), Square(3), Triangle(3, 4)]
+          total = sum(s.area() for s in shapes)   # каждый считает площадь по-своему
+          ```
+
+          ## Утиная типизация
+
+          «Если ходит как утка и крякает как утка — это утка». Python не требует общего родителя: достаточно, чтобы у объекта был нужный метод.
+
+          ```python
+          class File:
+              def read(self): return "данные файла"
+          class Network:
+              def read(self): return "данные из сети"
+
+          def process(source):      # примет любой объект с .read()
+              return source.read().upper()
+          ```
+
+          ## Абстрактные классы (abc)
+
+          Когда нужно **гарантировать**, что наследники реализуют методы:
+
+          ```python
+          from abc import ABC, abstractmethod
+          import math
+
+          class Shape(ABC):
+              @abstractmethod
+              def area(self) -> float: ...
+
+              def describe(self):                 # обычный метод тоже можно
+                  return f"{type(self).__name__}: {self.area():.2f}"
+
+          class Circle(Shape):
+              def __init__(self, r):
+                  self.r = r
+              def area(self):
+                  return math.pi * self.r ** 2
+
+          Shape()      # TypeError: нельзя создать экземпляр абстрактного класса
+          ```
+
+          Если наследник не реализовал все абстрактные методы — его экземпляр тоже нельзя создать.
+
+          ## Protocol — статическая утиная типизация
+
+          ```python
+          from typing import Protocol
+          class Readable(Protocol):
+              def read(self) -> str: ...
+          def process(src: Readable) -> str: ...
+          ```
+        practice:
+          - type: choice
+            q: Что произойдёт при `Shape()`, если у Shape есть `@abstractmethod`?
+            options: ["Создастся объект", "TypeError", "Вернётся None", "SyntaxError"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Duck:
+                  def sound(self): return "Кря"
+              class Robot:
+                  def sound(self): return "Бип"
+              print(" ".join(x.sound() for x in [Duck(), Robot()]))
+            answer: Кря Бип
+          - type: fill
+            q: Объявите абстрактный класс
+            code: |
+              from abc import ABC, abstractmethod
+              class Payment(___):
+                  @___
+                  def pay(self, amount): ...
+            answers: [ABC, abstractmethod]
+          - type: choice
+            q: Что такое утиная типизация?
+            options: ["Проверка типов через isinstance", "Объект подходит, если у него есть нужные методы", "Наследование от класса Duck", "Строгая типизация"]
+            answer: 1
+        homework:
+          task: |
+            Система оплаты: абстрактный класс `PaymentMethod` с методами `pay(amount)` и `refund(amount)`. Реализации: `CardPayment` (комиссия 1.5%), `CryptoPayment` (фиксированная комиссия 100), `CashPayment`. Функция `checkout(cart_total, method)` работает с любым способом оплаты и печатает чек.
+          checklist:
+            - Нельзя создать PaymentMethod напрямую
+            - checkout не знает о конкретных классах
+          solution: |
+            from abc import ABC, abstractmethod
+
+            class PaymentMethod(ABC):
+                @abstractmethod
+                def fee(self, amount: float) -> float: ...
+                def pay(self, amount):
+                    total = amount + self.fee(amount)
+                    return f"{type(self).__name__}: списано {total:.2f}"
+                def refund(self, amount):
+                    return f"Возврат {amount:.2f}"
+
+            class CardPayment(PaymentMethod):
+                def fee(self, amount): return amount * 0.015
+
+            class CryptoPayment(PaymentMethod):
+                def fee(self, amount): return 100
+
+            class CashPayment(PaymentMethod):
+                def fee(self, amount): return 0
+
+            def checkout(total, method: PaymentMethod):
+                print(method.pay(total))
+
+            for m in (CardPayment(), CryptoPayment(), CashPayment()):
+                checkout(1000, m)
+
+      - id: py-05-05
+        title: Магические методы (dunder)
+        minutes: 25
+        xp: 30
+        theory: |
+          Методы с двойным подчёркиванием (`__init__`, `__str__`...) позволяют объектам работать со встроенными операторами и функциями.
+
+          ```python
+          class Vector:
+              def __init__(self, x, y):
+                  self.x, self.y = x, y
+
+              def __repr__(self):              # для разработчика: repr(v), в консоли
+                  return f"Vector({self.x}, {self.y})"
+
+              def __str__(self):               # для пользователя: print(v), str(v)
+                  return f"({self.x}, {self.y})"
+
+              def __add__(self, other):        # v1 + v2
+                  return Vector(self.x + other.x, self.y + other.y)
+
+              def __mul__(self, k):            # v * 3
+                  return Vector(self.x * k, self.y * k)
+
+              def __eq__(self, other):         # v1 == v2
+                  return (self.x, self.y) == (other.x, other.y)
+
+              def __abs__(self):               # abs(v)
+                  return (self.x ** 2 + self.y ** 2) ** 0.5
+
+              def __bool__(self):              # if v:
+                  return bool(self.x or self.y)
+          ```
+
+          ## Контейнеры
+
+          ```python
+          class Playlist:
+              def __init__(self, songs): self.songs = list(songs)
+              def __len__(self): return len(self.songs)            # len(p)
+              def __getitem__(self, i): return self.songs[i]       # p[0], срезы, for
+              def __contains__(self, s): return s in self.songs    # "x" in p
+          ```
+
+          ## Другие
+
+          `__lt__` и др. — сравнения (сортировка); `__hash__` — использование в set/dict (если определили `__eq__`, определите и `__hash__`, иначе объект станет нехешируемым); `__call__` — вызов объекта как функции; `__enter__`/`__exit__` — контекстный менеджер; `__iter__`/`__next__` — итератор.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class P:
+                  def __init__(self, v): self.v = v
+                  def __add__(self, o): return P(self.v + o.v)
+                  def __str__(self): return f"P{self.v}"
+              print(P(2) + P(3))
+            answer: P5
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Bag:
+                  def __init__(self): self.items = [1, 2, 3]
+                  def __len__(self): return len(self.items)
+              print(len(Bag()))
+            answer: "3"
+          - type: choice
+            q: Какой метод вызывает `print(obj)`?
+            options: ["`__repr__` всегда", "`__str__` (если нет — `__repr__`)", "`__print__`", "`__format__`"]
+            answer: 1
+          - type: fill
+            q: Сделайте объект вызываемым как функция
+            code: |
+              class Multiplier:
+                  def __init__(self, k): self.k = k
+                  def ___(self, x): return x * self.k
+              double = Multiplier(2)
+              print(double(5))
+            answers: [__call__]
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A:
+                  def __init__(self, n): self.n = n
+                  def __lt__(self, o): return self.n < o.n
+                  def __repr__(self): return str(self.n)
+              print(sorted([A(3), A(1), A(2)]))
+            answer: "[1, 2, 3]"
+        homework:
+          task: |
+            Реализуйте класс `Money(amount, currency)`: `+` и `-` только для одинаковой валюты (иначе ValueError), умножение на число, сравнения (`==`, `<`), `__str__` в формате `1 500.00 RUB`, `__repr__`, `__hash__`, `__bool__` (ненулевая сумма). Отсортируйте список сумм.
+          hints:
+            - "Используйте `functools.total_ordering`, чтобы определить только `__eq__` и `__lt__`."
+            - "Формат с пробелами: `f\"{x:,.2f}\".replace(\",\", \" \")`."
+          checklist:
+            - Разные валюты нельзя сложить
+            - Объекты можно класть в set
+          solution: |
+            from functools import total_ordering
+
+            @total_ordering
+            class Money:
+                def __init__(self, amount, currency="RUB"):
+                    self.amount, self.currency = round(amount, 2), currency
+                def _check(self, o):
+                    if self.currency != o.currency:
+                        raise ValueError("Разные валюты")
+                def __add__(self, o): self._check(o); return Money(self.amount + o.amount, self.currency)
+                def __sub__(self, o): self._check(o); return Money(self.amount - o.amount, self.currency)
+                def __mul__(self, k): return Money(self.amount * k, self.currency)
+                def __eq__(self, o): return (self.amount, self.currency) == (o.amount, o.currency)
+                def __lt__(self, o): self._check(o); return self.amount < o.amount
+                def __hash__(self): return hash((self.amount, self.currency))
+                def __bool__(self): return self.amount != 0
+                def __str__(self): return f"{self.amount:,.2f}".replace(",", " ") + f" {self.currency}"
+                def __repr__(self): return f"Money({self.amount}, {self.currency!r})"
+
+            print(Money(1000) + Money(500), sorted([Money(5), Money(1), Money(3)]))
+
+      - id: py-05-06
+        title: "@classmethod, @staticmethod, dataclasses"
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Три вида методов
+
+          ```python
+          class Date:
+              def __init__(self, y, m, d):
+                  self.y, self.m, self.d = y, m, d
+
+              def iso(self):                       # обычный — работает с экземпляром (self)
+                  return f"{self.y:04}-{self.m:02}-{self.d:02}"
+
+              @classmethod
+              def from_string(cls, s):             # получает класс (cls) — альтернативный конструктор
+                  y, m, d = map(int, s.split("-"))
+                  return cls(y, m, d)
+
+              @staticmethod
+              def is_leap(year):                   # не получает ни self, ни cls — просто функция в классе
+                  return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+          d = Date.from_string("2026-10-06")
+          Date.is_leap(2024)   # True
+          ```
+
+          `cls` вместо имени класса важен для наследования: `SubDate.from_string(...)` создаст `SubDate`.
+
+          ## dataclasses
+
+          Для классов, которые в основном хранят данные, `@dataclass` генерирует `__init__`, `__repr__`, `__eq__`:
+
+          ```python
+          from dataclasses import dataclass, field
+
+          @dataclass
+          class Product:
+              name: str
+              price: float
+              tags: list[str] = field(default_factory=list)   # изменяемое значение по умолчанию
+              in_stock: bool = True
+
+              @property
+              def price_with_vat(self):
+                  return self.price * 1.2
+
+          p = Product("Мышь", 990)
+          print(p)        # Product(name='Мышь', price=990, tags=[], in_stock=True)
+          ```
+
+          Полезные параметры: `@dataclass(frozen=True)` — неизменяемый объект (можно класть в set), `order=True` — сравнения, `slots=True` — экономия памяти. Пост-обработка — метод `__post_init__`.
+        practice:
+          - type: choice
+            q: Что получает первым аргументом `@classmethod`?
+            options: ["Экземпляр (self)", "Класс (cls)", "Ничего", "Родительский класс"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              from dataclasses import dataclass
+              @dataclass
+              class P:
+                  x: int
+                  y: int = 0
+              print(P(1) == P(1, 0))
+            answer: "True"
+          - type: fill
+            q: Изменяемое значение по умолчанию в dataclass
+            code: |
+              @dataclass
+              class Order:
+                  items: list = field(___=list)
+            answers: [default_factory]
+          - type: output
+            q: Что выведет код?
+            code: |
+              class M:
+                  @staticmethod
+                  def add(a, b): return a + b
+              print(M.add(2, 3), M().add(1, 1))
+            answer: 5 2
+          - type: choice
+            q: Что даёт `@dataclass(frozen=True)`?
+            options: ["Ускоряет создание", "Запрещает изменение полей после создания", "Сохраняет в файл", "Запрещает наследование"]
+            answer: 1
+        homework:
+          task: |
+            С помощью `@dataclass` опишите `OrderItem(product, price, qty)` и `Order(id, items, created_at)`. Добавьте: свойство `total`, метод `add_item`, `@classmethod from_dict(data)` для создания заказа из словаря (как из JSON) и `@staticmethod validate_qty(qty)`.
+          checklist:
+            - created_at по умолчанию — текущее время (default_factory)
+            - from_dict создаёт вложенные OrderItem
+          solution: |
+            from dataclasses import dataclass, field
+            from datetime import datetime
+
+            @dataclass
+            class OrderItem:
+                product: str
+                price: float
+                qty: int = 1
+
+            @dataclass
+            class Order:
+                id: int
+                items: list[OrderItem] = field(default_factory=list)
+                created_at: datetime = field(default_factory=datetime.now)
+
+                @property
+                def total(self):
+                    return sum(i.price * i.qty for i in self.items)
+
+                @staticmethod
+                def validate_qty(qty):
+                    if qty <= 0:
+                        raise ValueError("qty > 0")
+
+                def add_item(self, product, price, qty=1):
+                    self.validate_qty(qty)
+                    self.items.append(OrderItem(product, price, qty))
+
+                @classmethod
+                def from_dict(cls, data):
+                    return cls(data["id"], [OrderItem(**i) for i in data["items"]])
+
+            o = Order.from_dict({"id": 1, "items": [{"product": "Мышь", "price": 990, "qty": 2}]})
+            print(o.total)
+
+      - id: py-05-07
+        title: SOLID на примерах Python
+        minutes: 30
+        xp: 35
+        theory: |
+          **SOLID** — пять принципов проектирования, которые делают код гибким и поддерживаемым. Их обязательно спрашивают на собеседованиях Middle.
+
+          ## S — Single Responsibility (единственная ответственность)
+
+          У класса одна причина для изменения.
+
+          ```python
+          # ❌ Report и считает, и сохраняет в PDF, и отправляет почту
+          # ✅ ReportBuilder, PdfExporter, EmailSender — отдельные классы
+          ```
+
+          ## O — Open/Closed (открыт для расширения, закрыт для изменения)
+
+          Новое поведение добавляется новым кодом, а не правкой старого.
+
+          ```python
+          # ❌ if kind == "card": ... elif kind == "crypto": ... — правим при каждом новом способе
+          # ✅ абстрактный PaymentMethod и новые классы-наследники
+          ```
+
+          ## L — Liskov Substitution (подстановка Лисков)
+
+          Наследника можно использовать везде, где ожидается родитель, без сюрпризов. Классический контрпример: `Square(Rectangle)`, у которого изменение ширины меняет и высоту, — ломает код, ожидающий прямоугольник.
+
+          ## I — Interface Segregation (разделение интерфейсов)
+
+          Много маленьких интерфейсов лучше одного «толстого». Не заставляйте класс реализовывать методы, которые ему не нужны (`Printer` с методом `fax()`).
+
+          ## D — Dependency Inversion (инверсия зависимостей)
+
+          Модули верхнего уровня зависят от абстракций, а не от конкретных реализаций.
+
+          ```python
+          class OrderService:
+              def __init__(self, repo: OrderRepository, notifier: Notifier):  # абстракции
+                  self.repo = repo
+                  self.notifier = notifier
+
+          # в проде: OrderService(PostgresRepo(), EmailNotifier())
+          # в тестах: OrderService(InMemoryRepo(), FakeNotifier())
+          ```
+
+          Передача зависимостей через конструктор называется **Dependency Injection** — это основа тестируемого кода.
+
+          > 💡 Принципы — не догма. Применяйте их, когда код начинает расти и меняться.
+        practice:
+          - type: choice
+            q: Класс `User` хранит данные, сохраняет себя в БД и отправляет письма. Какой принцип нарушен?
+            options: ["Open/Closed", "Single Responsibility", "Liskov", "Interface Segregation"]
+            answer: 1
+          - type: choice
+            q: Добавление нового способа оплаты требует правки цепочки if/elif в существующем коде. Что нарушено?
+            options: ["Open/Closed", "Dependency Inversion", "Single Responsibility", "Ничего"]
+            answer: 0
+          - type: choice
+            q: Что означает Dependency Injection?
+            options: ["Класс сам создаёт свои зависимости", "Зависимости передаются извне, обычно через конструктор", "Использование глобальных переменных", "Импорт модулей"]
+            answer: 1
+          - type: choice
+            q: "`Penguin(Bird)` бросает исключение в методе `fly()`. Какой принцип нарушен?"
+            options: ["Liskov Substitution", "Interface Segregation", "Single Responsibility", "Open/Closed"]
+            answer: 0
+        homework:
+          task: |
+            Отрефакторьте код по SOLID:
+
+            ```python
+            class OrderProcessor:
+                def process(self, order, payment_type):
+                    total = sum(i["price"] for i in order["items"])
+                    if payment_type == "card":
+                        print("Оплата картой", total)
+                    elif payment_type == "paypal":
+                        print("PayPal", total)
+                    with open("orders.txt", "a") as f:
+                        f.write(str(order))
+                    print("Письмо клиенту отправлено")
+            ```
+
+            Выделите: расчёт стоимости, способы оплаты (абстракция), репозиторий заказов, уведомления. Соберите `OrderProcessor` через DI и напишите фейковые реализации для проверки.
+          checklist:
+            - Новый способ оплаты добавляется без правки OrderProcessor
+            - Зависимости передаются в конструктор
+          solution: |
+            from abc import ABC, abstractmethod
+
+            class Payment(ABC):
+                @abstractmethod
+                def pay(self, amount: float) -> None: ...
+
+            class CardPayment(Payment):
+                def pay(self, amount): print("Оплата картой", amount)
+
+            class OrderRepo(ABC):
+                @abstractmethod
+                def save(self, order: dict) -> None: ...
+
+            class FileOrderRepo(OrderRepo):
+                def save(self, order):
+                    with open("orders.txt", "a", encoding="utf-8") as f:
+                        f.write(str(order) + "\n")
+
+            class Notifier(ABC):
+                @abstractmethod
+                def notify(self, order: dict) -> None: ...
+
+            class PrintNotifier(Notifier):
+                def notify(self, order): print("Письмо клиенту отправлено")
+
+            def order_total(order):
+                return sum(i["price"] for i in order["items"])
+
+            class OrderProcessor:
+                def __init__(self, repo: OrderRepo, notifier: Notifier):
+                    self.repo, self.notifier = repo, notifier
+                def process(self, order, payment: Payment):
+                    payment.pay(order_total(order))
+                    self.repo.save(order)
+                    self.notifier.notify(order)
+
+            OrderProcessor(FileOrderRepo(), PrintNotifier()).process({"items": [{"price": 100}]}, CardPayment())

@@ -1,0 +1,740 @@
+id: java
+modules:
+  - id: java-m6
+    title: Многопоточность
+    level: Middle
+    lessons:
+      - id: java-06-01
+        title: Thread и Runnable
+        minutes: 35
+        xp: 45
+        theory: |
+          **Поток (thread)** — независимая последовательность выполнения внутри процесса. Все потоки JVM делят общую кучу, но у каждого свой стек.
+
+          ```java
+          // 1. Runnable — задача без результата
+          Runnable task = () -> System.out.println("работаю в " + Thread.currentThread().getName());
+          Thread t = new Thread(task, "worker-1");
+          t.start();          // запускает НОВЫЙ поток
+          // t.run();         // ❌ выполнит код в текущем потоке
+
+          // 2. Наследование Thread (реже, т.к. занимает единственного родителя)
+          class MyThread extends Thread {
+              @Override public void run() { System.out.println("hi"); }
+          }
+          ```
+
+          ## Жизненный цикл
+
+          `NEW` → `start()` → `RUNNABLE` → (`BLOCKED` / `WAITING` / `TIMED_WAITING`) → `TERMINATED`. Повторный `start()` бросит `IllegalThreadStateException`.
+
+          ## Ожидание и прерывание
+
+          ```java
+          Thread worker = new Thread(() -> {
+              while (!Thread.currentThread().isInterrupted()) {
+                  try {
+                      Thread.sleep(100);
+                  } catch (InterruptedException e) {
+                      Thread.currentThread().interrupt(); // восстановить флаг
+                      break;
+                  }
+              }
+          });
+          worker.start();
+          worker.interrupt();   // вежливая просьба остановиться
+          worker.join();        // ждать завершения
+          ```
+
+          - `join()` — текущий поток ждёт окончания другого.
+          - `interrupt()` — выставляет флаг; блокирующие методы (`sleep`, `wait`, `join`) бросают `InterruptedException`.
+          - **Никогда не глотайте** `InterruptedException` молча — либо пробросьте, либо восстановите флаг.
+          - `setDaemon(true)` — демон-поток не мешает JVM завершиться.
+
+          ## Порядок не гарантирован
+
+          Планировщик ОС сам решает, когда какой поток выполняется. Вывод двух потоков без синхронизации может перемешиваться и меняться от запуска к запуску. Детерминированный порядок дают только `join()` и средства синхронизации.
+        practice:
+          - type: choice
+            q: Что произойдёт при вызове t.run() вместо t.start()?
+            options: ["Запустится новый поток", "Код выполнится в текущем потоке", "Ошибка компиляции", "IllegalThreadStateException"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              Thread t = new Thread(() -> System.out.print("A"));
+              System.out.print(t.getState() + " ");
+              t.start();
+              t.join();
+              System.out.print(" " + t.getState());
+            answer: NEW A TERMINATED
+          - type: fill
+            q: Дождитесь окончания потока
+            code: |
+              Thread t = new Thread(task);
+              t.___();
+              t.___();
+            answers: ["start", "join"]
+          - type: bug
+            q: Какая строка — плохая практика обработки прерывания?
+            code: |
+              try {
+                  Thread.sleep(1000);
+              } catch (InterruptedException e) {
+                  // ничего не делаем
+              }
+            bugLine: 4
+            fix: Thread.currentThread().interrupt();
+            explain: Проглоченное прерывание теряет флаг — код выше по стеку не узнает о просьбе остановиться.
+          - type: choice
+            q: Что делает setDaemon(true)?
+            options: ["Повышает приоритет", "Поток не мешает JVM завершиться", "Делает поток потокобезопасным", "Запускает поток"]
+            answer: 1
+        homework:
+          task: |
+            Напишите программу, которая запускает 4 потока, каждый считает сумму чисел своего диапазона (1–250 000, 250 001–500 000 и т.д.) в свой элемент массива `long[] parts`. Главный поток ждёт всех через `join()` и печатает общую сумму. Добавьте поток-«тикер», который раз в 50 мс печатает «...», и остановите его через `interrupt()` после подсчёта.
+          checklist:
+            - Потоки запускаются через start()
+            - Главный поток ждёт join()
+            - Каждый поток пишет только в свою ячейку
+            - Тикер корректно завершается по interrupt()
+          solution: |
+            public class ParallelSum {
+                public static void main(String[] args) throws InterruptedException {
+                    int n = 1_000_000, k = 4;
+                    long[] parts = new long[k];
+                    Thread[] ts = new Thread[k];
+                    for (int i = 0; i < k; i++) {
+                        final int idx = i;
+                        ts[i] = new Thread(() -> {
+                            long from = (long) idx * n / k + 1, to = (long) (idx + 1) * n / k;
+                            long s = 0;
+                            for (long x = from; x <= to; x++) s += x;
+                            parts[idx] = s;
+                        });
+                    }
+                    Thread ticker = new Thread(() -> {
+                        try {
+                            while (true) { System.out.println("..."); Thread.sleep(50); }
+                        } catch (InterruptedException e) {
+                            System.out.println("тикер остановлен");
+                        }
+                    });
+                    ticker.start();
+                    for (Thread t : ts) t.start();
+                    for (Thread t : ts) t.join();
+                    ticker.interrupt();
+                    ticker.join();
+                    long total = 0;
+                    for (long p : parts) total += p;
+                    System.out.println("Сумма: " + total); // 500000500000
+                }
+            }
+      - id: java-06-02
+        title: synchronized и volatile
+        minutes: 40
+        xp: 45
+        theory: |
+          Когда несколько потоков **читают и пишут** общие данные, возникают **гонки (race condition)**. `count++` — это три операции (прочитать, увеличить, записать), и два потока могут потерять обновления.
+
+          ```java
+          class Counter {
+              private int count;
+              public synchronized void inc() { count++; }   // монитор this
+              public synchronized int get() { return count; }
+          }
+          ```
+
+          ## synchronized
+
+          - Метод `synchronized` захватывает **монитор** объекта (`this`), статический — монитор класса.
+          - Блок `synchronized (lock) { ... }` — точнее контролирует область и объект блокировки.
+          - Даёт **взаимное исключение** и **видимость**: изменения, сделанные до выхода из блока, видны потоку, который потом войдёт в блок с тем же монитором (отношение *happens-before*).
+          - Мониторы **реентерабельны**: поток может повторно войти в свой же замок.
+
+          ```java
+          private final Object lock = new Object();
+          public void transfer(int x) {
+              synchronized (lock) { balance -= x; other += x; }
+          }
+          ```
+
+          ## volatile
+
+          `volatile` гарантирует **видимость** и запрет переупорядочивания, но **не атомарность** составных операций.
+
+          ```java
+          private volatile boolean running = true;
+          public void stop() { running = false; }      // другой поток увидит сразу
+          public void loop() { while (running) { /* ... */ } }
+          ```
+
+          Подходит для флагов и публикации неизменяемых объектов. Для `count++` — не подходит.
+
+          ## Deadlock
+
+          Два потока захватывают замки в разном порядке и ждут друг друга вечно. Лечение: **единый порядок захвата**, `tryLock` с таймаутом (`ReentrantLock`), минимизация областей блокировки.
+
+          ## wait/notify и ReentrantLock
+
+          Низкоуровневые `wait()/notifyAll()` вызываются только внутри `synchronized` и всегда в цикле `while (!условие) wait();`. В новом коде чаще используют `java.util.concurrent`: `ReentrantLock`, `Condition`, `BlockingQueue`.
+        practice:
+          - type: choice
+            q: Что гарантирует volatile?
+            options: ["Атомарность count++", "Видимость изменений между потоками", "Взаимное исключение", "Отсутствие deadlock"]
+            answer: 1
+          - type: bug
+            q: Какая строка содержит гонку?
+            code: |
+              class Stats {
+                  private volatile int hits;
+                  public void hit() {
+                      hits++;
+                  }
+              }
+            bugLine: 4
+            fix: использовать AtomicInteger или synchronized
+            explain: volatile не делает инкремент атомарным — обновления теряются.
+          - type: fill
+            q: Защитите блок общим замком
+            code: |
+              private final Object lock = new Object();
+              void add(int x) {
+                  ___ (lock) {
+                      total += x;
+                  }
+              }
+            answers: ["synchronized"]
+          - type: choice
+            q: Как надёжнее всего избежать deadlock при захвате двух замков?
+            options: ["Использовать volatile", "Всегда захватывать замки в одном порядке", "Вызывать Thread.yield()", "Увеличить приоритет потока"]
+            answer: 1
+          - type: choice
+            q: Как правильно ждать условия через wait()?
+            options: ["if (!ready) wait();", "while (!ready) wait();", "wait() без synchronized", "Thread.sleep вместо wait"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте класс `BankAccount` с методами `deposit`, `withdraw` (без ухода в минус — бросать исключение) и статический `transfer(from, to, amount)`, который не может вызвать deadlock (захват замков по возрастанию id счёта). Запустите 10 потоков по 1000 случайных переводов между 3 счетами и проверьте, что общая сумма не изменилась.
+          checklist:
+            - Методы изменения баланса синхронизированы
+            - transfer захватывает замки в фиксированном порядке
+            - Итоговая сумма совпадает с исходной
+          solution: |
+            import java.util.concurrent.ThreadLocalRandom;
+
+            class BankAccount {
+                private final int id;
+                private long balance;
+                BankAccount(int id, long balance) { this.id = id; this.balance = balance; }
+                synchronized void deposit(long x) { balance += x; }
+                synchronized void withdraw(long x) {
+                    if (x > balance) throw new IllegalStateException("Недостаточно средств");
+                    balance -= x;
+                }
+                synchronized long balance() { return balance; }
+
+                static void transfer(BankAccount a, BankAccount b, long x) {
+                    BankAccount first = a.id < b.id ? a : b, second = first == a ? b : a;
+                    synchronized (first) {
+                        synchronized (second) {
+                            if (a.balance < x) return;
+                            a.balance -= x; b.balance += x;
+                        }
+                    }
+                }
+
+                public static void main(String[] args) throws InterruptedException {
+                    BankAccount[] acc = { new BankAccount(1, 1000), new BankAccount(2, 1000), new BankAccount(3, 1000) };
+                    Thread[] ts = new Thread[10];
+                    for (int i = 0; i < ts.length; i++) {
+                        ts[i] = new Thread(() -> {
+                            var r = ThreadLocalRandom.current();
+                            for (int j = 0; j < 1000; j++) {
+                                int x = r.nextInt(3), y = (x + 1 + r.nextInt(2)) % 3;
+                                transfer(acc[x], acc[y], r.nextInt(50));
+                            }
+                        });
+                        ts[i].start();
+                    }
+                    for (Thread t : ts) t.join();
+                    long sum = 0;
+                    for (BankAccount a : acc) sum += a.balance();
+                    System.out.println("Итого: " + sum); // 3000
+                }
+            }
+      - id: java-06-03
+        title: ExecutorService и пулы потоков
+        minutes: 35
+        xp: 45
+        theory: |
+          Создавать `new Thread()` на каждую задачу дорого и неуправляемо. **ExecutorService** держит пул потоков и очередь задач.
+
+          ```java
+          ExecutorService pool = Executors.newFixedThreadPool(4);
+
+          pool.submit(() -> System.out.println("Runnable"));
+          Future<Integer> f = pool.submit(() -> 6 * 7);   // Callable<Integer>
+
+          Integer result = f.get();                  // блокирует до результата
+          Integer r2 = f.get(1, TimeUnit.SECONDS);   // с таймаутом
+
+          pool.shutdown();                           // новые задачи не принимаются
+          pool.awaitTermination(10, TimeUnit.SECONDS);
+          ```
+
+          С Java 19 `ExecutorService` реализует `AutoCloseable`:
+
+          ```java
+          try (var exec = Executors.newFixedThreadPool(4)) {
+              exec.submit(task);
+          } // close() = shutdown + ожидание
+          ```
+
+          ## Виды пулов
+
+          | Фабрика | Поведение |
+          |---|---|
+          | `newFixedThreadPool(n)` | n потоков, неограниченная очередь |
+          | `newCachedThreadPool()` | создаёт потоки по требованию, переиспользует простаивающие |
+          | `newSingleThreadExecutor()` | один поток, задачи строго по порядку |
+          | `newScheduledThreadPool(n)` | задержки и периодические задачи |
+          | `newVirtualThreadPerTaskExecutor()` | виртуальный поток на задачу (Java 21) |
+
+          ## invokeAll и Callable
+
+          ```java
+          List<Callable<Integer>> jobs = List.of(() -> 1, () -> 2, () -> 3);
+          int sum = 0;
+          for (Future<Integer> fut : pool.invokeAll(jobs)) sum += fut.get();
+          ```
+
+          Исключение внутри задачи не теряется: `get()` бросит `ExecutionException`, а исходная причина — в `getCause()`.
+
+          ## Тонкая настройка
+
+          В продакшене часто создают `ThreadPoolExecutor` вручную: ограниченная очередь (`ArrayBlockingQueue`), понятные имена потоков через `ThreadFactory` и политика отказа (`CallerRunsPolicy`). Неограниченная очередь при перегрузке приводит к `OutOfMemoryError`.
+
+          Размер пула: для CPU-задач ≈ число ядер (`Runtime.getRuntime().availableProcessors()`), для I/O — больше (или виртуальные потоки).
+        practice:
+          - type: choice
+            q: Чем Callable отличается от Runnable?
+            options: ["Callable возвращает результат и может бросать checked-исключения", "Callable быстрее", "Runnable возвращает Future", "Ничем"]
+            answer: 0
+          - type: output
+            q: Что выведет код?
+            code: |
+              try (var pool = Executors.newSingleThreadExecutor()) {
+                  Future<Integer> a = pool.submit(() -> 10);
+                  Future<Integer> b = pool.submit(() -> 20);
+                  System.out.println(a.get() + b.get());
+              }
+            answer: "30"
+          - type: fill
+            q: Корректно завершите пул
+            code: |
+              pool.___();
+              pool.___(5, TimeUnit.SECONDS);
+            answers: ["shutdown", "awaitTermination"]
+          - type: choice
+            q: Каким исключением get() сообщит об ошибке внутри задачи?
+            options: ["RuntimeException", "ExecutionException", "InterruptedException", "TimeoutException"]
+            answer: 1
+          - type: order
+            q: Расставьте шаги работы с пулом
+            lines:
+              - ExecutorService pool = Executors.newFixedThreadPool(4);
+              - Future<String> f = pool.submit(() -> load());
+              - String data = f.get();
+              - pool.shutdown();
+        homework:
+          task: |
+            Напишите «проверялку ссылок»: список из 20 URL-строк, для каждой задача `Callable<String>`, которая имитирует запрос (`Thread.sleep` случайной длительности 100–500 мс) и возвращает «url → OK/FAIL». Выполните все через пул из 5 потоков с `invokeAll`, выведите результаты и общее время. Сравните со временем последовательного выполнения.
+          checklist:
+            - Используется ExecutorService и Callable
+            - Пул закрывается
+            - Время параллельной версии заметно меньше
+          solution: |
+            import java.util.*;
+            import java.util.concurrent.*;
+
+            public class LinkChecker {
+                static String check(String url) throws InterruptedException {
+                    var r = ThreadLocalRandom.current();
+                    Thread.sleep(100 + r.nextInt(400));
+                    return url + " → " + (r.nextInt(10) < 8 ? "OK" : "FAIL");
+                }
+                public static void main(String[] args) throws Exception {
+                    List<String> urls = new ArrayList<>();
+                    for (int i = 1; i <= 20; i++) urls.add("https://site" + i + ".ru");
+                    List<Callable<String>> jobs = urls.stream().<Callable<String>>map(u -> () -> check(u)).toList();
+
+                    long t0 = System.currentTimeMillis();
+                    try (ExecutorService pool = Executors.newFixedThreadPool(5)) {
+                        for (Future<String> f : pool.invokeAll(jobs)) System.out.println(f.get());
+                    }
+                    long par = System.currentTimeMillis() - t0;
+
+                    t0 = System.currentTimeMillis();
+                    for (String u : urls) check(u);
+                    long seq = System.currentTimeMillis() - t0;
+                    System.out.printf("Параллельно: %d мс, последовательно: %d мс%n", par, seq);
+                }
+            }
+      - id: java-06-04
+        title: CompletableFuture
+        minutes: 40
+        xp: 50
+        theory: |
+          `Future.get()` блокирует поток. **CompletableFuture** позволяет строить **цепочки асинхронных шагов** без блокировок — как Promise в JavaScript.
+
+          ```java
+          CompletableFuture<String> cf = CompletableFuture
+              .supplyAsync(() -> loadUser(42))          // в ForkJoinPool.commonPool()
+              .thenApply(user -> user.name())            // преобразовать результат
+              .thenApply(String::toUpperCase);
+
+          cf.thenAccept(System.out::println);           // потребить
+          String name = cf.join();                      // дождаться (без checked-исключений)
+          ```
+
+          ## Основные методы
+
+          | Метод | Аналог | Назначение |
+          |---|---|---|
+          | `thenApply(f)` | map | T → R |
+          | `thenCompose(f)` | flatMap | T → CompletableFuture<R> |
+          | `thenCombine(other, f)` | zip | объединить два результата |
+          | `thenAccept(c)` | — | потребить результат |
+          | `allOf(...)` / `anyOf(...)` | Promise.all / race | ждать все / первый |
+          | `exceptionally(f)` | catch | значение по умолчанию при ошибке |
+          | `handle((v, ex) -> ...)` | — | обработать и успех, и ошибку |
+          | `orTimeout`, `completeOnTimeout` | — | таймауты (Java 9+) |
+
+          ```java
+          var price = CompletableFuture.supplyAsync(() -> getPrice("A"));
+          var rate  = CompletableFuture.supplyAsync(() -> getRate("USD"));
+          CompletableFuture<Double> total = price.thenCombine(rate, (p, r) -> p * r);
+
+          CompletableFuture<Integer> safe = CompletableFuture
+              .supplyAsync(() -> Integer.parseInt("abc"))
+              .exceptionally(ex -> -1);   // -1
+          ```
+
+          ## Свой пул
+
+          По умолчанию используется общий `ForkJoinPool`. Для блокирующего I/O передавайте свой executor вторым аргументом: `supplyAsync(task, ioPool)`. Методы с суффиксом `Async` (`thenApplyAsync`) выполняют шаг в пуле, а не в потоке, завершившем предыдущий этап.
+
+          ## join vs get
+
+          `get()` бросает checked `ExecutionException`, `join()` — unchecked `CompletionException`. Для потоков/лямбд удобнее `join()`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int r = CompletableFuture.supplyAsync(() -> 5)
+                  .thenApply(x -> x * 2)
+                  .thenApply(x -> x + 1)
+                  .join();
+              System.out.println(r);
+            answer: "11"
+          - type: choice
+            q: Какой метод аналогичен flatMap (функция возвращает CompletableFuture)?
+            options: ["thenApply", "thenCompose", "thenAccept", "thenRun"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              var a = CompletableFuture.supplyAsync(() -> 3);
+              var b = CompletableFuture.supplyAsync(() -> 4);
+              System.out.println(a.thenCombine(b, (x, y) -> x * y).join());
+            answer: "12"
+          - type: fill
+            q: Верните 0, если задача упала
+            code: |
+              CompletableFuture.supplyAsync(() -> riskyCall())
+                  .___(ex -> 0);
+            answers: ["exceptionally"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              int v = CompletableFuture.supplyAsync(() -> Integer.parseInt("x"))
+                  .handle((res, ex) -> ex == null ? res : -1)
+                  .join();
+              System.out.println(v);
+            answer: "-1"
+        homework:
+          task: |
+            Смоделируйте страницу товара: три независимых «сервиса» — `getProduct(id)`, `getPrice(id)`, `getReviews(id)` (каждый спит 300 мс). Получите их параллельно через `CompletableFuture` с собственным пулом, объедините в `ProductPage` (record) и выведите. Если отзывы не пришли за 200 мс — подставить пустой список (`completeOnTimeout`). Общее время должно быть ≈300 мс, а не 900.
+          checklist:
+            - Три запроса идут параллельно
+            - Используется allOf или thenCombine
+            - Есть таймаут с запасным значением
+          solution: |
+            import java.util.*;
+            import java.util.concurrent.*;
+
+            public class ProductPageDemo {
+                record ProductPage(String name, double price, List<String> reviews) {}
+                static void sleep(int ms) { try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
+                static String getProduct(int id) { sleep(300); return "Ноутбук #" + id; }
+                static double getPrice(int id) { sleep(300); return 79990; }
+                static List<String> getReviews(int id) { sleep(300); return List.of("Отлично", "Тяжеловат"); }
+
+                public static void main(String[] args) {
+                    long t0 = System.currentTimeMillis();
+                    try (ExecutorService io = Executors.newFixedThreadPool(3)) {
+                        var name = CompletableFuture.supplyAsync(() -> getProduct(1), io);
+                        var price = CompletableFuture.supplyAsync(() -> getPrice(1), io);
+                        var reviews = CompletableFuture.supplyAsync(() -> getReviews(1), io)
+                            .completeOnTimeout(List.of(), 200, TimeUnit.MILLISECONDS);
+                        ProductPage page = CompletableFuture.allOf(name, price, reviews)
+                            .thenApply(v -> new ProductPage(name.join(), price.join(), reviews.join()))
+                            .join();
+                        System.out.println(page);
+                    }
+                    System.out.println("Время: " + (System.currentTimeMillis() - t0) + " мс");
+                }
+            }
+      - id: java-06-05
+        title: Concurrent-коллекции и атомики
+        minutes: 35
+        xp: 45
+        theory: |
+          Обычные `HashMap`/`ArrayList` не потокобезопасны. `Collections.synchronizedMap` блокирует всю коллекцию целиком — медленно. Пакет `java.util.concurrent` даёт специализированные структуры.
+
+          ## Атомики
+
+          ```java
+          AtomicInteger counter = new AtomicInteger();
+          counter.incrementAndGet();          // атомарно ++, вернёт новое
+          counter.getAndAdd(5);               // вернёт старое
+          counter.updateAndGet(x -> x * 2);
+          counter.compareAndSet(10, 0);       // CAS: если 10 → 0
+
+          LongAdder hits = new LongAdder();   // быстрее AtomicLong при высокой конкуренции
+          hits.increment();
+          long total = hits.sum();
+          ```
+
+          Атомики работают на **CAS** (compare-and-swap) без блокировок.
+
+          ## ConcurrentHashMap
+
+          ```java
+          ConcurrentHashMap<String, Integer> freq = new ConcurrentHashMap<>();
+          freq.merge(word, 1, Integer::sum);                 // атомарный счётчик
+          freq.computeIfAbsent(key, k -> new ArrayList<>()); // атомарная инициализация
+          ```
+
+          ❌ Антипаттерн «проверить-затем-действовать»: `if (!map.containsKey(k)) map.put(k, v);` — между проверкой и вставкой может вклиниться другой поток. Используйте `putIfAbsent`, `merge`, `compute*`.
+
+          ## Другие структуры
+
+          | Класс | Когда использовать |
+          |---|---|
+          | `CopyOnWriteArrayList` | много чтений, редкие записи (слушатели событий) |
+          | `ConcurrentLinkedQueue` | неблокирующая очередь |
+          | `ArrayBlockingQueue`, `LinkedBlockingQueue` | producer–consumer: `put()` ждёт места, `take()` ждёт элемента |
+          | `ConcurrentSkipListMap` | отсортированная конкурентная карта |
+
+          ## Синхронизаторы
+
+          - `CountDownLatch(n)` — ждать, пока n событий не произойдут (`countDown()`/`await()`).
+          - `Semaphore(n)` — не больше n потоков одновременно.
+          - `CyclicBarrier` — потоки ждут друг друга в точке сбора.
+
+          ```java
+          BlockingQueue<String> q = new ArrayBlockingQueue<>(100);
+          // производитель: q.put(item);   потребитель: String s = q.take();
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              AtomicInteger a = new AtomicInteger(5);
+              int x = a.getAndIncrement();
+              int y = a.incrementAndGet();
+              System.out.println(x + " " + y);
+            answer: 5 7
+          - type: bug
+            q: Какая строка не атомарна при многопоточном доступе?
+            code: |
+              ConcurrentHashMap<String, Integer> m = new ConcurrentHashMap<>();
+              void count(String w) {
+                  Integer old = m.get(w);
+                  m.put(w, old == null ? 1 : old + 1);
+              }
+            bugLine: 4
+            fix: m.merge(w, 1, Integer::sum);
+            explain: get и put — две отдельные операции, между ними другой поток может изменить значение.
+          - type: choice
+            q: Какая коллекция лучше для списка слушателей событий (частое чтение, редкое добавление)?
+            options: ["ArrayList", "CopyOnWriteArrayList", "LinkedList", "Vector"]
+            answer: 1
+          - type: fill
+            q: Посчитайте слова атомарно
+            code: |
+              freq.___(word, 1, Integer::sum);
+            answers: ["merge"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              AtomicInteger a = new AtomicInteger(10);
+              boolean ok1 = a.compareAndSet(5, 0);
+              boolean ok2 = a.compareAndSet(10, 1);
+              System.out.println(ok1 + " " + ok2 + " " + a.get());
+            answer: false true 1
+        homework:
+          task: |
+            Реализуйте producer–consumer: 2 потока-производителя генерируют по 500 «заказов» (record Order(int id, int sum)) в `ArrayBlockingQueue` ёмкостью 50; 3 потребителя забирают заказы, накапливают выручку в `LongAdder` и количество по сумме-диапазону в `ConcurrentHashMap<String, Integer>` («до 1000», «1000+»). Завершение потребителей — через «ядовитую пилюлю» (специальный заказ id = -1). Используйте `CountDownLatch`, чтобы main дождался всех потребителей.
+          checklist:
+            - Используется BlockingQueue put/take
+            - Статистика собирается атомарно (merge/LongAdder)
+            - Потребители корректно завершаются
+          solution: |
+            import java.util.concurrent.*;
+            import java.util.concurrent.atomic.LongAdder;
+
+            public class Orders {
+                record Order(int id, int sum) {}
+                static final Order POISON = new Order(-1, 0);
+
+                public static void main(String[] args) throws InterruptedException {
+                    BlockingQueue<Order> q = new ArrayBlockingQueue<>(50);
+                    LongAdder revenue = new LongAdder();
+                    ConcurrentHashMap<String, Integer> buckets = new ConcurrentHashMap<>();
+                    int consumers = 3;
+                    CountDownLatch done = new CountDownLatch(consumers);
+
+                    Runnable producer = () -> {
+                        var r = ThreadLocalRandom.current();
+                        try { for (int i = 0; i < 500; i++) q.put(new Order(i, r.nextInt(2000))); }
+                        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    };
+                    Runnable consumer = () -> {
+                        try {
+                            while (true) {
+                                Order o = q.take();
+                                if (o == POISON) break;
+                                revenue.add(o.sum());
+                                buckets.merge(o.sum() < 1000 ? "до 1000" : "1000+", 1, Integer::sum);
+                            }
+                        } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                        finally { done.countDown(); }
+                    };
+                    for (int i = 0; i < consumers; i++) new Thread(consumer).start();
+                    Thread p1 = new Thread(producer), p2 = new Thread(producer);
+                    p1.start(); p2.start(); p1.join(); p2.join();
+                    for (int i = 0; i < consumers; i++) q.put(POISON);
+                    done.await();
+                    System.out.println("Выручка: " + revenue.sum() + ", " + buckets);
+                }
+            }
+      - id: java-06-06
+        title: Виртуальные потоки Java 21
+        minutes: 35
+        xp: 50
+        theory: |
+          Платформенный поток = поток ОС: ~1 МБ стека, тысячи — уже тяжело. **Виртуальные потоки** (Project Loom, Java 21) — лёгкие потоки, которыми управляет JVM. Их можно создавать **миллионами**.
+
+          ```java
+          Thread vt = Thread.ofVirtual().name("v-1").start(() -> System.out.println("hi"));
+          Thread.startVirtualThread(() -> work());
+
+          try (var exec = Executors.newVirtualThreadPerTaskExecutor()) {
+              for (int i = 0; i < 100_000; i++) {
+                  int id = i;
+                  exec.submit(() -> {
+                      Thread.sleep(1000);   // блокировка «дешёвая»
+                      return id;
+                  });
+              }
+          } // ~1 секунда на 100 000 задач
+          ```
+
+          ## Как это работает
+
+          Виртуальный поток выполняется на **потоке-носителе** (carrier) из небольшого ForkJoinPool. Когда он блокируется на I/O, `sleep`, `BlockingQueue` и т.п., JVM **снимает** его с носителя (unmount), освобождая ядро для других. Пишем простой блокирующий код — получаем масштабируемость асинхронного.
+
+          ## Когда полезно
+
+          - ✅ Много **I/O-задач**: HTTP-запросы, БД, файлы — «поток на запрос».
+          - ❌ CPU-интенсивные вычисления — быстрее не станут, ядер столько же.
+
+          ## Правила
+
+          1. **Не объединяйте в пулы** — создавайте новый поток на каждую задачу.
+          2. Ограничивайте доступ к ресурсам через `Semaphore`, а не размером пула.
+          3. **Pinning**: в Java 21 блокировка внутри `synchronized` «прибивает» виртуальный поток к носителю. Для долгих операций в критической секции используйте `ReentrantLock` (в Java 24 проблема в основном устранена).
+          4. Осторожно с `ThreadLocal` — миллион потоков = миллион копий. Альтернатива — `ScopedValue` (preview).
+
+          ## Spring Boot
+
+          В Spring Boot 3.2+ достаточно настройки:
+
+          ```properties
+          spring.threads.virtual.enabled=true
+          ```
+
+          и Tomcat станет обрабатывать каждый запрос в виртуальном потоке.
+        practice:
+          - type: choice
+            q: Для каких задач виртуальные потоки дают выигрыш?
+            options: ["CPU-интенсивные вычисления", "Много блокирующих I/O-операций", "Работа с GPU", "Только для GUI"]
+            answer: 1
+          - type: fill
+            q: Создайте executor «виртуальный поток на задачу»
+            code: |
+              try (var exec = Executors.___()) {
+                  exec.submit(task);
+              }
+            answers: ["newVirtualThreadPerTaskExecutor"]
+          - type: choice
+            q: Как правильно ограничить 10 одновременных запросов к БД при виртуальных потоках?
+            options: ["Пул из 10 виртуальных потоков", "Semaphore(10)", "synchronized на всём методе", "Thread.sleep"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              Thread t = Thread.ofVirtual().unstarted(() -> {});
+              System.out.println(t.isVirtual() + " " + t.getState());
+            answer: true NEW
+          - type: choice
+            q: Что такое pinning в Java 21?
+            options: ["Закрепление потока за ядром через API", "Виртуальный поток не может отсоединиться от носителя при блокировке внутри synchronized", "Утечка памяти", "Запрет прерывания"]
+            answer: 1
+        homework:
+          task: |
+            Сравните производительность: 10 000 задач, каждая «ходит в сеть» (`Thread.sleep(200)`) и возвращает число. Выполните (1) на `newFixedThreadPool(100)`, (2) на `newVirtualThreadPerTaskExecutor()`. Замерьте время. Затем ограничьте виртуальную версию семафором на 500 одновременных «запросов» и снова замерьте.
+          checklist:
+            - Оба варианта дают одинаковую сумму результатов
+            - Виртуальные потоки заметно быстрее (≈0.2 с против ≈20 с)
+            - Ограничение сделано через Semaphore
+          solution: |
+            import java.util.*;
+            import java.util.concurrent.*;
+
+            public class VirtualBench {
+                static Semaphore limit = new Semaphore(500);
+                static int call(int i, boolean limited) throws InterruptedException {
+                    if (limited) limit.acquire();
+                    try { Thread.sleep(200); return i; }
+                    finally { if (limited) limit.release(); }
+                }
+                static long run(ExecutorService exec, boolean limited) throws Exception {
+                    long t0 = System.currentTimeMillis(), sum = 0;
+                    try (exec) {
+                        List<Future<Integer>> fs = new ArrayList<>();
+                        for (int i = 0; i < 10_000; i++) { int id = i; fs.add(exec.submit(() -> call(id, limited))); }
+                        for (var f : fs) sum += f.get();
+                    }
+                    System.out.println("сумма " + sum);
+                    return System.currentTimeMillis() - t0;
+                }
+                public static void main(String[] args) throws Exception {
+                    System.out.println("fixed(100): " + run(Executors.newFixedThreadPool(100), false) + " мс");
+                    System.out.println("virtual: " + run(Executors.newVirtualThreadPerTaskExecutor(), false) + " мс");
+                    System.out.println("virtual+semaphore: " + run(Executors.newVirtualThreadPerTaskExecutor(), true) + " мс");
+                }
+            }

@@ -1,0 +1,728 @@
+id: cpp
+title: C++
+short: C++
+lang: cpp
+color: "#00599c"
+description: Высокая производительность — игры, системное ПО, движки, embedded и HFT.
+modules:
+  - id: cpp-m1
+    title: Основы C++
+    level: Junior
+    lessons:
+      - id: cpp-01-01
+        title: Компиляция и первая программа
+        minutes: 15
+        xp: 15
+        theory: |
+          **C++** — компилируемый язык: исходный код превращается компилятором в машинный код, поэтому программы работают очень быстро.
+
+          ## Инструменты
+
+          - Компилятор: **g++** (GCC), **clang++** или **MSVC** (Visual Studio).
+          - IDE: Visual Studio, CLion или VS Code с расширением C/C++.
+          - Сборка из консоли:
+
+          ```
+          g++ -std=c++20 -Wall -o hello main.cpp
+          ./hello
+          ```
+
+          ## Первая программа
+
+          ```cpp
+          #include <iostream>
+
+          int main() {
+              std::cout << "Привет, мир!" << std::endl;
+              return 0;
+          }
+          ```
+
+          - `#include <iostream>` — подключает библиотеку ввода-вывода (директива препроцессора);
+          - `int main()` — точка входа, возвращает код завершения (0 — успех);
+          - `std::cout` — поток вывода, `<<` — оператор вывода;
+          - `std::endl` — перевод строки со сбросом буфера (часто достаточно `"\n"`).
+
+          ## Пространство имён std
+
+          Всё из стандартной библиотеки лежит в `std`. Можно писать `using namespace std;`, но в больших проектах и заголовочных файлах так делать **не рекомендуется** — это засоряет глобальную область имён.
+
+          ## Этапы сборки
+
+          1. **Препроцессор** обрабатывает `#include`, `#define`.
+          2. **Компилятор** превращает каждый `.cpp` в объектный файл.
+          3. **Компоновщик (линкер)** собирает объектные файлы в исполняемый.
+        practice:
+          - type: choice
+            q: Что делает директива `#include <iostream>`?
+            options: ["Запускает программу", "Подключает заголовок библиотеки ввода-вывода", "Объявляет функцию main", "Создаёт пространство имён"]
+            answer: 1
+          - type: output
+            q: Что выведет программа?
+            code: |
+              #include <iostream>
+              int main() {
+                  std::cout << "A" << "B" << 1 + 2;
+              }
+            answer: AB3
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              #include <iostream>
+              int main() {
+                  cout << "Hello";
+                  return 0;
+              }
+            bugLine: 3
+            explain: "`cout` находится в пространстве имён `std` — нужно `std::cout` или `using namespace std;`."
+            fix: "    std::cout << \"Hello\";"
+          - type: choice
+            q: Что означает `return 0;` в `main`?
+            options: ["Программа завершилась успешно", "Ошибка", "Бесконечный цикл", "Вывод нуля на экран"]
+            answer: 0
+          - type: order
+            q: Расставьте этапы сборки программы
+            lines:
+              - Препроцессор
+              - Компиляция
+              - Компоновка (линковка)
+              - Запуск исполняемого файла
+        homework:
+          task: |
+            Установите компилятор (на Windows — Visual Studio Community или MSYS2 с g++). Скомпилируйте программу, выводящую визитку из 4 строк, с флагами `-std=c++20 -Wall`. Специально удалите `;` в одной строке и прочитайте сообщение компилятора.
+          checklist:
+            - Программа компилируется без предупреждений
+            - Понимаю, как читать сообщение об ошибке компилятора
+          solution: |
+            #include <iostream>
+
+            int main() {
+                std::cout << "==========\n";
+                std::cout << "Имя: Алекс\n";
+                std::cout << "Язык: C++\n";
+                std::cout << "==========\n";
+                return 0;
+            }
+
+      - id: cpp-01-02
+        title: Типы данных и переменные
+        minutes: 20
+        xp: 20
+        theory: |
+          ## Основные типы
+
+          ```cpp
+          int age = 25;                // обычно 4 байта
+          long long big = 9'000'000'000LL;
+          unsigned int count = 10u;    // только неотрицательные
+          double price = 99.9;         // 8 байт
+          float f = 3.14f;
+          char letter = 'A';           // 1 байт, хранит код символа
+          bool ok = true;
+          std::string name = "Анна";   // нужен #include <string>
+          ```
+
+          Размер типа: `sizeof(int)`. Точные размеры: `int32_t`, `int64_t` из `<cstdint>`.
+
+          ## Инициализация
+
+          ```cpp
+          int a = 5;     // копирующая
+          int b(5);      // прямая
+          int c{5};      // универсальная (рекомендуется) — запрещает сужение
+          int d{};       // 0
+          int e;         // ⚠️ локальная переменная без инициализации — мусор!
+          ```
+
+          `int x{3.7};` — ошибка компиляции (сужение), а `int x = 3.7;` молча даст 3.
+
+          ## auto и const
+
+          ```cpp
+          auto n = 10;        // int
+          auto pi = 3.14;     // double
+          const int MAX = 100;        // нельзя изменить
+          constexpr int SIZE = 16;    // вычисляется при компиляции
+          ```
+
+          ## Преобразования
+
+          ```cpp
+          double d = 7.9;
+          int i = static_cast<int>(d);    // 7 — явное приведение в стиле C++
+          int n = std::stoi("42");        // строка → число
+          std::string s = std::to_string(3.5);
+          ```
+
+          ## Переполнение
+
+          ```cpp
+          int x = 2147483647;
+          x + 1;   // ⚠️ неопределённое поведение (UB) для знаковых типов
+          unsigned u = 0; u - 1;  // 4294967295 — для беззнаковых заворачивается
+          ```
+        practice:
+          - type: choice
+            q: Что произойдёт с `int x{3.7};`?
+            options: ["x = 3", "x = 4", "Ошибка компиляции — сужение", "x = 3.7"]
+            answer: 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              double d = 9.99;
+              int i = static_cast<int>(d);
+              std::cout << i;
+            answer: "9"
+          - type: output
+            q: Что выведет код? (размер char в байтах)
+            code: |
+              std::cout << sizeof(char);
+            answer: "1"
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              const int LIMIT = 10;
+              int x = 5;
+              LIMIT = 20;
+            bugLine: 3
+            explain: Константу нельзя изменить после инициализации.
+          - type: fill
+            q: Преобразуйте строку в число
+            code: |
+              std::string s = "123";
+              int n = std::___(s);
+            answers: [stoi]
+          - type: choice
+            q: Чем опасна строка `int counter;` внутри функции?
+            options: ["Ничем, будет 0", "Значение не определено (мусор)", "Ошибка компиляции", "Будет -1"]
+            answer: 1
+        homework:
+          task: |
+            Выведите `sizeof` для типов `char, short, int, long, long long, float, double, bool` на вашей системе, а также минимальное и максимальное значение `int` через `std::numeric_limits<int>::min()` / `max()` (заголовок `<limits>`).
+          checklist:
+            - Подключены нужные заголовки
+            - Понимаю, что размеры типов зависят от платформы
+          solution: |
+            #include <iostream>
+            #include <limits>
+
+            int main() {
+                std::cout << "char " << sizeof(char) << "\nshort " << sizeof(short)
+                          << "\nint " << sizeof(int) << "\nlong " << sizeof(long)
+                          << "\nlong long " << sizeof(long long) << "\nfloat " << sizeof(float)
+                          << "\ndouble " << sizeof(double) << "\nbool " << sizeof(bool) << '\n';
+                std::cout << std::numeric_limits<int>::min() << " .. "
+                          << std::numeric_limits<int>::max() << '\n';
+            }
+
+      - id: cpp-01-03
+        title: Ввод-вывод и операторы
+        minutes: 20
+        xp: 20
+        theory: |
+          ## Ввод
+
+          ```cpp
+          int age;
+          std::cin >> age;               // читает до пробела
+          std::string name;
+          std::cin >> name;              // одно слово
+          std::getline(std::cin, name);  // вся строка
+          ```
+
+          > ⚠️ После `cin >> x` в буфере остаётся `\n`. Перед `getline` вызовите `std::cin.ignore();`.
+
+          ## Арифметика
+
+          ```cpp
+          7 / 2      // 3 — деление целых
+          7 / 2.0    // 3.5
+          7 % 2      // 1 — только для целых
+          int i = 5;
+          ++i;       // префиксный: увеличить и вернуть новое (6)
+          i++;       // постфиксный: вернуть старое, потом увеличить
+          i += 3;
+          ```
+
+          Математика — `<cmath>`: `std::sqrt`, `std::pow`, `std::abs`, `std::round`.
+
+          ## Форматированный вывод
+
+          ```cpp
+          #include <iomanip>
+          std::cout << std::fixed << std::setprecision(2) << 3.14159;  // 3.14
+          std::cout << std::setw(5) << 42;                              // "   42"
+          ```
+
+          C++20: `std::format("{:.2f}", x)` из `<format>`; C++23: `std::println("Сумма: {}", s)`.
+
+          ## Сравнение и логика
+
+          `== != < > <= >=`, `&&`, `||`, `!`. Результат — `bool`, который при выводе печатается как `1`/`0` (или `true`/`false` с `std::boolalpha`).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::cout << 17 / 5 << " " << 17 % 5;
+            answer: 3 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              int i = 5;
+              int a = i++;
+              int b = ++i;
+              std::cout << a << " " << b;
+            answer: 5 7
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::cout << (3 > 2) << (2 > 3);
+            answer: "10"
+          - type: fill
+            q: Выведите число с двумя знаками после запятой
+            code: |
+              std::cout << std::___ << std::setprecision(___) << x;
+            answers: [fixed, "2"]
+          - type: choice
+            q: Как прочитать целую строку с пробелами?
+            options: ["`std::cin >> s;`", "`std::getline(std::cin, s);`", "`std::cin.read(s);`", "`scanf(s);`"]
+            answer: 1
+        homework:
+          task: |
+            **Калькулятор.** Программа читает два числа и операцию (`+ - * /`), выводит результат с 2 знаками после запятой. При делении на ноль выводит сообщение об ошибке.
+          checklist:
+            - Используется `char` для операции
+            - Обработано деление на ноль
+          solution: |
+            #include <iostream>
+            #include <iomanip>
+
+            int main() {
+                double a, b;
+                char op;
+                std::cin >> a >> op >> b;
+                std::cout << std::fixed << std::setprecision(2);
+                if (op == '+') std::cout << a + b;
+                else if (op == '-') std::cout << a - b;
+                else if (op == '*') std::cout << a * b;
+                else if (op == '/') {
+                    if (b == 0) std::cout << "Деление на ноль!";
+                    else std::cout << a / b;
+                } else std::cout << "Неизвестная операция";
+                std::cout << '\n';
+            }
+
+      - id: cpp-01-04
+        title: Условия и циклы
+        minutes: 25
+        xp: 25
+        theory: |
+          ## if / else и switch
+
+          ```cpp
+          if (score >= 90) {
+              std::cout << "A";
+          } else if (score >= 75) {
+              std::cout << "B";
+          } else {
+              std::cout << "C";
+          }
+
+          switch (op) {
+              case '+': result = a + b; break;
+              case '-': result = a - b; break;
+              default: std::cout << "?";
+          }
+          ```
+
+          `switch` работает с целыми типами и `char` (не со строками). Без `break` выполнение «проваливается» в следующий case.
+
+          В C++ любое число приводится к `bool`: 0 — ложь, остальное — истина. Классическая ошибка: `if (x = 5)` — это присваивание, условие всегда истинно.
+
+          ## Циклы
+
+          ```cpp
+          for (int i = 0; i < 5; ++i) { }
+
+          while (n > 0) { --n; }
+
+          do {
+              std::cin >> x;
+          } while (x < 0);
+
+          int arr[] = {1, 2, 3};
+          for (int v : arr) { std::cout << v; }        // range-based for
+          for (auto& v : vec) { v *= 2; }              // по ссылке — можно менять
+          ```
+
+          `break` выходит из цикла, `continue` переходит к следующей итерации.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              for (int i = 0; i < 10; i += 4)
+                  std::cout << i << " ";
+            answer: 0 4 8
+          - type: output
+            q: Что выведет код?
+            code: |
+              int x = 0;
+              if (x = 5)
+                  std::cout << "yes";
+              else
+                  std::cout << "no";
+            answer: "yes"
+            explain: "`x = 5` — присваивание, результат 5 приводится к `true`."
+          - type: output
+            q: Что выведет код?
+            code: |
+              int k = 2;
+              switch (k) {
+                  case 1: std::cout << "a";
+                  case 2: std::cout << "b";
+                  case 3: std::cout << "c";
+              }
+            answer: bc
+            explain: Без `break` выполнение проваливается в следующие case.
+          - type: fill
+            q: Удвойте все элементы вектора на месте
+            code: |
+              for (auto___ v : vec)
+                  v *= 2;
+            answers: ["&"]
+          - type: bug
+            q: Какая строка делает цикл бесконечным?
+            code: |
+              int i = 0;
+              while (i < 10)
+              {
+                  std::cout << i;
+              }
+            bugLine: 4
+            fix: "    std::cout << i++;"
+        homework:
+          task: |
+            **Простые числа.** Пользователь вводит N. Выведите все простые числа от 2 до N и их количество. Проверяйте делители только до √N.
+          hints:
+            - "Условие цикла: `d * d <= n`."
+          checklist:
+            - Используется флаг или break для ранней остановки
+            - Для N = 30 найдено 10 простых
+          solution: |
+            #include <iostream>
+
+            int main() {
+                int n, count = 0;
+                std::cin >> n;
+                for (int x = 2; x <= n; ++x) {
+                    bool prime = true;
+                    for (int d = 2; d * d <= x; ++d)
+                        if (x % d == 0) { prime = false; break; }
+                    if (prime) { std::cout << x << ' '; ++count; }
+                }
+                std::cout << "\nВсего: " << count << '\n';
+            }
+
+      - id: cpp-01-05
+        title: Функции
+        minutes: 25
+        xp: 25
+        theory: |
+          ```cpp
+          int add(int a, int b) {
+              return a + b;
+          }
+
+          void greet(const std::string& name = "Гость") {
+              std::cout << "Привет, " << name << "\n";
+          }
+          ```
+
+          ## Объявление и определение
+
+          Функция должна быть **объявлена** до использования. Объявление (прототип) обычно кладут в `.h`-файл:
+
+          ```cpp
+          int add(int a, int b);   // объявление
+          ```
+
+          ## Способы передачи параметров
+
+          ```cpp
+          void byValue(int x)        { x = 10; }  // копия — оригинал не меняется
+          void byRef(int& x)         { x = 10; }  // ссылка — меняет оригинал
+          void byConstRef(const std::string& s);  // без копирования и без изменения
+          void byPtr(int* p)         { *p = 10; } // через указатель
+          ```
+
+          Правило: маленькие типы (`int`, `double`) — по значению; большие объекты (`string`, `vector`) — по `const&`; если нужно изменить — по `&`.
+
+          ## Перегрузка
+
+          ```cpp
+          int area(int side) { return side * side; }
+          int area(int w, int h) { return w * h; }
+          ```
+
+          ## Прочее
+
+          - `inline`, `constexpr`-функции;
+          - рекурсия: функция вызывает сама себя (нужно базовое условие выхода);
+          - `[[nodiscard]]` — предупреждение, если результат проигнорирован.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              void change(int x) { x = 100; }
+              int main() {
+                  int a = 1;
+                  change(a);
+                  std::cout << a;
+              }
+            answer: "1"
+          - type: output
+            q: Что выведет код?
+            code: |
+              void change(int& x) { x = 100; }
+              int main() {
+                  int a = 1;
+                  change(a);
+                  std::cout << a;
+              }
+            answer: "100"
+          - type: choice
+            q: Как лучше передать большой `std::vector`, который функция только читает?
+            options: ["По значению", "`const std::vector<int>&`", "`std::vector<int>&`", "Через глобальную переменную"]
+            answer: 1
+          - type: fill
+            q: Рекурсивный факториал
+            code: |
+              long long fact(int n) {
+                  if (n <= 1) ___ 1;
+                  return n * ___(n - 1);
+              }
+            answers: [return, fact]
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              #include <iostream>
+              int main() {
+                  std::cout << square(4);
+              }
+              int square(int x) { return x * x; }
+            bugLine: 3
+            explain: "Функция `square` используется до объявления. Нужен прототип `int square(int x);` перед `main`."
+        homework:
+          task: |
+            Напишите функции: `bool isPrime(int)`, `int gcd(int, int)` (алгоритм Евклида, рекурсивно), `void swapValues(int&, int&)` и `double average(const std::vector<int>&)`. Вынесите объявления в `utils.h`, реализацию — в `utils.cpp`, вызовы — в `main.cpp`. Соберите: `g++ main.cpp utils.cpp -o app`.
+          checklist:
+            - В заголовке есть include guard или `#pragma once`
+            - Параметры переданы оптимальным способом
+          solution: |
+            // utils.h
+            #pragma once
+            #include <vector>
+            bool isPrime(int n);
+            int gcd(int a, int b);
+            void swapValues(int& a, int& b);
+            double average(const std::vector<int>& v);
+
+            // utils.cpp
+            #include "utils.h"
+            bool isPrime(int n) {
+                if (n < 2) return false;
+                for (int d = 2; d * d <= n; ++d) if (n % d == 0) return false;
+                return true;
+            }
+            int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
+            void swapValues(int& a, int& b) { int t = a; a = b; b = t; }
+            double average(const std::vector<int>& v) {
+                double s = 0; for (int x : v) s += x;
+                return v.empty() ? 0 : s / v.size();
+            }
+
+      - id: cpp-01-06
+        title: Массивы, vector и string
+        minutes: 25
+        xp: 30
+        theory: |
+          ## C-массивы
+
+          ```cpp
+          int a[5] = {1, 2, 3};   // остальные — 0
+          a[0] = 10;
+          // размер фиксирован, выход за границы — неопределённое поведение (UB)!
+          ```
+
+          ## std::array и std::vector
+
+          ```cpp
+          #include <vector>
+          #include <array>
+
+          std::array<int, 3> fixed = {1, 2, 3};   // фиксированный размер, знает свой size()
+
+          std::vector<int> v = {3, 1, 4};
+          v.push_back(5);          // добавить в конец
+          v.pop_back();            // удалить последний
+          v.size();                // 3
+          v[0];                    // без проверки границ
+          v.at(10);                // с проверкой — бросит std::out_of_range
+          v.insert(v.begin(), 9);
+          v.erase(v.begin() + 1);
+          v.clear(); v.empty();
+          ```
+
+          `std::vector` — главный контейнер C++: динамический массив с непрерывной памятью.
+
+          ## Алгоритмы
+
+          ```cpp
+          #include <algorithm>
+          #include <numeric>
+          std::sort(v.begin(), v.end());
+          std::reverse(v.begin(), v.end());
+          auto it = std::find(v.begin(), v.end(), 4);
+          int sum = std::accumulate(v.begin(), v.end(), 0);
+          int mx = *std::max_element(v.begin(), v.end());
+          ```
+
+          ## std::string
+
+          ```cpp
+          std::string s = "Hello";
+          s += ", world";
+          s.size(); s.substr(0, 5); s.find("world"); s[0];
+          s.replace(0, 5, "Bye");
+          for (char c : s) { }
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::vector<int> v = {1, 2, 3};
+              v.push_back(4);
+              v.pop_back();
+              v.push_back(7);
+              std::cout << v.size() << " " << v.back();
+            answer: 3 7
+          - type: choice
+            q: Чем `v.at(i)` отличается от `v[i]`?
+            options: ["Ничем", "`at` проверяет границы и бросает исключение", "`at` быстрее", "`at` работает только с константами"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::string s = "programming";
+              std::cout << s.substr(3, 4);
+            answer: gram
+          - type: fill
+            q: Отсортируйте вектор
+            code: |
+              std::sort(v.___(), v.___());
+            answers: [begin, end]
+          - type: bug
+            q: Где неопределённое поведение?
+            code: |
+              int a[3] = {1, 2, 3};
+              int sum = 0;
+              for (int i = 0; i <= 3; ++i)
+                  sum += a[i];
+            bugLine: 3
+            explain: Обращение к `a[3]` — выход за границы массива.
+            fix: for (int i = 0; i < 3; ++i)
+        homework:
+          task: |
+            Считайте N чисел в `std::vector<int>`. Выведите: отсортированный вектор, медиану, сумму (`std::accumulate`), количество уникальных значений (`std::sort` + `std::unique`) и вектор без отрицательных чисел (`std::remove_if` + `erase`).
+          checklist:
+            - Используются алгоритмы STL, а не ручные циклы
+            - Медиана считается верно для чётного N
+          solution: |
+            #include <iostream>
+            #include <vector>
+            #include <algorithm>
+            #include <numeric>
+
+            int main() {
+                int n; std::cin >> n;
+                std::vector<int> v(n);
+                for (auto& x : v) std::cin >> x;
+                std::sort(v.begin(), v.end());
+                for (int x : v) std::cout << x << ' ';
+                double med = n % 2 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2.0;
+                std::cout << "\nМедиана: " << med
+                          << "\nСумма: " << std::accumulate(v.begin(), v.end(), 0LL);
+                auto u = v;
+                u.erase(std::unique(u.begin(), u.end()), u.end());
+                std::cout << "\nУникальных: " << u.size() << '\n';
+                v.erase(std::remove_if(v.begin(), v.end(), [](int x) { return x < 0; }), v.end());
+                for (int x : v) std::cout << x << ' ';
+            }
+
+  - id: cpp-m2
+    title: Указатели и память
+    level: Junior
+    lessons:
+      - Указатели и адреса
+      - Ссылки vs указатели
+      - Стек и куча, new и delete
+      - Утечки памяти и висячие указатели
+      - Умные указатели unique_ptr и shared_ptr
+      - RAII
+  - id: cpp-m3
+    title: ООП в C++
+    level: Junior
+    lessons:
+      - Классы, конструкторы, деструкторы
+      - Инкапсуляция, const-методы
+      - Наследование и виртуальные функции
+      - Абстрактные классы и полиморфизм
+      - Перегрузка операторов
+      - Правило трёх / пяти / нуля
+  - id: cpp-m4
+    title: Стандартная библиотека
+    level: Junior+
+    lessons:
+      - Итераторы
+      - map, unordered_map, set
+      - Алгоритмы STL и лямбды
+      - std::optional, variant, any
+      - string_view и span
+      - Исключения
+  - id: cpp-m5
+    title: Шаблоны и современный C++
+    level: Junior+
+    lessons:
+      - Шаблоны функций и классов
+      - Move-семантика и rvalue-ссылки
+      - Perfect forwarding
+      - constexpr и вычисления на этапе компиляции
+      - Концепты C++20
+      - Ranges C++20
+  - id: cpp-m6
+    title: Многопоточность
+    level: Middle
+    lessons:
+      - std::thread и join
+      - mutex, lock_guard, гонки данных
+      - condition_variable
+      - atomic и модель памяти
+      - async, future, promise
+  - id: cpp-m7
+    title: Сборка и инструменты
+    level: Middle
+    lessons:
+      - CMake
+      - Менеджеры пакетов vcpkg и Conan
+      - Отладка с gdb/lldb
+      - Санитайзеры и Valgrind
+      - Unit-тесты GoogleTest
+  - id: cpp-m8
+    title: Производительность и архитектура
+    level: Middle
+    lessons:
+      - Кэш процессора и локальность данных
+      - Профилирование
+      - Паттерны проектирования в C++
+      - Undefined behavior — каталог ловушек
+      - "Итоговый проект: многопоточный сервис на CMake"

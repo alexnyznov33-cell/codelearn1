@@ -1,0 +1,6 @@
+{
+  "appId": "com.codelearn.app",
+  "appName": "CodeLearn",
+  "webDir": "www",
+  "android": { "backgroundColor": "#0f1220" }
+}

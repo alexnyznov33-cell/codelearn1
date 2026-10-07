@@ -1,0 +1,873 @@
+id: cpp
+modules:
+  - id: cpp-m3
+    title: ООП в C++
+    level: Junior
+    lessons:
+      - id: cpp-03-01
+        title: Классы, конструкторы, деструкторы
+        minutes: 30
+        xp: 35
+        theory: |
+          ```cpp
+          class Account {
+          public:
+              Account(std::string owner, double balance = 0.0)   // конструктор
+                  : owner_(std::move(owner)), balance_(balance)  // список инициализации
+              {
+                  std::cout << "Открыт счёт " << owner_ << "\n";
+              }
+
+              ~Account() { std::cout << "Закрыт счёт " << owner_ << "\n"; }  // деструктор
+
+              void deposit(double sum) { balance_ += sum; }
+              double balance() const { return balance_; }
+
+          private:
+              std::string owner_;
+              double balance_;
+          };
+
+          Account a("Аня", 100);        // на стеке
+          Account b{"Боб"};             // фигурные скобки — uniform initialization
+          auto c = std::make_unique<Account>("Вика");  // в куче
+          ```
+
+          ## Список инициализации
+
+          Члены инициализируются **до** входа в тело конструктора, в порядке **объявления** в классе (не в порядке списка!). Для `const`-членов, ссылок и членов без конструктора по умолчанию список инициализации обязателен.
+
+          ## Конструкторы
+
+          ```cpp
+          class Point {
+          public:
+              Point() = default;                    // конструктор по умолчанию
+              Point(int x, int y) : x_(x), y_(y) {}
+              explicit Point(int v) : Point(v, v) {} // делегирующий; explicit — запрет неявного преобразования
+          private:
+              int x_ = 0;                           // инициализатор по умолчанию (C++11)
+              int y_ = 0;
+          };
+
+          void draw(Point p);
+          // draw(5);         // без explicit скомпилировалось бы: неявно Point(5)
+          ```
+
+          Делайте **конструкторы с одним аргументом `explicit`** — это защищает от неожиданных преобразований.
+
+          ## struct vs class
+
+          Единственное отличие — доступ по умолчанию: у `struct` — `public`, у `class` — `private`. По соглашению `struct` — для простых агрегатов данных, `class` — для типов с инвариантами.
+
+          ## Объявление и определение
+
+          В реальных проектах класс объявляют в `.h`, а методы определяют в `.cpp`:
+
+          ```cpp
+          // account.h
+          #pragma once
+          class Account { public: void deposit(double sum); private: double balance_ = 0; };
+
+          // account.cpp
+          #include "account.h"
+          void Account::deposit(double sum) { balance_ += sum; }
+          ```
+
+          `this` — указатель на текущий объект: `this->balance_`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct A {
+                  A() { std::cout << "A"; }
+                  ~A() { std::cout << "~A"; }
+              };
+              int main() {
+                  A a;
+                  { A b; }
+                  std::cout << "!";
+              }
+            answer: AA~A!~A
+          - type: fill
+            q: Запретите неявное преобразование int → Meters
+            code: |
+              class Meters {
+              public:
+                  ___ Meters(double v) : v_(v) {}
+              private:
+                  double v_;
+              };
+            answers: ["explicit"]
+          - type: choice
+            q: В каком порядке инициализируются члены класса?
+            options: ["В порядке списка инициализации", "В порядке объявления в классе", "В алфавитном порядке", "Случайно"]
+            answer: 1
+          - type: choice
+            q: Чем struct отличается от class?
+            options: ["struct нельзя наследовать", "Доступ по умолчанию: public у struct, private у class", "У struct нет методов", "struct всегда на стеке"]
+            answer: 1
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              class Circle {
+                  const double r_;
+              public:
+                  Circle(double r) {
+                      r_ = r;
+                  }
+              };
+            bugLine: 5
+            fix: "Circle(double r) : r_(r) {}"
+            explain: const-член нельзя присвоить в теле конструктора — только в списке инициализации.
+        homework:
+          task: |
+            Создайте класс `Matrix` (rows, cols, `std::vector<double>` данные) с конструкторами: по размеру (заполнение нулями), из `std::initializer_list<std::initializer_list<double>>`, explicit-конструктор квадратной единичной матрицы `Matrix::identity(n)` (статический метод). Методы `at(r, c)` с проверкой, `print()`. Разделите на matrix.h / matrix.cpp.
+          checklist:
+            - Используется список инициализации
+            - Одноаргументные конструкторы explicit
+            - Код разделён на .h и .cpp
+          solution: |
+            // matrix.h
+            #pragma once
+            #include <initializer_list>
+            #include <vector>
+            #include <cstddef>
+
+            class Matrix {
+            public:
+                Matrix(std::size_t rows, std::size_t cols);
+                Matrix(std::initializer_list<std::initializer_list<double>> init);
+                static Matrix identity(std::size_t n);
+                double& at(std::size_t r, std::size_t c);
+                double at(std::size_t r, std::size_t c) const;
+                void print() const;
+            private:
+                std::size_t rows_, cols_;
+                std::vector<double> data_;
+            };
+
+            // matrix.cpp
+            #include "matrix.h"
+            #include <iostream>
+            #include <stdexcept>
+
+            Matrix::Matrix(std::size_t r, std::size_t c) : rows_(r), cols_(c), data_(r * c, 0.0) {}
+            Matrix::Matrix(std::initializer_list<std::initializer_list<double>> init)
+                : rows_(init.size()), cols_(init.begin()->size()) {
+                for (auto& row : init) data_.insert(data_.end(), row.begin(), row.end());
+            }
+            Matrix Matrix::identity(std::size_t n) { Matrix m(n, n); for (std::size_t i = 0; i < n; ++i) m.at(i, i) = 1; return m; }
+            double& Matrix::at(std::size_t r, std::size_t c) {
+                if (r >= rows_ || c >= cols_) throw std::out_of_range("Matrix::at");
+                return data_[r * cols_ + c];
+            }
+            double Matrix::at(std::size_t r, std::size_t c) const { return const_cast<Matrix*>(this)->at(r, c); }
+            void Matrix::print() const {
+                for (std::size_t r = 0; r < rows_; ++r) {
+                    for (std::size_t c = 0; c < cols_; ++c) std::cout << at(r, c) << ' ';
+                    std::cout << '\n';
+                }
+            }
+      - id: cpp-03-02
+        title: Инкапсуляция, const-методы
+        minutes: 25
+        xp: 30
+        theory: |
+          **Инкапсуляция** — данные закрыты (`private`), изменения идут через методы, которые поддерживают **инвариант** класса (условие, которое всегда истинно: «баланс ≥ 0», «дата корректна»).
+
+          ```cpp
+          class Date {
+          public:
+              Date(int d, int m, int y) { set(d, m, y); }
+
+              void set(int d, int m, int y) {
+                  if (m < 1 || m > 12 || d < 1 || d > daysIn(m, y))
+                      throw std::invalid_argument("Неверная дата");
+                  d_ = d; m_ = m; y_ = y;
+              }
+              int day() const { return d_; }       // геттер
+          private:
+              static int daysIn(int m, int y);
+              int d_, m_, y_;
+          };
+          ```
+
+          Модификаторы: `public`, `protected` (класс и наследники), `private`. `friend` открывает доступ конкретной функции/классу — используйте редко (например, для `operator<<`).
+
+          ## const-методы
+
+          Метод с `const` после сигнатуры обещает **не изменять** объект. Только такие методы можно вызывать у константных объектов и через `const&`.
+
+          ```cpp
+          class Stack {
+          public:
+              void push(int v) { data_.push_back(v); }
+              int top() const { return data_.back(); }      // ✅ const
+              bool empty() const { return data_.empty(); }
+          private:
+              std::vector<int> data_;
+          };
+
+          void print(const Stack& s) {
+              std::cout << s.top();     // ok: top() — const
+              // s.push(1);             // ❌ ошибка: push не const
+          }
+          ```
+
+          **Const-correctness**: всё, что не меняет объект, помечайте `const`. Иначе ваш класс нельзя будет нормально использовать через `const&`.
+
+          ## Перегрузка по const
+
+          ```cpp
+          int& operator[](size_t i) { return data_[i]; }             // для изменения
+          const int& operator[](size_t i) const { return data_[i]; } // для чтения
+          ```
+
+          ## mutable
+
+          Поле `mutable` можно менять даже в const-методе — для кешей и мьютексов, которые не влияют на «наблюдаемое» состояние:
+
+          ```cpp
+          class Report {
+              mutable std::optional<std::string> cache_;
+              mutable std::mutex m_;
+          public:
+              const std::string& text() const {
+                  std::lock_guard lk(m_);
+                  if (!cache_) cache_ = build();
+                  return *cache_;
+              }
+          };
+          ```
+
+          ## [[nodiscard]]
+
+          `[[nodiscard]] bool empty() const;` — предупреждение, если результат проигнорирован.
+        practice:
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              class Counter {
+                  int n_ = 0;
+              public:
+                  int get() { return n_; }
+              };
+              void show(const Counter& c) {
+                  std::cout << c.get();
+              }
+            bugLine: 7
+            fix: int get() const { return n_; }
+            explain: У константного объекта можно вызывать только const-методы. Нужно пометить get() как const.
+          - type: fill
+            q: Пометьте метод, который не изменяет объект
+            code: |
+              double area() ___ { return w_ * h_; }
+            answers: ["const"]
+          - type: choice
+            q: Для чего нужно ключевое слово mutable?
+            options: ["Сделать поле публичным", "Разрешить изменение поля в const-методе (кеш, мьютекс)", "Сделать поле статическим", "Запретить изменение поля"]
+            answer: 1
+          - type: choice
+            q: Что такое инвариант класса?
+            options: ["Метод без параметров", "Условие, которое всегда истинно для объекта", "Константа класса", "Статическое поле"]
+            answer: 1
+        homework:
+          task: |
+            Класс `Fraction` (числитель, знаменатель) с инвариантами: знаменатель > 0, дробь всегда сокращена (`std::gcd`). Методы: `num() const`, `den() const`, `toDouble() const`, `add(const Fraction&) const` (возвращает новую дробь), `inverse()`. Деление на ноль — исключение. Все неизменяющие методы — const, с `[[nodiscard]]`.
+          checklist:
+            - Знаменатель всегда положителен
+            - Дробь сокращается в конструкторе
+            - Методы const-корректны
+          solution: |
+            #include <numeric>
+            #include <stdexcept>
+
+            class Fraction {
+            public:
+                Fraction(long n, long d = 1) : n_(n), d_(d) {
+                    if (d_ == 0) throw std::invalid_argument("den = 0");
+                    if (d_ < 0) { n_ = -n_; d_ = -d_; }
+                    long g = std::gcd(n_, d_);
+                    if (g) { n_ /= g; d_ /= g; }
+                }
+                [[nodiscard]] long num() const { return n_; }
+                [[nodiscard]] long den() const { return d_; }
+                [[nodiscard]] double toDouble() const { return static_cast<double>(n_) / d_; }
+                [[nodiscard]] Fraction add(const Fraction& o) const { return {n_ * o.d_ + o.n_ * d_, d_ * o.d_}; }
+                [[nodiscard]] Fraction inverse() const { return {d_, n_}; }
+            private:
+                long n_, d_;
+            };
+      - id: cpp-03-03
+        title: Наследование и виртуальные функции
+        minutes: 35
+        xp: 40
+        theory: |
+          ```cpp
+          class Animal {
+          public:
+              explicit Animal(std::string name) : name_(std::move(name)) {}
+              virtual ~Animal() = default;                      // ОБЯЗАТЕЛЬНО виртуальный деструктор
+              virtual std::string sound() const { return "..."; }
+              const std::string& name() const { return name_; }
+          protected:
+              std::string name_;
+          };
+
+          class Dog : public Animal {
+          public:
+              using Animal::Animal;                             // унаследовать конструкторы
+              std::string sound() const override { return "Гав"; }
+          };
+
+          class Cat final : public Animal {                     // final — дальше наследовать нельзя
+          public:
+              Cat() : Animal("Кот") {}                          // вызов конструктора базы
+              std::string sound() const override { return "Мяу"; }
+          };
+          ```
+
+          ## Динамический полиморфизм
+
+          Вызов `virtual`-функции через **указатель или ссылку** на базовый класс выбирает реализацию по фактическому типу объекта (через таблицу виртуальных функций — vtable).
+
+          ```cpp
+          std::vector<std::unique_ptr<Animal>> zoo;
+          zoo.push_back(std::make_unique<Dog>("Рекс"));
+          zoo.push_back(std::make_unique<Cat>());
+          for (const auto& a : zoo) std::cout << a->sound() << "\n";   // Гав, Мяу
+          ```
+
+          ## override
+
+          Всегда пишите `override`: компилятор проверит, что вы действительно переопределяете (а не создаёте новую функцию из-за опечатки в сигнатуре или забытого `const`).
+
+          ## Срезка (slicing)
+
+          ```cpp
+          Dog d("Бим");
+          Animal a = d;            // ❌ копируется только часть Animal
+          std::cout << a.sound();  // "..." — полиморфизм потерян
+          ```
+
+          Полиморфные объекты передавайте по ссылке или указателю.
+
+          ## Виртуальный деструктор
+
+          ```cpp
+          Animal* p = new Dog("x");
+          delete p;   // без virtual ~Animal() вызовется только ~Animal — UB, утечка ресурсов Dog
+          ```
+
+          Правило: если в классе есть виртуальные функции — деструктор должен быть `virtual` (или protected и невиртуальный).
+
+          ## Виды наследования
+
+          `public` (является — «is-a», 99% случаев), `protected`, `private` (реализация через). C++ поддерживает **множественное** наследование; ромб решается `virtual`-наследованием, но лучше избегать — наследуйте от интерфейсов.
+
+          `dynamic_cast<Dog*>(p)` — безопасное приведение вниз (nullptr при неудаче), работает только с полиморфными типами.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct A { virtual char f() const { return 'A'; } virtual ~A() = default; };
+              struct B : A { char f() const override { return 'B'; } };
+              int main() {
+                  B b;
+                  A& r = b;
+                  A copy = b;
+                  std::cout << r.f() << copy.f();
+              }
+            answer: BA
+            explain: Через ссылку — полиморфизм; при копировании в A происходит срезка.
+          - type: choice
+            q: Зачем базовому полиморфному классу виртуальный деструктор?
+            options: ["Для скорости", "Чтобы delete через указатель на базу вызвал деструктор наследника", "Чтобы класс стал абстрактным", "Не нужен"]
+            answer: 1
+          - type: fill
+            q: Явно укажите переопределение
+            code: |
+              double area() const ___ { return w * h; }
+            answers: ["override"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct A { char f() const { return 'A'; } };
+              struct B : A { char f() const { return 'B'; } };
+              int main() {
+                  B b;
+                  A* p = &b;
+                  std::cout << p->f() << b.f();
+              }
+            answer: AB
+            explain: f() не виртуальная — выбор по статическому типу указателя.
+          - type: bug
+            q: Какую строку отловит компилятор благодаря override?
+            code: |
+              struct Shape {
+                  virtual double area() const = 0;
+                  virtual ~Shape() = default;
+              };
+              struct Sq : Shape {
+                  double s = 1;
+                  double area() override { return s * s; }
+              };
+            bugLine: 7
+            fix: double area() const override { return s * s; }
+            explain: Забыт const — это другая сигнатура, переопределения нет. override превращает это в ошибку компиляции.
+        homework:
+          task: |
+            Иерархия транспорта: базовый `Vehicle` (имя, скорость, виртуальные `travelTime(double km) const`, `describe() const`, виртуальный деструктор), наследники `Car`, `Bicycle` (final), `Truck` (учитывает груз — скорость падает). Храните в `std::vector<std::unique_ptr<Vehicle>>`, отсортируйте по времени на 100 км, выведите описание. Деструкторы печатают сообщения.
+          checklist:
+            - Везде override
+            - Нет срезки
+            - Деструкторы наследников вызываются
+          solution: |
+            #include <algorithm>
+            #include <iostream>
+            #include <memory>
+            #include <string>
+            #include <vector>
+
+            class Vehicle {
+            public:
+                Vehicle(std::string n, double v) : name_(std::move(n)), speed_(v) {}
+                virtual ~Vehicle() { std::cout << "~Vehicle " << name_ << "\n"; }
+                virtual double speed() const { return speed_; }
+                double travelTime(double km) const { return km / speed(); }
+                virtual std::string describe() const { return name_ + " " + std::to_string(speed()) + " км/ч"; }
+            protected:
+                std::string name_; double speed_;
+            };
+            class Car : public Vehicle { public: using Vehicle::Vehicle; ~Car() override { std::cout << "~Car\n"; } };
+            class Bicycle final : public Vehicle {
+            public: Bicycle() : Vehicle("Велосипед", 18) {}
+                std::string describe() const override { return "🚲 " + Vehicle::describe(); }
+            };
+            class Truck : public Vehicle {
+                double cargo_;
+            public:
+                Truck(std::string n, double v, double t) : Vehicle(std::move(n), v), cargo_(t) {}
+                double speed() const override { return speed_ * (1 - cargo_ / 40); }
+            };
+
+            int main() {
+                std::vector<std::unique_ptr<Vehicle>> v;
+                v.push_back(std::make_unique<Car>("Лада", 90));
+                v.push_back(std::make_unique<Bicycle>());
+                v.push_back(std::make_unique<Truck>("КАМАЗ", 80, 20));
+                std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a->travelTime(100) < b->travelTime(100); });
+                for (auto& x : v) std::cout << x->describe() << "\n";
+            }
+      - id: cpp-03-04
+        title: Абстрактные классы и полиморфизм
+        minutes: 30
+        xp: 35
+        theory: |
+          **Чисто виртуальная функция** `= 0` не имеет реализации в базовом классе. Класс с хотя бы одной такой функцией — **абстрактный**: создать его объект нельзя.
+
+          ```cpp
+          class Shape {
+          public:
+              virtual ~Shape() = default;
+              virtual double area() const = 0;
+              virtual double perimeter() const = 0;
+              virtual std::string name() const = 0;
+
+              void print() const {                                   // общий код через виртуальные функции
+                  std::cout << name() << ": S=" << area() << ", P=" << perimeter() << "\n";
+              }
+          };
+
+          class Circle : public Shape {
+              double r_;
+          public:
+              explicit Circle(double r) : r_(r) {}
+              double area() const override { return 3.14159 * r_ * r_; }
+              double perimeter() const override { return 2 * 3.14159 * r_; }
+              std::string name() const override { return "Круг"; }
+          };
+
+          // Shape s;                 // ❌ нельзя: абстрактный
+          std::unique_ptr<Shape> s = std::make_unique<Circle>(2);
+          s->print();
+          ```
+
+          Наследник, не реализовавший все чисто виртуальные функции, тоже остаётся абстрактным.
+
+          ## Интерфейсы в C++
+
+          Отдельного ключевого слова нет — интерфейс это класс, где **все** функции чисто виртуальные, а данных нет:
+
+          ```cpp
+          class ILogger {
+          public:
+              virtual ~ILogger() = default;
+              virtual void log(std::string_view msg) = 0;
+          };
+
+          class ConsoleLogger : public ILogger {
+          public:
+              void log(std::string_view m) override { std::cout << m << "\n"; }
+          };
+
+          class OrderService {
+              ILogger& log_;                               // зависимость от абстракции
+          public:
+              explicit OrderService(ILogger& l) : log_(l) {}
+              void place() { log_.log("Заказ создан"); }
+          };
+          ```
+
+          Это основа внедрения зависимостей и тестирования с моками (GoogleMock) в C++.
+
+          ## Цена виртуальности
+
+          Каждый полиморфный объект хранит указатель на vtable (+8 байт), вызов идёт косвенно и мешает inline-оптимизации. Обычно это неважно, но в горячих циклах на миллионы объектов используют альтернативы:
+
+          - **статический полиморфизм** — шаблоны и CRTP (модуль 5);
+          - `std::variant` + `std::visit` — закрытый набор типов без кучи и vtable.
+
+          ```cpp
+          using AnyShape = std::variant<Circle, Square>;
+          double total = 0;
+          for (auto& s : shapes) total += std::visit([](auto& x) { return x.area(); }, s);
+          ```
+        practice:
+          - type: fill
+            q: Объявите чисто виртуальную функцию
+            code: |
+              virtual void draw() const ___;
+            answers: [["= 0", "=0"]]
+          - type: choice
+            q: Можно ли создать объект класса, у которого есть чисто виртуальная функция?
+            options: ["Да", "Нет", "Только на стеке", "Только через new"]
+            answer: 1
+          - type: choice
+            q: Наследник реализовал только 2 из 3 чисто виртуальных функций. Он…
+            options: ["Обычный класс", "Тоже абстрактный", "Ошибка компиляции при объявлении", "Интерфейс"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct I { virtual int v() const = 0; virtual ~I() = default; int twice() const { return v() * 2; } };
+              struct X : I { int v() const override { return 21; } };
+              int main() { X x; std::cout << x.twice(); }
+            answer: "42"
+          - type: choice
+            q: Альтернатива виртуальным функциям для закрытого набора типов без аллокаций?
+            options: ["std::any", "std::variant + std::visit", "void*", "union без тега"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте мини-«графический редактор»: интерфейс `Shape` (area, perimeter, name, `clone()` возвращает `unique_ptr<Shape>`), реализации Circle, Rect, Triangle (проверка неравенства треугольника в конструкторе). Класс `Canvas` хранит фигуры, умеет `add`, `totalArea`, `largest`, и копируется глубоко через clone. Затем реализуйте тот же подсчёт площади через `std::variant` и сравните.
+          checklist:
+            - Shape абстрактный, деструктор виртуальный
+            - Canvas корректно копируется (clone)
+            - Вариант на std::variant работает
+          solution: |
+            #include <cmath>
+            #include <memory>
+            #include <stdexcept>
+            #include <vector>
+
+            struct Shape {
+                virtual ~Shape() = default;
+                virtual double area() const = 0;
+                virtual std::unique_ptr<Shape> clone() const = 0;
+            };
+            struct Circle : Shape {
+                double r; explicit Circle(double r) : r(r) {}
+                double area() const override { return M_PI * r * r; }
+                std::unique_ptr<Shape> clone() const override { return std::make_unique<Circle>(*this); }
+            };
+            struct Triangle : Shape {
+                double a, b, c;
+                Triangle(double a, double b, double c) : a(a), b(b), c(c) {
+                    if (a + b <= c || a + c <= b || b + c <= a) throw std::invalid_argument("triangle");
+                }
+                double area() const override { double p = (a + b + c) / 2; return std::sqrt(p * (p - a) * (p - b) * (p - c)); }
+                std::unique_ptr<Shape> clone() const override { return std::make_unique<Triangle>(*this); }
+            };
+
+            class Canvas {
+                std::vector<std::unique_ptr<Shape>> items_;
+            public:
+                Canvas() = default;
+                Canvas(const Canvas& o) { for (auto& s : o.items_) items_.push_back(s->clone()); }
+                Canvas& operator=(Canvas o) { items_.swap(o.items_); return *this; }
+                void add(std::unique_ptr<Shape> s) { items_.push_back(std::move(s)); }
+                double totalArea() const { double t = 0; for (auto& s : items_) t += s->area(); return t; }
+            };
+      - id: cpp-03-05
+        title: Перегрузка операторов
+        minutes: 30
+        xp: 35
+        theory: |
+          Операторы можно определить для своих типов, чтобы они вели себя как встроенные.
+
+          ```cpp
+          struct Vec2 {
+              double x = 0, y = 0;
+
+              Vec2& operator+=(const Vec2& o) { x += o.x; y += o.y; return *this; }
+              Vec2 operator-() const { return {-x, -y}; }                 // унарный минус
+              double& operator[](size_t i) { return i == 0 ? x : y; }
+
+              bool operator==(const Vec2&) const = default;               // C++20: сгенерировать сравнение
+          };
+
+          // бинарные — свободными функциями (симметрия: 2 * v и v * 2)
+          inline Vec2 operator+(Vec2 a, const Vec2& b) { a += b; return a; }   // через +=
+          inline Vec2 operator*(Vec2 v, double k) { return {v.x * k, v.y * k}; }
+          inline Vec2 operator*(double k, Vec2 v) { return v * k; }
+
+          // вывод в поток
+          std::ostream& operator<<(std::ostream& os, const Vec2& v) {
+              return os << "(" << v.x << ", " << v.y << ")";
+          }
+
+          Vec2 a{1, 2}, b{3, 4};
+          std::cout << a + b * 2 << "\n";    // (7, 10)
+          ```
+
+          ## Spaceship operator (C++20)
+
+          ```cpp
+          struct Version {
+              int major, minor, patch;
+              auto operator<=>(const Version&) const = default;  // генерирует <, <=, >, >=, ==, !=
+          };
+          Version{1, 2, 0} < Version{1, 10, 0};   // true — лексикографически по полям
+          ```
+
+          ## Инкремент
+
+          ```cpp
+          Counter& operator++() { ++n; return *this; }        // префиксный ++c
+          Counter operator++(int) { auto old = *this; ++n; return old; } // постфиксный c++
+          ```
+
+          ## Функциональный объект
+
+          ```cpp
+          struct Multiplier {
+              int k;
+              int operator()(int x) const { return x * k; }
+          };
+          Multiplier triple{3};
+          std::cout << triple(5);   // 15
+          ```
+
+          ## Правила
+
+          - Сохраняйте ожидаемый смысл: `+` не должен ничего печатать или менять операнды.
+          - Составные (`+=`) — методы, возвращают `*this` по ссылке; бинарные (`+`) — свободные, через составные.
+          - `operator<<` — свободная функция (часто `friend`).
+          - Нельзя перегрузить: `::`, `.`, `.*`, `?:`, `sizeof`. Нельзя придумать новые операторы.
+          - `explicit operator bool() const` — для проверок `if (obj)`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct V { int x; };
+              V operator+(V a, V b) { return {a.x + b.x}; }
+              int main() {
+                  V a{2}, b{3};
+                  std::cout << (a + b + a).x;
+              }
+            answer: "7"
+          - type: fill
+            q: Сгенерируйте все операторы сравнения (C++20)
+            code: |
+              auto operator___(const Money&) const = default;
+            answers: ["<=>"]
+          - type: choice
+            q: Как отличить постфиксный оператор ++ от префиксного?
+            options: ["Постфиксный принимает фиктивный параметр int", "Префиксный — static", "По возвращаемому типу", "Никак"]
+            answer: 0
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct Add { int k; int operator()(int x) const { return x + k; } };
+              int main() { Add a{10}; std::cout << a(a(1)); }
+            answer: "21"
+          - type: choice
+            q: Какой оператор НЕЛЬЗЯ перегрузить?
+            options: ["operator[]", "operator()", "operator::", "operator<<"]
+            answer: 2
+        homework:
+          task: |
+            Реализуйте класс `Money` (копейки в `long long`, валюта `std::string`): `+`, `-`, `+=`, `-=`, умножение на целое, `<=>` и `==` (сравнение разных валют — исключение), `operator<<` в формате `123.45 RUB`, `explicit operator bool` (ненулевая сумма). Напишите тесты через `assert`.
+          checklist:
+            - Бинарные операторы через составные
+            - Разные валюты → исключение
+            - Вывод форматирован с двумя знаками
+          solution: |
+            #include <cassert>
+            #include <compare>
+            #include <iomanip>
+            #include <iostream>
+            #include <stdexcept>
+            #include <string>
+
+            class Money {
+                long long c_; std::string cur_;
+                void check(const Money& o) const { if (cur_ != o.cur_) throw std::invalid_argument("currency"); }
+            public:
+                Money(long long kop, std::string cur) : c_(kop), cur_(std::move(cur)) {}
+                Money& operator+=(const Money& o) { check(o); c_ += o.c_; return *this; }
+                Money& operator-=(const Money& o) { check(o); c_ -= o.c_; return *this; }
+                friend Money operator+(Money a, const Money& b) { return a += b; }
+                friend Money operator-(Money a, const Money& b) { return a -= b; }
+                friend Money operator*(Money a, long long k) { a.c_ *= k; return a; }
+                std::strong_ordering operator<=>(const Money& o) const { check(o); return c_ <=> o.c_; }
+                bool operator==(const Money& o) const { check(o); return c_ == o.c_; }
+                explicit operator bool() const { return c_ != 0; }
+                friend std::ostream& operator<<(std::ostream& os, const Money& m) {
+                    return os << m.c_ / 100 << '.' << std::setw(2) << std::setfill('0') << std::llabs(m.c_ % 100) << ' ' << m.cur_;
+                }
+            };
+
+            int main() {
+                Money a(12345, "RUB"), b(55, "RUB");
+                assert(a + b == Money(12400, "RUB"));
+                assert(b < a);
+                assert(!Money(0, "RUB"));
+                std::cout << a * 2 << "\n";   // 246.90 RUB
+            }
+      - id: cpp-03-06
+        title: Правило трёх/пяти/нуля
+        minutes: 35
+        xp: 45
+        theory: |
+          Компилятор сам генерирует **специальные функции-члены**: конструктор копирования, оператор присваивания копированием, конструктор перемещения, оператор присваивания перемещением, деструктор. Для класса, который **владеет ресурсом** через сырой указатель, сгенерированные версии ошибочны: они копируют указатель, а не данные (поверхностное копирование) → двойной delete.
+
+          ## Правило трёх (C++98)
+
+          Если вам пришлось написать **деструктор, копирующий конструктор или копирующее присваивание** — скорее всего нужны все три.
+
+          ## Правило пяти (C++11)
+
+          Плюс **перемещающие** конструктор и присваивание — для эффективности.
+
+          ```cpp
+          class Buffer {
+              size_t size_;
+              int* data_;
+          public:
+              explicit Buffer(size_t n) : size_(n), data_(new int[n]{}) {}
+              ~Buffer() { delete[] data_; }                                   // 1. деструктор
+
+              Buffer(const Buffer& o) : size_(o.size_), data_(new int[o.size_]) {  // 2. копирование
+                  std::copy(o.data_, o.data_ + size_, data_);
+              }
+              Buffer& operator=(const Buffer& o) {                            // 3. копирующее =
+                  if (this != &o) { Buffer tmp(o); swap(tmp); }               // copy-and-swap
+                  return *this;
+              }
+              Buffer(Buffer&& o) noexcept                                     // 4. перемещение
+                  : size_(std::exchange(o.size_, 0)), data_(std::exchange(o.data_, nullptr)) {}
+              Buffer& operator=(Buffer&& o) noexcept {                        // 5. перемещающее =
+                  Buffer tmp(std::move(o)); swap(tmp); return *this;
+              }
+              void swap(Buffer& o) noexcept { std::swap(size_, o.size_); std::swap(data_, o.data_); }
+          };
+          ```
+
+          Перемещение — «украсть» ресурс у временного объекта за O(1), оставив его в валидном пустом состоянии. Помечайте `noexcept` — иначе `std::vector` при росте будет копировать, а не перемещать.
+
+          ## Правило нуля — лучший вариант
+
+          Не управляйте ресурсами вручную: используйте члены, которые сами умеют копироваться/перемещаться/освобождаться (`std::vector`, `std::string`, `unique_ptr`). Тогда **не пишите ни одной** из пяти функций — сгенерированные будут правильными.
+
+          ```cpp
+          class Buffer {
+              std::vector<int> data_;      // всё работает само
+          public:
+              explicit Buffer(size_t n) : data_(n) {}
+          };
+          ```
+
+          ## = default и = delete
+
+          ```cpp
+          class Connection {
+          public:
+              Connection(const Connection&) = delete;            // некопируемый
+              Connection& operator=(const Connection&) = delete;
+              Connection(Connection&&) noexcept = default;       // но перемещаемый
+              Connection& operator=(Connection&&) noexcept = default;
+          };
+          ```
+
+          Если объявить деструктор или копирование, перемещающие операции **не сгенерируются** — объект будет копироваться там, где мог бы перемещаться.
+        practice:
+          - type: choice
+            q: Что произойдёт при копировании класса с полем `int* data` и деструктором `delete[] data`, если копирование не определено?
+            options: ["Глубокая копия", "Оба объекта укажут на один буфер → двойной delete", "Ошибка компиляции", "Ничего страшного"]
+            answer: 1
+          - type: choice
+            q: Что гласит правило нуля?
+            options: ["Не создавать объекты", "Использовать RAII-члены и не писать специальные функции вручную", "Всегда писать 5 функций", "Инициализировать всё нулями"]
+            answer: 1
+          - type: fill
+            q: Сделайте класс некопируемым
+            code: |
+              Socket(const Socket&) = ___;
+              Socket& operator=(const Socket&) = ___;
+            answers: ["delete", "delete"]
+          - type: choice
+            q: Почему конструктор перемещения стоит пометить noexcept?
+            options: ["Для красоты", "Иначе std::vector при перевыделении будет копировать элементы", "Так требует компилятор", "Чтобы запретить копирование"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::string a = "hello";
+              std::string b = std::move(a);
+              std::cout << b.size() << " " << a.empty();
+            answer: 5 1
+            explain: После перемещения std::string на практике остаётся пустой (валидное, но неуказанное состояние; для string реализации оставляют пустую строку).
+        homework:
+          task: |
+            Реализуйте `class String` с ручным управлением `char*` по правилу пяти (copy-and-swap, перемещение через std::exchange, noexcept), `size()`, `c_str()`, `operator+=`, `operator<<`. Добавьте счётчики вызовов каждого вида конструкторов и проверьте на `std::vector<String>` с `push_back` и `reserve`, что при росте вектора используется перемещение. Затем перепишите класс по правилу нуля.
+          checklist:
+            - Нет утечек (проверьте ASan)
+            - Самоприсваивание безопасно
+            - Вектор перемещает, а не копирует
+          solution: |
+            #include <cstring>
+            #include <iostream>
+            #include <utility>
+            #include <vector>
+
+            class String {
+                char* d_; std::size_t n_;
+            public:
+                static inline int copies = 0, moves = 0;
+                String(const char* s = "") : d_(new char[std::strlen(s) + 1]), n_(std::strlen(s)) { std::memcpy(d_, s, n_ + 1); }
+                ~String() { delete[] d_; }
+                String(const String& o) : d_(new char[o.n_ + 1]), n_(o.n_) { std::memcpy(d_, o.d_, n_ + 1); ++copies; }
+                String(String&& o) noexcept : d_(std::exchange(o.d_, nullptr)), n_(std::exchange(o.n_, 0)) { ++moves; }
+                String& operator=(String o) noexcept { swap(o); return *this; }   // и copy, и move
+                void swap(String& o) noexcept { std::swap(d_, o.d_); std::swap(n_, o.n_); }
+                String& operator+=(const String& o) {
+                    char* nd = new char[n_ + o.n_ + 1];
+                    std::memcpy(nd, d_, n_); std::memcpy(nd + n_, o.d_, o.n_ + 1);
+                    delete[] d_; d_ = nd; n_ += o.n_; return *this;
+                }
+                std::size_t size() const { return n_; }
+                const char* c_str() const { return d_ ? d_ : ""; }
+                friend std::ostream& operator<<(std::ostream& os, const String& s) { return os << s.c_str(); }
+            };
+
+            int main() {
+                std::vector<String> v;
+                for (int i = 0; i < 100; ++i) v.push_back(String("x"));
+                std::cout << "copies=" << String::copies << " moves=" << String::moves << "\n"; // copies=0
+            }
+
+            // Правило нуля:
+            // class String { std::string s_; public: ... };  — ни одной специальной функции

@@ -1,0 +1,744 @@
+id: python
+modules:
+  - id: py-m3
+    title: Функции
+    level: Junior
+    lessons:
+      - id: py-03-01
+        title: Определение функций, параметры и return
+        minutes: 20
+        xp: 25
+        theory: |
+          **Функция** — именованный блок кода, который можно вызывать много раз. Функции убирают дублирование и делают программу понятной.
+
+          ```python
+          def greet(name):
+              """Печатает приветствие."""   # docstring — документация функции
+              print(f"Привет, {name}!")
+
+          greet("Аня")
+          ```
+
+          ## return
+
+          `return` возвращает значение и **сразу завершает** функцию. Без `return` функция возвращает `None`.
+
+          ```python
+          def square(x):
+              return x * x
+
+          def sign(n):
+              if n > 0:
+                  return "+"
+              if n < 0:
+                  return "-"
+              return "0"
+
+          def min_max(nums):
+              return min(nums), max(nums)   # кортеж
+
+          lo, hi = min_max([3, 9, 1])
+          ```
+
+          ## Параметры и аргументы
+
+          ```python
+          def power(base, exp):
+              return base ** exp
+
+          power(2, 10)            # позиционные аргументы
+          power(exp=3, base=5)    # именованные — порядок не важен
+          ```
+
+          ## Правила хорошей функции
+
+          - делает **одно** дело и названа глаголом: `calculate_total`, `is_valid`;
+          - возвращает результат, а не печатает его (так её легче переиспользовать и тестировать);
+          - короткая — обычно до 20–30 строк.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              def f(x):
+                  return x * 2
+                  print("после")
+              print(f(4))
+            answer: "8"
+            explain: Код после `return` не выполняется.
+          - type: output
+            q: Что выведет код?
+            code: |
+              def hello():
+                  print("hi")
+              r = hello()
+              print(r)
+            answer: |
+              hi
+              None
+          - type: output
+            q: Что выведет код?
+            code: |
+              def div(a, b):
+                  return a // b, a % b
+              q, r = div(17, 5)
+              print(q, r)
+            answer: 3 2
+          - type: fill
+            q: Функция проверки чётности
+            code: |
+              ___ is_even(n):
+                  ___ n % 2 == 0
+            answers: [def, return]
+          - type: bug
+            q: Где ошибка?
+            code: |
+              def area(w, h):
+                  return w * h
+              print(area(5))
+            bugLine: 3
+            explain: Функция ждёт два аргумента — `TypeError`.
+        homework:
+          task: |
+            Напишите функции:
+            - `is_prime(n)` — простое ли число;
+            - `primes_up_to(n)` — список простых до n (использует `is_prime`);
+            - `celsius_to_fahrenheit(c)`;
+            - `count_vowels(text)`.
+
+            Каждая с docstring, без `print` внутри. Проверьте вызовами в конце файла.
+          checklist:
+            - Функции возвращают значения, а не печатают
+            - У каждой есть docstring
+          solution: |
+            def is_prime(n):
+                """True, если n — простое число."""
+                if n < 2:
+                    return False
+                d = 2
+                while d * d <= n:
+                    if n % d == 0:
+                        return False
+                    d += 1
+                return True
+
+            def primes_up_to(n):
+                """Список простых чисел от 2 до n."""
+                return [x for x in range(2, n + 1) if is_prime(x)]
+
+            def celsius_to_fahrenheit(c):
+                """Перевод °C в °F."""
+                return c * 9 / 5 + 32
+
+            def count_vowels(text):
+                """Количество гласных в тексте."""
+                return sum(1 for ch in text.lower() if ch in "аеёиоуыэюяaeiou")
+
+            print(primes_up_to(30), celsius_to_fahrenheit(100), count_vowels("Привет, мир"))
+
+      - id: py-03-02
+        title: Аргументы по умолчанию, *args и **kwargs
+        minutes: 25
+        xp: 25
+        theory: |
+          ## Значения по умолчанию
+
+          ```python
+          def greet(name, greeting="Привет"):
+              return f"{greeting}, {name}!"
+
+          greet("Аня")              # Привет, Аня!
+          greet("Боб", "Здравствуй")
+          ```
+
+          Параметры со значением по умолчанию идут **после** обязательных.
+
+          > ⚠️ Никогда не используйте изменяемое значение по умолчанию: оно создаётся **один раз** при определении функции.
+
+          ```python
+          def add(item, items=[]):     # ❌ список общий для всех вызовов
+              items.append(item)
+              return items
+
+          def add(item, items=None):   # ✅
+              if items is None:
+                  items = []
+              items.append(item)
+              return items
+          ```
+
+          ## *args — произвольное число позиционных
+
+          ```python
+          def total(*args):          # args — кортеж
+              return sum(args)
+          total(1, 2, 3)             # 6
+          ```
+
+          ## **kwargs — произвольные именованные
+
+          ```python
+          def profile(**kwargs):     # kwargs — словарь
+              for k, v in kwargs.items():
+                  print(k, "=", v)
+          profile(name="Аня", age=20)
+          ```
+
+          ## Распаковка при вызове
+
+          ```python
+          nums = [1, 2, 3]
+          print(*nums)               # print(1, 2, 3)
+          opts = {"sep": "-", "end": "!\n"}
+          print("a", "b", **opts)    # a-b!
+          ```
+
+          ## Только именованные / только позиционные
+
+          ```python
+          def f(a, b, /, c, *, d):   # a, b — только позиционно; d — только по имени
+              ...
+          f(1, 2, 3, d=4)
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              def f(a, b=10):
+                  return a + b
+              print(f(1), f(1, 2))
+            answer: 11 3
+          - type: output
+            q: Что выведет код?
+            code: |
+              def add(x, items=[]):
+                  items.append(x)
+                  return items
+              add(1)
+              print(add(2))
+            answer: "[1, 2]"
+            explain: Список по умолчанию создан один раз и переиспользуется между вызовами.
+          - type: output
+            q: Что выведет код?
+            code: |
+              def f(*args, **kwargs):
+                  print(len(args), len(kwargs))
+              f(1, 2, 3, x=4)
+            answer: 3 1
+          - type: choice
+            q: Какой тип имеет `args` внутри `def f(*args)`?
+            options: ["`list`", "`tuple`", "`dict`", "`set`"]
+            answer: 1
+          - type: bug
+            q: Где ошибка?
+            code: |
+              def greet(greeting="Привет", name):
+                  return f"{greeting}, {name}"
+            bugLine: 1
+            explain: Параметры по умолчанию должны идти после обязательных — `SyntaxError`.
+        homework:
+          task: |
+            Напишите функцию `make_html(tag, *children, **attrs)`, которая возвращает строку HTML:
+            `make_html("a", "Ссылка", href="/home", target="_blank")` → `<a href="/home" target="_blank">Ссылка</a>`.
+            Дочерние элементы склеиваются без разделителя. Если детей нет — пустой тег `<br></br>`.
+          checklist:
+            - Используются *args и **kwargs
+            - Атрибуты выводятся в порядке передачи
+          solution: |
+            def make_html(tag, *children, **attrs):
+                attr_str = "".join(f' {k}="{v}"' for k, v in attrs.items())
+                return f"<{tag}{attr_str}>{''.join(children)}</{tag}>"
+
+            print(make_html("a", "Ссылка", href="/home", target="_blank"))
+            print(make_html("ul", make_html("li", "1"), make_html("li", "2")))
+
+      - id: py-03-03
+        title: Области видимости, global и nonlocal
+        minutes: 20
+        xp: 25
+        theory: |
+          Python ищет имя по правилу **LEGB**:
+
+          1. **L**ocal — внутри текущей функции;
+          2. **E**nclosing — во внешних функциях (для вложенных);
+          3. **G**lobal — на уровне модуля;
+          4. **B**uilt-in — встроенные имена (`len`, `print`).
+
+          ```python
+          x = "global"
+
+          def outer():
+              x = "enclosing"
+              def inner():
+                  x = "local"
+                  print(x)       # local
+              inner()
+              print(x)           # enclosing
+
+          outer()
+          print(x)               # global
+          ```
+
+          ## Присваивание создаёт локальную переменную
+
+          ```python
+          count = 0
+          def inc():
+              count += 1         # ❌ UnboundLocalError
+          ```
+
+          Внутри функции `count` считается локальной, потому что ей присваивают значение.
+
+          ## global и nonlocal
+
+          ```python
+          count = 0
+          def inc():
+              global count       # работаем с переменной модуля
+              count += 1
+
+          def counter():
+              n = 0
+              def step():
+                  nonlocal n     # переменная внешней функции
+                  n += 1
+                  return n
+              return step
+          ```
+
+          > 💡 `global` — признак плохого дизайна в большинстве случаев. Лучше передавайте значения параметрами и возвращайте результат.
+
+          Читать глобальную переменную можно без `global`, менять — нельзя. Изменение **содержимого** глобального списка (`items.append`) тоже работает без `global` — это не присваивание.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              x = 5
+              def f():
+                  x = 10
+              f()
+              print(x)
+            answer: "5"
+          - type: output
+            q: Что выведет код?
+            code: |
+              x = 5
+              def f():
+                  global x
+                  x = 10
+              f()
+              print(x)
+            answer: "10"
+          - type: output
+            q: Что выведет код?
+            code: |
+              def make():
+                  n = 0
+                  def step():
+                      nonlocal n
+                      n += 2
+                      return n
+                  return step
+              s = make()
+              s()
+              print(s())
+            answer: "4"
+          - type: choice
+            q: В каком порядке Python ищет имена?
+            options: ["Global → Local → Built-in", "Local → Enclosing → Global → Built-in", "Built-in → Global → Local", "Только Local"]
+            answer: 1
+          - type: bug
+            q: Где возникнет UnboundLocalError?
+            code: |
+              total = 0
+              def add(x):
+                  total = total + x
+                  return total
+              add(5)
+            bugLine: 3
+            explain: "`total` локальная из-за присваивания, но читается до него. Лучше передать её параметром."
+        homework:
+          task: |
+            Перепишите «плохой» код без `global`:
+
+            ```python
+            balance = 0
+            def deposit(x):
+                global balance
+                balance += x
+            def withdraw(x):
+                global balance
+                balance -= x
+            ```
+
+            Вариант 1 — функции принимают баланс и возвращают новый. Вариант 2 — фабрика `make_account()`, возвращающая функции `deposit` и `withdraw` с `nonlocal`. Снятие больше баланса должно возвращать ошибку.
+          checklist:
+            - Нет ни одного global
+            - Нельзя уйти в минус
+          solution: |
+            def deposit(balance, x):
+                return balance + x
+
+            def withdraw(balance, x):
+                if x > balance:
+                    raise ValueError("Недостаточно средств")
+                return balance - x
+
+            def make_account():
+                balance = 0
+                def dep(x):
+                    nonlocal balance
+                    balance += x
+                    return balance
+                def wd(x):
+                    nonlocal balance
+                    if x > balance:
+                        raise ValueError("Недостаточно средств")
+                    balance -= x
+                    return balance
+                return dep, wd
+
+            dep, wd = make_account()
+            dep(100)
+            print(wd(30))
+
+      - id: py-03-04
+        title: Lambda, map, filter, sorted с key
+        minutes: 25
+        xp: 30
+        theory: |
+          ## lambda
+
+          Анонимная функция из одного выражения:
+
+          ```python
+          square = lambda x: x * x
+          add = lambda a, b: a + b
+          ```
+
+          Используется там, где функция нужна «на месте», чаще всего как аргумент.
+
+          ## sorted, min, max с key
+
+          ```python
+          words = ["банан", "кот", "арбуз"]
+          sorted(words, key=len)                 # ['кот', 'банан', 'арбуз']
+          sorted(words, key=lambda w: w[-1])     # по последней букве
+
+          users = [{"name": "Аня", "age": 30}, {"name": "Боб", "age": 25}]
+          youngest = min(users, key=lambda u: u["age"])
+          sorted(users, key=lambda u: (-u["age"], u["name"]))   # по убыванию возраста, затем по имени
+          ```
+
+          Сортировка в Python **стабильна**: равные элементы сохраняют исходный порядок.
+
+          ## map и filter
+
+          ```python
+          nums = [1, 2, 3, 4]
+          list(map(lambda x: x * 10, nums))          # [10, 20, 30, 40]
+          list(filter(lambda x: x % 2 == 0, nums))   # [2, 4]
+          list(map(int, "1 2 3".split()))            # [1, 2, 3]
+          ```
+
+          `map` и `filter` возвращают **ленивые итераторы**: значения вычисляются при переборе.
+
+          > 💡 В Python чаще пишут генераторы списков: `[x * 10 for x in nums]` читается проще, чем `map` с lambda.
+
+          ## Другие полезные функции
+
+          ```python
+          any(x > 3 for x in nums)    # True — хотя бы один
+          all(x > 0 for x in nums)    # True — все
+          list(zip([1, 2], "ab"))     # [(1, 'a'), (2, 'b')]
+          from functools import reduce
+          reduce(lambda a, b: a * b, nums)   # 24
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(sorted(["ccc", "a", "bb"], key=len))
+            answer: "['a', 'bb', 'ccc']"
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(list(filter(lambda x: x > 2, [1, 5, 2, 7])))
+            answer: "[5, 7]"
+          - type: output
+            q: Что выведет код?
+            code: |
+              f = lambda a, b=2: a ** b
+              print(f(3), f(2, 3))
+            answer: 9 8
+          - type: fill
+            q: Найдите самого старшего пользователя
+            code: |
+              oldest = max(users, ___=lambda u: u["age"])
+            answers: [key]
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(list(zip("abc", [1, 2])))
+            answer: "[('a', 1), ('b', 2)]"
+            explain: "`zip` останавливается на самой короткой последовательности."
+          - type: output
+            q: Что выведет код?
+            code: |
+              print(any([0, "", None]), all([1, "a"]))
+            answer: False True
+        homework:
+          task: |
+            Дан список товаров `[{"name": ..., "price": ..., "rating": ...}, ...]` (составьте 8 штук). Выведите:
+            1. товары, отсортированные по рейтингу по убыванию, а при равном рейтинге — по цене по возрастанию;
+            2. названия товаров дешевле 1000 (`filter` + `map`);
+            3. самый дешёвый товар с рейтингом ≥ 4.5;
+            4. есть ли товары дороже 50 000 (`any`).
+          checklist:
+            - Сортировка по составному ключу-кортежу
+            - Использованы map, filter, any
+          solution: |
+            goods = [
+                {"name": "Мышь", "price": 900, "rating": 4.6},
+                {"name": "Клавиатура", "price": 2500, "rating": 4.6},
+                {"name": "Монитор", "price": 18000, "rating": 4.8},
+                {"name": "Коврик", "price": 400, "rating": 4.1},
+                {"name": "Ноутбук", "price": 75000, "rating": 4.7},
+                {"name": "Кабель", "price": 300, "rating": 4.5},
+                {"name": "Веб-камера", "price": 3500, "rating": 3.9},
+                {"name": "Наушники", "price": 5000, "rating": 4.8},
+            ]
+            for g in sorted(goods, key=lambda g: (-g["rating"], g["price"])):
+                print(g["name"], g["rating"], g["price"])
+            print(list(map(lambda g: g["name"], filter(lambda g: g["price"] < 1000, goods))))
+            print(min((g for g in goods if g["rating"] >= 4.5), key=lambda g: g["price"]))
+            print(any(g["price"] > 50000 for g in goods))
+
+      - id: py-03-05
+        title: Рекурсия
+        minutes: 25
+        xp: 30
+        theory: |
+          **Рекурсия** — функция вызывает саму себя. Любая рекурсивная функция состоит из:
+
+          1. **базового случая** — когда остановиться;
+          2. **рекурсивного шага** — сведения задачи к меньшей.
+
+          ```python
+          def factorial(n):
+              if n <= 1:              # базовый случай
+                  return 1
+              return n * factorial(n - 1)   # шаг
+          ```
+
+          Вызовы складываются в **стек вызовов**: `factorial(3)` → `3 * factorial(2)` → `2 * factorial(1)` → 1, затем результаты «разворачиваются» обратно.
+
+          ## Где рекурсия естественна
+
+          Деревья, вложенные структуры, «разделяй и властвуй»:
+
+          ```python
+          def flatten(items):
+              result = []
+              for x in items:
+                  if isinstance(x, list):
+                      result.extend(flatten(x))
+                  else:
+                      result.append(x)
+              return result
+
+          flatten([1, [2, [3, 4]], 5])   # [1, 2, 3, 4, 5]
+          ```
+
+          ## Ограничения
+
+          - Глубина рекурсии ограничена (~1000): `RecursionError`. Посмотреть: `sys.getrecursionlimit()`.
+          - Наивная рекурсия может быть очень медленной:
+
+          ```python
+          def fib(n):                  # O(2^n) — fib(40) считается десятки секунд
+              return n if n < 2 else fib(n - 1) + fib(n - 2)
+
+          from functools import lru_cache
+
+          @lru_cache(maxsize=None)     # мемоизация — O(n)
+          def fib(n):
+              return n if n < 2 else fib(n - 1) + fib(n - 2)
+          ```
+
+          > 💡 Если задачу легко решить циклом — используйте цикл. Рекурсию — для деревьев и рекурсивных по природе задач.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              def f(n):
+                  if n == 0:
+                      return 0
+                  return n + f(n - 1)
+              print(f(4))
+            answer: "10"
+          - type: output
+            q: Что выведет код?
+            code: |
+              def p(n):
+                  if n > 0:
+                      p(n - 1)
+                      print(n, end="")
+              p(3)
+            answer: "123"
+            explain: Печать происходит после рекурсивного вызова — на «обратном ходе».
+          - type: choice
+            q: Что произойдёт, если у рекурсивной функции нет базового случая?
+            options: ["Вернётся None", "RecursionError — переполнение стека", "Бесконечный цикл без ошибок", "Ошибка синтаксиса"]
+            answer: 1
+          - type: fill
+            q: Рекурсивная сумма цифр числа
+            code: |
+              def digit_sum(n):
+                  if n < 10:
+                      return ___
+                  return n % 10 + digit_sum(n ___ 10)
+            answers: [n, "//"]
+          - type: bug
+            q: Где ошибка, ведущая к бесконечной рекурсии?
+            code: |
+              def countdown(n):
+                  if n == 0:
+                      return
+                  print(n)
+                  countdown(n + 1)
+            bugLine: 5
+            fix: "    countdown(n - 1)"
+        homework:
+          task: |
+            Решите рекурсивно:
+            1. `power(a, n)` — возведение в степень за O(log n) (быстрое возведение: если n чётное, `power(a, n//2) ** 2`);
+            2. `reverse(s)` — разворот строки;
+            3. `count_files(tree)` — количество файлов во вложенной структуре вида `{"docs": {"a.txt": None, "img": {"b.png": None}}, "c.py": None}` (файл — ключ со значением None).
+          checklist:
+            - У каждой функции явный базовый случай
+            - power работает за O(log n)
+          solution: |
+            def power(a, n):
+                if n == 0:
+                    return 1
+                half = power(a, n // 2)
+                return half * half if n % 2 == 0 else half * half * a
+
+            def reverse(s):
+                return s if len(s) <= 1 else reverse(s[1:]) + s[0]
+
+            def count_files(tree):
+                return sum(1 if v is None else count_files(v) for v in tree.values())
+
+            print(power(2, 30), reverse("рекурсия"))
+            print(count_files({"docs": {"a.txt": None, "img": {"b.png": None}}, "c.py": None}))
+
+      - id: py-03-06
+        title: Аннотации типов (type hints)
+        minutes: 20
+        xp: 25
+        theory: |
+          Аннотации описывают ожидаемые типы. Python их **не проверяет** при выполнении, но их понимают IDE и анализаторы (mypy, pyright): подсказки, автодополнение, поиск ошибок до запуска.
+
+          ```python
+          def greet(name: str, times: int = 1) -> str:
+              return f"Привет, {name}! " * times
+
+          age: int = 25
+          price: float = 9.99
+          ```
+
+          ## Коллекции (Python 3.9+)
+
+          ```python
+          names: list[str] = ["Аня", "Боб"]
+          scores: dict[str, int] = {"Аня": 90}
+          point: tuple[int, int] = (3, 4)
+          unique: set[int] = {1, 2}
+          ```
+
+          ## Optional и Union
+
+          ```python
+          def find_user(user_id: int) -> dict | None:   # Python 3.10+
+              ...
+
+          from typing import Optional
+          def find(user_id: int) -> Optional[dict]:     # то же самое в старом стиле
+              ...
+
+          def parse(value: int | str) -> int:
+              return int(value)
+          ```
+
+          ## Другие полезные типы
+
+          ```python
+          from typing import Callable, Any, Iterable
+          def apply(f: Callable[[int], int], xs: Iterable[int]) -> list[int]:
+              return [f(x) for x in xs]
+
+          type UserId = int          # псевдоним типа (3.12+); раньше: UserId = int
+          ```
+
+          ## Проверка
+
+          ```
+          pip install mypy
+          mypy main.py
+          ```
+
+          > 💡 В командной разработке аннотации — стандарт: код с ними проще читать и безопаснее менять.
+        practice:
+          - type: choice
+            q: "Что произойдёт при вызове `greet(42)`, если объявлено `def greet(name: str)`?"
+            options: ["TypeError при вызове", "Код выполнится — аннотации не проверяются при запуске", "SyntaxError", "Значение автоматически станет строкой"]
+            answer: 1
+          - type: fill
+            q: Аннотируйте функцию, возвращающую список строк
+            code: |
+              def get_names(users: list[dict]) -> ___[___]:
+                  return [u["name"] for u in users]
+            answers: [list, str]
+          - type: choice
+            q: Как обозначить, что функция может вернуть `int` или `None`?
+            options: ["`-> int | None`", "`-> int or None`", "`-> int?`", "`-> Maybe[int]`"]
+            answer: 0
+          - type: output
+            q: Что выведет код?
+            code: |
+              def add(a: int, b: int) -> int:
+                  return a + b
+              print(add("2", "3"))
+            answer: "23"
+            explain: Аннотации не мешают выполнению — строки просто склеились. mypy нашёл бы эту ошибку заранее.
+          - type: choice
+            q: Какой инструмент проверяет типы статически?
+            options: ["`pip`", "`mypy`", "`venv`", "`black`"]
+            answer: 1
+        homework:
+          task: |
+            Добавьте аннотации ко всем функциям из домашних заданий модуля (is_prime, primes_up_to, make_html, flatten и др.). Установите mypy, запустите `mypy --strict файл.py` и исправьте все замечания.
+          checklist:
+            - Все параметры и возвращаемые значения аннотированы
+            - "`mypy --strict` не выдаёт ошибок"
+          solution: |
+            from typing import Any
+
+            def is_prime(n: int) -> bool:
+                if n < 2:
+                    return False
+                return all(n % d for d in range(2, int(n ** 0.5) + 1))
+
+            def primes_up_to(n: int) -> list[int]:
+                return [x for x in range(2, n + 1) if is_prime(x)]
+
+            def make_html(tag: str, *children: str, **attrs: str) -> str:
+                a = "".join(f' {k}="{v}"' for k, v in attrs.items())
+                return f"<{tag}{a}>{''.join(children)}</{tag}>"
+
+            def flatten(items: list[Any]) -> list[Any]:
+                result: list[Any] = []
+                for x in items:
+                    result.extend(flatten(x) if isinstance(x, list) else [x])
+                return result

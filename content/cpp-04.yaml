@@ -1,0 +1,905 @@
+id: cpp
+modules:
+  - id: cpp-m4
+    title: Стандартная библиотека
+    level: Junior+
+    lessons:
+      - id: cpp-04-01
+        title: Итераторы
+        minutes: 25
+        xp: 30
+        theory: |
+          **Итератор** — обобщённый указатель на элемент контейнера. Через итераторы алгоритмы STL работают с любыми контейнерами одинаково.
+
+          ```cpp
+          std::vector<int> v{10, 20, 30};
+          for (auto it = v.begin(); it != v.end(); ++it)
+              std::cout << *it << " ";
+
+          // end() указывает ЗА последний элемент — разыменовывать нельзя
+          auto it = v.begin() + 1;   // 20
+          *it = 25;
+          ```
+
+          Range-for `for (auto& x : v)` — синтаксический сахар над `begin()/end()`.
+
+          ## Варианты
+
+          | | |
+          |---|---|
+          | `begin()/end()` | обычные |
+          | `cbegin()/cend()` | только чтение (`const_iterator`) |
+          | `rbegin()/rend()` | обратный обход |
+
+          ```cpp
+          for (auto it = v.rbegin(); it != v.rend(); ++it) std::cout << *it;  // 30 25 10
+          ```
+
+          ## Категории итераторов
+
+          | Категория | Возможности | Контейнеры |
+          |---|---|---|
+          | input / forward | `++`, `*` | `forward_list`, `unordered_*` |
+          | bidirectional | + `--` | `list`, `set`, `map` |
+          | random access | + `it + n`, `it[n]`, `<` | `vector`, `deque`, `array` |
+          | contiguous (C++20) | память подряд | `vector`, `array`, `string` |
+
+          Поэтому `std::sort` работает с `vector`, но не с `list` (у `list` есть свой `list.sort()`).
+
+          ```cpp
+          std::advance(it, 3);              // сдвинуть на 3 (для любых итераторов)
+          auto n = std::distance(a, b);     // расстояние
+          auto nx = std::next(it), pv = std::prev(it);
+          ```
+
+          ## Инвалидация
+
+          Изменение контейнера может сделать итераторы недействительными:
+
+          - `vector`: `push_back` при перевыделении — **все** итераторы; `erase` — от точки удаления до конца.
+          - `list`, `map`, `set`: `erase` инвалидирует только удалённый элемент.
+          - `unordered_map`: rehash инвалидирует итераторы (но не ссылки на элементы).
+
+          Правильное удаление в цикле:
+
+          ```cpp
+          for (auto it = v.begin(); it != v.end(); ) {
+              if (*it % 2 == 0) it = v.erase(it);   // erase возвращает следующий
+              else ++it;
+          }
+          // или проще (C++20):
+          std::erase_if(v, [](int x) { return x % 2 == 0; });
+          ```
+
+          ## Итераторы вставки
+
+          ```cpp
+          std::vector<int> out;
+          std::copy(v.begin(), v.end(), std::back_inserter(out));   // push_back при каждой записи
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::vector<int> v{1, 2, 3, 4};
+              auto it = v.begin() + 2;
+              std::cout << *it << *(it - 1) << v.end() - v.begin();
+            answer: "324"
+          - type: choice
+            q: Куда указывает end()?
+            options: ["На последний элемент", "За последний элемент", "На первый элемент", "На nullptr"]
+            answer: 1
+          - type: bug
+            q: Какая строка вызовет UB?
+            code: |
+              std::vector<int> v{1, 2, 3, 4};
+              for (auto it = v.begin(); it != v.end(); ++it) {
+                  if (*it == 2) v.erase(it);
+              }
+            bugLine: 3
+            fix: if (*it == 2) it = v.erase(it); else ++it;  (или std::erase(v, 2))
+            explain: После erase итератор it недействителен, а цикл продолжает его использовать.
+          - type: fill
+            q: Удалите все отрицательные числа (C++20)
+            code: |
+              std::___(v, [](int x) { return x < 0; });
+            answers: ["erase_if"]
+          - type: choice
+            q: Почему std::sort нельзя применить к std::list?
+            options: ["list не хранит числа", "Нужен random access итератор, а у list — bidirectional", "list уже отсортирован", "Можно"]
+            answer: 1
+        homework:
+          task: |
+            Напишите обобщённые функции на итераторах (шаблоны): `count_if_custom(first, last, pred)`, `reverse_custom(first, last)` для bidirectional итераторов, `unique_copy_custom(first, last, out)` (копирует без подряд идущих дубликатов, через back_inserter). Проверьте на vector, list и string.
+          checklist:
+            - Работает с разными контейнерами
+            - reverse не требует random access
+            - Используется std::back_inserter
+          solution: |
+            #include <iostream>
+            #include <iterator>
+            #include <list>
+            #include <string>
+            #include <vector>
+
+            template <class It, class P>
+            std::size_t count_if_custom(It first, It last, P pred) {
+                std::size_t n = 0;
+                for (; first != last; ++first) if (pred(*first)) ++n;
+                return n;
+            }
+
+            template <class BidIt>
+            void reverse_custom(BidIt first, BidIt last) {
+                while (first != last && first != --last) {
+                    std::iter_swap(first, last);
+                    ++first;
+                }
+            }
+
+            template <class It, class Out>
+            Out unique_copy_custom(It first, It last, Out out) {
+                if (first == last) return out;
+                auto prev = *first; *out++ = prev;
+                for (++first; first != last; ++first)
+                    if (!(*first == prev)) { prev = *first; *out++ = prev; }
+                return out;
+            }
+
+            int main() {
+                std::list<int> l{1, 1, 2, 3, 3, 3, 4};
+                std::vector<int> u;
+                unique_copy_custom(l.begin(), l.end(), std::back_inserter(u));
+                reverse_custom(u.begin(), u.end());
+                std::string s = "hello";
+                reverse_custom(s.begin(), s.end());
+                std::cout << u.size() << " " << s << " " << count_if_custom(l.begin(), l.end(), [](int x) { return x > 2; });
+            }
+      - id: cpp-04-02
+        title: map, unordered_map, set
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Ассоциативные контейнеры
+
+          | Контейнер | Структура | Поиск | Порядок |
+          |---|---|---|---|
+          | `std::map<K,V>` | красно-чёрное дерево | O(log n) | отсортирован по ключу |
+          | `std::unordered_map<K,V>` | хеш-таблица | O(1) в среднем | нет |
+          | `std::set<T>` / `unordered_set<T>` | то же, только ключи | | |
+          | `multimap`, `multiset` | разрешают дубликаты ключей | | |
+
+          ```cpp
+          std::map<std::string, int> ages{{"Аня", 25}, {"Боб", 30}};
+          ages["Вика"] = 22;              // вставить или перезаписать
+          ages.insert({"Аня", 99});       // НЕ перезапишет, ключ уже есть
+          ages.insert_or_assign("Аня", 26);
+          ages.emplace("Гена", 40);
+          ages.try_emplace("Дима", 19);   // не создаёт значение, если ключ есть
+
+          for (const auto& [name, age] : ages)      // structured bindings, по алфавиту
+              std::cout << name << ": " << age << "\n";
+          ```
+
+          ## Ловушка operator[]
+
+          `m[key]` **вставляет** элемент со значением по умолчанию, если ключа нет. Для проверки используйте:
+
+          ```cpp
+          if (ages.contains("Петя")) { }            // C++20
+          if (auto it = ages.find("Боб"); it != ages.end())
+              std::cout << it->second;
+          int a = ages.at("Аня");                   // std::out_of_range, если нет
+          ```
+
+          `operator[]` нельзя вызвать у `const map`.
+
+          ## Подсчёт и группировка
+
+          ```cpp
+          std::unordered_map<std::string, int> freq;
+          for (const auto& w : words) ++freq[w];    // здесь вставка нулём — именно то, что нужно
+
+          std::map<char, std::vector<std::string>> byLetter;
+          for (const auto& w : words) byLetter[w[0]].push_back(w);
+          ```
+
+          ## Возможности упорядоченных
+
+          ```cpp
+          std::map<int, std::string> events{{10, "a"}, {20, "b"}, {30, "c"}};
+          auto it = events.lower_bound(15);    // первый ключ >= 15 → 20
+          auto it2 = events.upper_bound(20);   // первый ключ > 20 → 30
+          events.erase(events.begin());
+          ```
+
+          ## set
+
+          ```cpp
+          std::set<int> s{5, 1, 3, 1};    // {1, 3, 5}
+          s.insert(2);
+          bool has = s.contains(3);
+          ```
+
+          ## Свой ключ
+
+          Для `map`/`set` нужен `operator<` (или `<=>`), для `unordered_*` — `std::hash` и `operator==`:
+
+          ```cpp
+          struct Point { int x, y; bool operator==(const Point&) const = default; };
+          struct PointHash { size_t operator()(const Point& p) const { return std::hash<int>{}(p.x) ^ (std::hash<int>{}(p.y) << 1); } };
+          std::unordered_set<Point, PointHash> visited;
+          ```
+
+          > 💡 По умолчанию берите `unordered_map`; `map` — когда нужен порядок или диапазонные запросы.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::map<std::string, int> m;
+              m["b"] = 2; m["a"] = 1; m["c"] = 3;
+              for (auto& [k, v] : m) std::cout << k;
+            answer: abc
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::map<int, int> m;
+              if (m[5] == 0) std::cout << m.size();
+            answer: "1"
+            explain: operator[] вставил ключ 5 со значением 0.
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::set<int> s{3, 1, 3, 2, 1};
+              std::cout << s.size() << *s.begin();
+            answer: "31"
+          - type: fill
+            q: Проверьте наличие ключа без вставки (C++20)
+            code: |
+              if (users.___("admin")) { ... }
+            answers: ["contains"]
+          - type: choice
+            q: Какая сложность поиска в std::map?
+            options: ["O(1)", "O(log n)", "O(n)", "O(n log n)"]
+            answer: 1
+        homework:
+          task: |
+            Программа читает текст из файла и выводит: (1) топ-10 частых слов (`unordered_map` + сортировка вектора пар), (2) слова, сгруппированные по первой букве в алфавитном порядке (`map<char, set<string>>`), (3) количество уникальных слов. Слова — в нижнем регистре без пунктуации.
+          checklist:
+            - Используется structured bindings
+            - Сортировка по убыванию частоты, при равенстве — по алфавиту
+            - Нет лишних копий строк в циклах
+          solution: |
+            #include <algorithm>
+            #include <cctype>
+            #include <fstream>
+            #include <iostream>
+            #include <map>
+            #include <set>
+            #include <string>
+            #include <unordered_map>
+            #include <vector>
+
+            int main(int argc, char** argv) {
+                std::ifstream in(argc > 1 ? argv[1] : "text.txt");
+                std::unordered_map<std::string, int> freq;
+                std::map<char, std::set<std::string>> groups;
+                std::string w;
+                while (in >> w) {
+                    std::string clean;
+                    for (unsigned char c : w) if (std::isalpha(c)) clean += static_cast<char>(std::tolower(c));
+                    if (clean.empty()) continue;
+                    ++freq[clean];
+                    groups[clean[0]].insert(clean);
+                }
+                std::vector<std::pair<std::string, int>> v(freq.begin(), freq.end());
+                std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) {
+                    return a.second != b.second ? a.second > b.second : a.first < b.first;
+                });
+                for (std::size_t i = 0; i < std::min<std::size_t>(10, v.size()); ++i)
+                    std::cout << v[i].first << " " << v[i].second << "\n";
+                for (const auto& [letter, words] : groups) {
+                    std::cout << letter << ":";
+                    for (const auto& x : words) std::cout << " " << x;
+                    std::cout << "\n";
+                }
+                std::cout << "unique: " << freq.size() << "\n";
+            }
+      - id: cpp-04-03
+        title: Алгоритмы STL и лямбды
+        minutes: 35
+        xp: 40
+        theory: |
+          `<algorithm>` и `<numeric>` содержат десятки готовых, оптимизированных и протестированных алгоритмов. Писать циклы вручную вместо них — плохой стиль.
+
+          ## Лямбды
+
+          ```cpp
+          auto square = [](int x) { return x * x; };
+          int k = 3;
+          auto mulK = [k](int x) { return x * k; };       // захват по значению
+          auto addTo = [&total](int x) { total += x; };   // по ссылке
+          auto all = [=] { ... };  auto allRef = [&] { ... };
+          auto counter = [n = 0]() mutable { return ++n; }; // init-capture + mutable
+          auto generic = [](auto a, auto b) { return a + b; }; // обобщённая (C++14)
+          ```
+
+          ⚠️ Захват по ссылке локальной переменной в лямбду, которая переживёт функцию → висячая ссылка.
+
+          ## Основные алгоритмы
+
+          ```cpp
+          std::vector<int> v{5, 2, 8, 1, 9, 3};
+
+          std::sort(v.begin(), v.end());                              // 1 2 3 5 8 9
+          std::sort(v.begin(), v.end(), std::greater<>{});            // по убыванию
+          std::sort(users.begin(), users.end(), [](const User& a, const User& b) { return a.age < b.age; });
+          std::stable_sort(...);                                      // сохраняет порядок равных
+
+          auto it = std::find(v.begin(), v.end(), 8);
+          auto it2 = std::find_if(v.begin(), v.end(), [](int x) { return x > 4; });
+          int cnt = std::count_if(v.begin(), v.end(), [](int x) { return x % 2 == 0; });
+          bool any = std::any_of(v.begin(), v.end(), [](int x) { return x < 0; });  // all_of, none_of
+
+          auto [mn, mx] = std::minmax_element(v.begin(), v.end());
+          int sum = std::accumulate(v.begin(), v.end(), 0);           // <numeric>
+          long long prod = std::accumulate(v.begin(), v.end(), 1LL, std::multiplies<>{});
+
+          std::vector<int> sq(v.size());
+          std::transform(v.begin(), v.end(), sq.begin(), [](int x) { return x * x; });
+
+          std::reverse(v.begin(), v.end());
+          std::iota(v.begin(), v.end(), 1);                           // 1, 2, 3, ...
+          bool found = std::binary_search(v.begin(), v.end(), 5);     // только для отсортированного
+
+          v.erase(std::unique(v.begin(), v.end()), v.end());          // убрать подряд идущие дубли (после sort)
+          v.erase(std::remove_if(v.begin(), v.end(), pred), v.end()); // erase-remove idiom
+          ```
+
+          `std::remove` **не удаляет** элементы — только сдвигает оставшиеся вперёд и возвращает новый «конец». Поэтому нужен `erase`.
+
+          ## Частичная сортировка и выбор
+
+          ```cpp
+          std::partial_sort(v.begin(), v.begin() + 3, v.end());   // топ-3 в начале
+          std::nth_element(v.begin(), v.begin() + v.size()/2, v.end()); // медиана за O(n)
+          ```
+
+          ## Параллельные версии (C++17)
+
+          ```cpp
+          #include <execution>
+          std::sort(std::execution::par, v.begin(), v.end());
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::vector<int> v{4, 1, 3};
+              std::sort(v.begin(), v.end());
+              std::cout << v[0] << v[2] << std::accumulate(v.begin(), v.end(), 0);
+            answer: "148"
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::vector<int> v{1, 2, 3, 4, 5, 6};
+              std::cout << std::count_if(v.begin(), v.end(), [](int x) { return x % 3 == 0; });
+            answer: "2"
+          - type: output
+            q: Что выведет код?
+            code: |
+              auto c = [n = 0]() mutable { return ++n; };
+              c(); c();
+              std::cout << c();
+            answer: "3"
+          - type: fill
+            q: Удалите все нули из вектора (erase-remove)
+            code: |
+              v.erase(std::___(v.begin(), v.end(), 0), v.end());
+            answers: ["remove"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              int k = 2;
+              auto f = [k](int x) { return x * k; };
+              k = 10;
+              std::cout << f(5);
+            answer: "10"
+            explain: k захвачен по значению в момент создания лямбды (2), поэтому 5 * 2 = 10.
+        homework:
+          task: |
+            Есть `std::vector<Employee>` (name, dept, salary, age). Без единого ручного цикла (только алгоритмы STL и лямбды) найдите: среднюю зарплату, самого старшего, количество сотрудников старше 40, топ-3 по зарплате (partial_sort), список имён отдела "IT" (copy_if + transform), есть ли кто-то с зарплатой > 500000, удалите всех стажёров (age < 20).
+          checklist:
+            - Нет for/while
+            - Используется erase-remove или erase_if
+            - Лямбды принимают по const&
+          solution: |
+            #include <algorithm>
+            #include <iostream>
+            #include <iterator>
+            #include <numeric>
+            #include <string>
+            #include <vector>
+
+            struct Employee { std::string name, dept; double salary; int age; };
+
+            int main() {
+                std::vector<Employee> e{{"Аня", "IT", 250000, 28}, {"Боб", "HR", 90000, 45}, {"Вика", "IT", 310000, 35},
+                                        {"Гена", "Sales", 120000, 52}, {"Дима", "IT", 40000, 19}};
+                double avg = std::accumulate(e.begin(), e.end(), 0.0, [](double s, const Employee& x) { return s + x.salary; }) / e.size();
+                auto oldest = std::max_element(e.begin(), e.end(), [](const auto& a, const auto& b) { return a.age < b.age; });
+                auto over40 = std::count_if(e.begin(), e.end(), [](const auto& x) { return x.age > 40; });
+                bool rich = std::any_of(e.begin(), e.end(), [](const auto& x) { return x.salary > 500000; });
+
+                std::vector<Employee> it;
+                std::copy_if(e.begin(), e.end(), std::back_inserter(it), [](const auto& x) { return x.dept == "IT"; });
+                std::vector<std::string> names;
+                std::transform(it.begin(), it.end(), std::back_inserter(names), [](const auto& x) { return x.name; });
+
+                std::partial_sort(e.begin(), e.begin() + 3, e.end(), [](const auto& a, const auto& b) { return a.salary > b.salary; });
+                std::erase_if(e, [](const auto& x) { return x.age < 20; });
+
+                std::cout << avg << " " << oldest->name << " " << over40 << " " << rich << " " << names.size() << " " << e.size();
+            }
+      - id: cpp-04-04
+        title: optional, variant, any
+        minutes: 30
+        xp: 35
+        theory: |
+          Словарные типы C++17 делают код выразительнее и безопаснее.
+
+          ## std::optional<T> — значение, которого может не быть
+
+          Вместо магических `-1`, `nullptr` или пары `bool + out`-параметр:
+
+          ```cpp
+          #include <optional>
+
+          std::optional<int> parseInt(std::string_view s) {
+              int v;
+              auto [p, ec] = std::from_chars(s.data(), s.data() + s.size(), v);
+              if (ec != std::errc{} || p != s.data() + s.size()) return std::nullopt;
+              return v;
+          }
+
+          if (auto n = parseInt("42")) std::cout << *n;      // проверка + доступ
+          int x = parseInt("abc").value_or(0);                 // значение по умолчанию
+          parseInt("x").value();                               // std::bad_optional_access
+          ```
+
+          C++23: монадические `and_then`, `transform`, `or_else`:
+
+          ```cpp
+          auto doubled = parseInt("21").transform([](int v) { return v * 2; });   // optional<int>{42}
+          ```
+
+          ## std::variant<Ts...> — одно из нескольких типов
+
+          Типобезопасный `union`: хранит ровно одно значение из списка и знает, какое.
+
+          ```cpp
+          #include <variant>
+          using Value = std::variant<int, double, std::string>;
+
+          Value v = 3.14;
+          v = std::string("text");
+
+          std::cout << v.index();                         // 2
+          if (std::holds_alternative<std::string>(v)) std::cout << std::get<std::string>(v);
+          if (auto p = std::get_if<int>(&v)) std::cout << *p;   // nullptr, если не int
+          std::get<int>(v);                               // std::bad_variant_access
+          ```
+
+          **std::visit** — обработать любой вариант:
+
+          ```cpp
+          template <class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+
+          std::visit(overloaded{
+              [](int i)                { std::cout << "int " << i; },
+              [](double d)             { std::cout << "double " << d; },
+              [](const std::string& s) { std::cout << "str " << s; }
+          }, v);
+          ```
+
+          Компилятор проверит, что обработаны **все** альтернативы. Применение: результат-или-ошибка, состояния конечного автомата, AST, сообщения протокола.
+
+          ## std::any — что угодно
+
+          ```cpp
+          std::any a = 5;
+          a = std::string("hi");
+          auto s = std::any_cast<std::string>(a);       // std::bad_any_cast при несовпадении
+          ```
+
+          Медленнее и теряет проверку типов на этапе компиляции. Используйте редко (контейнеры плагинов, свойства «чёрного ящика»). В 95% случаев нужен `variant`.
+
+          ## std::expected (C++23)
+
+          ```cpp
+          std::expected<int, std::string> divide(int a, int b) {
+              if (b == 0) return std::unexpected("деление на ноль");
+              return a / b;
+          }
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::optional<int> a;
+              std::optional<int> b = 5;
+              std::cout << a.value_or(-1) << " " << b.value_or(-1);
+            answer: -1 5
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::variant<int, std::string, double> v = 2.5;
+              std::cout << v.index();
+            answer: "2"
+          - type: fill
+            q: Верните «пустое» значение из функции, возвращающей optional
+            code: |
+              if (!found) return std::___;
+            answers: ["nullopt"]
+          - type: choice
+            q: Что выбрать для типа «либо число, либо строка, либо список»?
+            options: ["std::any", "std::variant", "void*", "std::optional"]
+            answer: 1
+          - type: choice
+            q: Что произойдёт при std::get<int>(v), если в variant лежит строка?
+            options: ["Вернётся 0", "Исключение std::bad_variant_access", "UB", "Ошибка компиляции"]
+            answer: 1
+        homework:
+          task: |
+            Напишите калькулятор выражений из токенов: `using Token = std::variant<double, char>` (число или оператор). Функция `std::optional<std::vector<Token>> tokenize(std::string_view)` (nullopt при недопустимом символе), функция `std::optional<double> evaluate(const std::vector<Token>&)` для выражений без скобок с приоритетом `* /` над `+ -` (nullopt при делении на 0 или некорректной последовательности). Используйте std::visit с overloaded.
+          checklist:
+            - Нет исключений для ошибок пользователя
+            - std::visit с overloaded
+            - Приоритет операций соблюдён
+          solution: |
+            #include <cctype>
+            #include <iostream>
+            #include <optional>
+            #include <string>
+            #include <string_view>
+            #include <variant>
+            #include <vector>
+
+            using Token = std::variant<double, char>;
+            template <class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+
+            std::optional<std::vector<Token>> tokenize(std::string_view s) {
+                std::vector<Token> out;
+                for (std::size_t i = 0; i < s.size();) {
+                    char c = s[i];
+                    if (std::isspace(static_cast<unsigned char>(c))) { ++i; continue; }
+                    if (std::isdigit(static_cast<unsigned char>(c)) || c == '.') {
+                        std::size_t j = i;
+                        while (j < s.size() && (std::isdigit(static_cast<unsigned char>(s[j])) || s[j] == '.')) ++j;
+                        out.emplace_back(std::stod(std::string(s.substr(i, j - i))));
+                        i = j;
+                    } else if (std::string_view("+-*/").find(c) != std::string_view::npos) { out.emplace_back(c); ++i; }
+                    else return std::nullopt;
+                }
+                return out;
+            }
+
+            std::optional<double> evaluate(const std::vector<Token>& t) {
+                std::vector<double> terms; std::vector<char> ops; bool expectNum = true; bool bad = false;
+                for (const auto& tok : t) std::visit(overloaded{
+                    [&](double d) {
+                        if (!expectNum) { bad = true; return; }
+                        if (!ops.empty() && (ops.back() == '*' || ops.back() == '/')) {
+                            char op = ops.back(); ops.pop_back();
+                            if (op == '/' && d == 0) { bad = true; return; }
+                            terms.back() = op == '*' ? terms.back() * d : terms.back() / d;
+                        } else terms.push_back(d);
+                        expectNum = false;
+                    },
+                    [&](char op) { if (expectNum) { bad = true; return; } ops.push_back(op); expectNum = true; }
+                }, tok);
+                if (bad || expectNum) return std::nullopt;
+                double r = terms[0];
+                for (std::size_t i = 0; i < ops.size(); ++i) r = ops[i] == '+' ? r + terms[i + 1] : r - terms[i + 1];
+                return r;
+            }
+
+            int main() {
+                if (auto t = tokenize("2 + 3 * 4 - 10 / 5"))
+                    std::cout << evaluate(*t).value_or(0.0) << "\n";   // 12
+            }
+      - id: cpp-04-05
+        title: string_view и span
+        minutes: 25
+        xp: 35
+        theory: |
+          Невладеющие «представления» (views) позволяют передавать данные без копирования.
+
+          ## std::string_view (C++17)
+
+          Пара «указатель + длина» на чужие символы. Не владеет памятью, не выделяет её.
+
+          ```cpp
+          #include <string_view>
+
+          // принимает и std::string, и "литерал", и char* — без копий
+          bool startsWithHttp(std::string_view url) {
+              return url.starts_with("http");        // C++20
+          }
+
+          std::string_view sv = "key=value";
+          auto pos = sv.find('=');
+          std::string_view key = sv.substr(0, pos);   // не создаёт новую строку!
+          std::string_view val = sv.substr(pos + 1);
+          sv.remove_prefix(4);                         // сдвиг начала
+          ```
+
+          Сравните: `std::string::substr` выделяет память, `string_view::substr` — нет.
+
+          **Правило параметров:** для функции, которая только читает строку — `std::string_view` (по значению). Если функция сохраняет строку у себя — принимайте `std::string` по значению и `std::move`.
+
+          ## Опасность — висячие view
+
+          ```cpp
+          std::string_view bad() {
+              std::string s = "temp";
+              return s;              // ❌ s уничтожена, view указывает в никуда
+          }
+          std::string_view v = std::string("tmp");  // ❌ временная строка умрёт в конце выражения
+          ```
+
+          string_view не гарантирует нулевой терминатор — нельзя передавать `sv.data()` в C-функции, ожидающие `const char*`.
+
+          ## std::span<T> (C++20)
+
+          То же для непрерывных последовательностей любых элементов: массивов, `vector`, `array`.
+
+          ```cpp
+          #include <span>
+
+          double average(std::span<const double> data) {
+              double s = 0;
+              for (double x : data) s += x;
+              return data.empty() ? 0 : s / data.size();
+          }
+
+          std::vector<double> v{1, 2, 3};
+          double arr[] = {4, 5};
+          std::array<double, 3> a{7, 8, 9};
+          average(v); average(arr); average(a);
+          average(std::span(v).subspan(1));         // часть без копирования
+
+          void fill(std::span<int> out) { for (auto& x : out) x = 0; }   // можно менять
+          ```
+
+          `span` заменяет устаревшую пару параметров `(T* ptr, size_t n)` и знает свой размер.
+
+          | Владеет | Не владеет (view) |
+          |---|---|
+          | `std::string` | `std::string_view` |
+          | `std::vector<T>` | `std::span<T>` |
+          | `unique_ptr<T>` | `T*`, `T&` |
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::string_view sv = "hello world";
+              std::cout << sv.substr(6, 3) << sv.size();
+            answer: wor11
+          - type: choice
+            q: Какой тип параметра лучше для функции, которая только читает строку?
+            options: ["std::string", "std::string&", "std::string_view", "char*"]
+            answer: 2
+          - type: bug
+            q: В какой строке создаётся висячий string_view?
+            code: |
+              std::string makeName() { return "Аня"; }
+              int main() {
+                  std::string_view name = makeName();
+                  std::cout << name;
+              }
+            bugLine: 3
+            fix: std::string name = makeName();
+            explain: Временная строка уничтожается в конце выражения, view указывает на освобождённую память.
+          - type: fill
+            q: Примите любую непрерывную последовательность int только для чтения
+            code: |
+              int sum(std::___<const int> data);
+            answers: ["span"]
+          - type: choice
+            q: Можно ли передать sv.data() в функцию, ожидающую C-строку с '\0'?
+            options: ["Всегда можно", "Нет гарантии нулевого терминатора", "Только для литералов", "Только в C++20"]
+            answer: 1
+        homework:
+          task: |
+            Напишите парсер конфигурации формата `key = value` (строки, комментарии `#`, пустые строки) на `std::string_view`: функции `trim(std::string_view)`, `split(std::string_view, char) -> std::vector<std::string_view>`, `parseLine(std::string_view) -> std::optional<std::pair<std::string_view, std::string_view>>`. Результат сохраните в `std::map<std::string, std::string>` (здесь копирование нужно — данные должны жить). Плюс функция статистики `std::span<const int>` → min/max/avg.
+          checklist:
+            - Разбор без лишних аллокаций
+            - Висячих view нет — в map хранятся std::string
+            - Обрабатываются комментарии и пробелы
+          solution: |
+            #include <map>
+            #include <optional>
+            #include <span>
+            #include <string>
+            #include <string_view>
+            #include <vector>
+
+            std::string_view trim(std::string_view s) {
+                auto b = s.find_first_not_of(" \t\r");
+                if (b == std::string_view::npos) return {};
+                auto e = s.find_last_not_of(" \t\r");
+                return s.substr(b, e - b + 1);
+            }
+
+            std::vector<std::string_view> split(std::string_view s, char d) {
+                std::vector<std::string_view> out;
+                std::size_t start = 0;
+                for (std::size_t i = 0; i <= s.size(); ++i)
+                    if (i == s.size() || s[i] == d) { out.push_back(s.substr(start, i - start)); start = i + 1; }
+                return out;
+            }
+
+            std::optional<std::pair<std::string_view, std::string_view>> parseLine(std::string_view line) {
+                if (auto h = line.find('#'); h != std::string_view::npos) line = line.substr(0, h);
+                line = trim(line);
+                auto eq = line.find('=');
+                if (line.empty() || eq == std::string_view::npos) return std::nullopt;
+                return std::pair{trim(line.substr(0, eq)), trim(line.substr(eq + 1))};
+            }
+
+            std::map<std::string, std::string> parseConfig(std::string_view text) {
+                std::map<std::string, std::string> cfg;
+                for (auto line : split(text, '\n'))
+                    if (auto kv = parseLine(line)) cfg.emplace(std::string(kv->first), std::string(kv->second));
+                return cfg;
+            }
+      - id: cpp-04-06
+        title: Исключения
+        minutes: 30
+        xp: 35
+        theory: |
+          ```cpp
+          #include <stdexcept>
+
+          double divide(double a, double b) {
+              if (b == 0) throw std::invalid_argument("Деление на ноль");
+              return a / b;
+          }
+
+          try {
+              divide(1, 0);
+          }
+          catch (const std::invalid_argument& e) {     // ловить ПО КОНСТАНТНОЙ ССЫЛКЕ
+              std::cerr << "Ошибка аргумента: " << e.what() << "\n";
+          }
+          catch (const std::exception& e) {             // базовый класс всех стандартных
+              std::cerr << e.what() << "\n";
+          }
+          catch (...) {                                 // всё остальное
+              std::cerr << "Неизвестная ошибка\n";
+              throw;                                    // пробросить дальше
+          }
+          ```
+
+          ## Иерархия
+
+          `std::exception` → `std::logic_error` (`invalid_argument`, `out_of_range`, `length_error`) и `std::runtime_error` (`overflow_error`, `system_error`), а также `std::bad_alloc`, `std::bad_cast`, `std::bad_optional_access`.
+
+          ## Свои исключения
+
+          ```cpp
+          class InsufficientFunds : public std::runtime_error {
+          public:
+              explicit InsufficientFunds(double need)
+                  : std::runtime_error("Не хватает " + std::to_string(need)), need_(need) {}
+              double need() const noexcept { return need_; }
+          private:
+              double need_;
+          };
+          ```
+
+          ## Раскрутка стека
+
+          При исключении вызываются деструкторы всех локальных объектов на пути — поэтому RAII делает код безопасным. Ресурсы, захваченные «вручную» без RAII, утекут.
+
+          ## noexcept
+
+          ```cpp
+          void swap(Buffer& a, Buffer& b) noexcept;   // обещание не бросать
+          ```
+
+          Если noexcept-функция всё же бросит → `std::terminate`. Деструкторы, move-операции и `swap` должны быть `noexcept`.
+
+          ## Гарантии безопасности исключений
+
+          - **No-throw** — никогда не бросает.
+          - **Strong** — при исключении состояние не меняется (транзакционность; copy-and-swap).
+          - **Basic** — инварианты сохранены, утечек нет, но состояние может измениться.
+
+          ## Когда использовать
+
+          - Исключения — для **исключительных** ситуаций (нет файла конфигурации, нарушен контракт).
+          - Ожидаемые неудачи (пользователь ввёл не число) — `std::optional` / `std::expected` / коды ошибок.
+          - В некоторых областях (геймдев, embedded, Google style) исключения отключают (`-fno-exceptions`).
+          - Никогда не ловите по значению: `catch (std::exception e)` — срезка и копия.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              try {
+                  throw std::out_of_range("x");
+              }
+              catch (const std::logic_error&) { std::cout << "L"; }
+              catch (const std::exception&) { std::cout << "E"; }
+            answer: L
+            explain: out_of_range — наследник logic_error, срабатывает первый подходящий catch.
+          - type: fill
+            q: Пообещайте компилятору, что функция не бросает исключений
+            code: |
+              void swap(Node& a, Node& b) ___;
+            answers: ["noexcept"]
+          - type: choice
+            q: Как правильно ловить исключения?
+            options: ["По значению", "По константной ссылке", "По указателю", "Только catch(...)"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct R { ~R() { std::cout << "R"; } };
+              void f() { R r; throw 1; }
+              int main() {
+                  try { f(); } catch (int) { std::cout << "C"; }
+              }
+            answer: RC
+          - type: choice
+            q: Что произойдёт, если noexcept-функция бросит исключение?
+            options: ["Его поймает ближайший catch", "std::terminate", "Вернётся 0", "Ничего"]
+            answer: 1
+        homework:
+          task: |
+            Класс `BankAccount` с методами `withdraw` (бросает `InsufficientFunds` со значением недостающей суммы), `deposit` (бросает `std::invalid_argument` при ≤ 0). Функция `transfer(a, b, sum)` с **сильной гарантией**: при любой ошибке оба счёта остаются как были. В main обработайте все ошибки по типам, проверьте гарантию тестом.
+          checklist:
+            - Своё исключение наследует std::runtime_error
+            - transfer обеспечивает strong guarantee
+            - Ловля по const&
+          solution: |
+            #include <cassert>
+            #include <iostream>
+            #include <stdexcept>
+            #include <string>
+
+            class InsufficientFunds : public std::runtime_error {
+                double need_;
+            public:
+                explicit InsufficientFunds(double n) : std::runtime_error("Не хватает " + std::to_string(n)), need_(n) {}
+                double need() const noexcept { return need_; }
+            };
+
+            class BankAccount {
+                double bal_ = 0;
+            public:
+                explicit BankAccount(double b) : bal_(b) {}
+                double balance() const noexcept { return bal_; }
+                void deposit(double s) { if (s <= 0) throw std::invalid_argument("сумма <= 0"); bal_ += s; }
+                void withdraw(double s) {
+                    if (s <= 0) throw std::invalid_argument("сумма <= 0");
+                    if (s > bal_) throw InsufficientFunds(s - bal_);
+                    bal_ -= s;
+                }
+            };
+
+            void transfer(BankAccount& a, BankAccount& b, double s) {
+                BankAccount ta = a, tb = b;     // работаем с копиями
+                ta.withdraw(s);
+                tb.deposit(s);
+                a = ta; b = tb;                 // присваивание double не бросает
+            }
+
+            int main() {
+                BankAccount a(100), b(50);
+                try { transfer(a, b, 500); }
+                catch (const InsufficientFunds& e) { std::cout << e.what() << "\n"; }
+                catch (const std::invalid_argument& e) { std::cout << "Аргумент: " << e.what() << "\n"; }
+                assert(a.balance() == 100 && b.balance() == 50);
+            }

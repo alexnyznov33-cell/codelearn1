@@ -1,0 +1,713 @@
+id: javascript
+title: JavaScript
+short: JS
+lang: javascript
+color: "#d4b106"
+description: Язык веба — интерфейсы, фронтенд на React, бэкенд на Node.js и кроссплатформенные приложения.
+modules:
+  - id: js-m1
+    title: Основы JavaScript
+    level: Junior
+    lessons:
+      - id: js-01-01
+        title: Где выполняется JS и первая программа
+        minutes: 10
+        xp: 15
+        theory: |
+          **JavaScript** — динамический язык, который работает в каждом браузере, а через **Node.js** — на сервере и в консоли.
+
+          ## Где запускать
+
+          - **Браузер:** нажмите F12 → вкладка Console и пишите код прямо там.
+          - **Node.js:** установите с [nodejs.org](https://nodejs.org) (LTS), создайте `app.js` и запустите `node app.js`.
+          - **На странице:** `<script src="app.js"></script>` в HTML.
+
+          ## Первая программа
+
+          ```javascript
+          console.log("Привет, мир!");
+          console.log("Сумма:", 2 + 3);   // несколько аргументов через пробел
+          ```
+
+          Другие методы консоли: `console.error()`, `console.warn()`, `console.table([...])`.
+
+          ## Синтаксис
+
+          - инструкции разделяются `;` (JS умеет расставлять их автоматически, но лучше ставить явно);
+          - блоки — в `{ }`;
+          - комментарии: `// строка` и `/* блок */`;
+          - регистр важен: `name` и `Name` — разные идентификаторы.
+
+          ## Строгий режим
+
+          `"use strict";` в начале файла включает более строгие правила и ловит типичные ошибки. В ES-модулях и классах он включён автоматически.
+
+          > 💡 Стандарт языка называется **ECMAScript** (ES). «Современный JS» — это ES2015 (ES6) и новее.
+        practice:
+          - type: choice
+            q: Как вывести сообщение в консоль?
+            options: ["`print()`", "`console.log()`", "`System.out.println()`", "`echo`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log("a", 1 + 2, "b");
+            answer: a 3 b
+          - type: choice
+            q: Какая команда запускает файл в Node.js?
+            options: ["`run app.js`", "`node app.js`", "`js app.js`", "`npm app.js`"]
+            answer: 1
+          - type: bug
+            q: Где ошибка?
+            code: |
+              const message = "Hi";
+              console.log(Message);
+            bugLine: 2
+            explain: JS чувствителен к регистру — `Message` не определена (`ReferenceError`).
+            fix: console.log(message);
+        homework:
+          task: |
+            Установите Node.js LTS и VS Code. Создайте `card.js`, который выводит визитку (рамка, имя, язык, рамка). Затем выполните тот же код в консоли браузера (F12). Попробуйте `console.table([{ lang: "JS", level: 1 }])`.
+          checklist:
+            - "`node card.js` работает"
+            - Код выполнен и в браузере
+          solution: |
+            const line = "=".repeat(10);
+            console.log(line);
+            console.log("Имя: Алекс");
+            console.log("Язык: JavaScript");
+            console.log(line);
+
+      - id: js-01-02
+        title: Переменные и типы данных
+        minutes: 20
+        xp: 20
+        theory: |
+          ## let, const, var
+
+          ```javascript
+          let age = 25;        // можно переприсвоить
+          const PI = 3.14;     // нельзя переприсвоить
+          var old = 1;         // устаревший способ — не используйте
+          ```
+
+          Правило: по умолчанию `const`, `let` — если значение будет меняться. `let`/`const` видны только внутри блока `{ }`, а `var` — во всей функции.
+
+          `const` запрещает переприсваивание, но не изменение объекта: `const arr = []; arr.push(1);` — можно.
+
+          ## Типы
+
+          Примитивы:
+          - `number` — все числа: `42`, `3.14`, `NaN`, `Infinity`;
+          - `bigint` — большие целые: `123n`;
+          - `string` — `"текст"`, `'текст'`, `` `шаблон` ``;
+          - `boolean` — `true` / `false`;
+          - `undefined` — значение не присвоено;
+          - `null` — «намеренно пусто»;
+          - `symbol` — уникальный идентификатор.
+
+          И `object` — всё остальное: объекты, массивы, функции.
+
+          ```javascript
+          typeof 42          // "number"
+          typeof "hi"        // "string"
+          typeof undefined   // "undefined"
+          typeof null        // "object" — историческая ошибка языка
+          typeof []          // "object" → для массивов Array.isArray([])
+          ```
+
+          ## Преобразования
+
+          ```javascript
+          Number("42")     // 42
+          Number("abc")    // NaN
+          parseInt("42px") // 42
+          String(10)       // "10"
+          Boolean("")      // false
+          ```
+
+          Ложные значения: `false, 0, -0, 0n, "", null, undefined, NaN`. Всё остальное истинно, включая `"0"`, `[]`, `{}`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(typeof null);
+            answer: object
+          - type: bug
+            q: Где ошибка?
+            code: |
+              const limit = 10;
+              let count = 0;
+              count = 5;
+              limit = 20;
+            bugLine: 4
+            explain: "`const` нельзя переприсвоить — `TypeError`."
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(Boolean([]), Boolean(""));
+            answer: true false
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(Number("12abc"), parseInt("12abc"));
+            answer: NaN 12
+          - type: choice
+            q: Что из этого допустимо?
+            code: |
+              const arr = [1, 2];
+            options: ["`arr.push(3)`", "`arr = [3]`", "`arr[0] = 5`", "`arr = null`"]
+            answer: [0, 2]
+        homework:
+          task: |
+            Создайте переменные всех 7 примитивных типов и один объект. Для каждой выведите `значение — typeof`. Отдельно выведите, как каждое значение приводится к `Boolean` и к `Number`.
+          checklist:
+            - Использованы let и const осознанно
+            - Объяснено, почему typeof null === "object"
+          solution: |
+            const values = [42, 10n, "text", true, undefined, null, Symbol("id"), { a: 1 }];
+            for (const v of values) {
+              const n = typeof v === "symbol" || typeof v === "bigint" ? "—" : Number(v);
+              console.log(String(v), "—", typeof v, Boolean(v), n);
+            }
+
+      - id: js-01-03
+        title: Операторы и сравнение
+        minutes: 20
+        xp: 20
+        theory: |
+          ## Арифметика
+
+          `+ - * / % **`. Деление всегда дробное: `7 / 2 === 3.5`. Целая часть — `Math.floor(7 / 2)` или `Math.trunc`.
+
+          ```javascript
+          0.1 + 0.2          // 0.30000000000000004 — особенность float
+          10 / 0             // Infinity
+          "5" + 2            // "52"  — + со строкой склеивает
+          "5" - 2            // 3     — остальные операторы приводят к числу
+          "5" * "2"          // 10
+          ```
+
+          ## Сравнение: == против ===
+
+          ```javascript
+          5 == "5"     // true  — с приведением типов
+          5 === "5"    // false — строгое: тип и значение
+          null == undefined   // true
+          null === undefined  // false
+          NaN === NaN         // false → используйте Number.isNaN(x)
+          ```
+
+          > ✅ Всегда используйте `===` и `!==`.
+
+          ## Логические операторы
+
+          `&&`, `||`, `!` возвращают **один из операндов**, а не обязательно `true`/`false`:
+
+          ```javascript
+          "a" || "b"     // "a"   — первое истинное
+          0 || "def"     // "def"
+          "a" && "b"     // "b"   — последнее, если все истинны
+          0 ?? "def"     // 0     — ?? реагирует только на null/undefined
+          user?.address?.city   // опциональная цепочка
+          ```
+
+          ## Присваивание
+
+          `+=`, `-=`, `++`, `--`, а также `||=`, `&&=`, `??=`:
+
+          ```javascript
+          let name;
+          name ??= "Гость";   // присвоить, если null/undefined
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log("3" + 4 + 5);
+            answer: "345"
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(3 + 4 + "5");
+            answer: "75"
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(0 || "A", 0 ?? "B");
+            answer: A 0
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log(1 == "1", 1 === "1");
+            answer: true false
+          - type: fill
+            q: Безопасно получите город пользователя
+            code: |
+              const city = user___address___city ?? "не указан";
+            answers: ["?.", "?."]
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log("10" - "4", "10" + "4");
+            answer: 6 104
+        homework:
+          task: |
+            Напишите функцию-калькулятор скидки: на вход цена и промокод (может отсутствовать). Промокод `SALE10` — скидка 10%, `SALE25` — 25%, иначе скидки нет. Используйте `??` для значения по умолчанию и `toFixed(2)` для вывода.
+          checklist:
+            - Используется строгое сравнение
+            - Отсутствие промокода не ломает программу
+          solution: |
+            function finalPrice(price, code) {
+              code = code ?? "";
+              let discount = 0;
+              if (code === "SALE10") discount = 0.1;
+              else if (code === "SALE25") discount = 0.25;
+              return (price * (1 - discount)).toFixed(2);
+            }
+            console.log(finalPrice(1000, "SALE25"), finalPrice(1000));
+
+      - id: js-01-04
+        title: Условия и циклы
+        minutes: 20
+        xp: 25
+        theory: |
+          ## if / else и тернарный оператор
+
+          ```javascript
+          if (age >= 18) {
+            console.log("Взрослый");
+          } else if (age >= 14) {
+            console.log("Подросток");
+          } else {
+            console.log("Ребёнок");
+          }
+          const status = age >= 18 ? "adult" : "child";
+          ```
+
+          ## switch
+
+          ```javascript
+          switch (cmd) {
+            case "start":
+              run();
+              break;
+            case "stop":
+            case "exit":
+              stop();
+              break;
+            default:
+              console.log("?");
+          }
+          ```
+
+          `switch` сравнивает строго (`===`).
+
+          ## Циклы
+
+          ```javascript
+          for (let i = 0; i < 5; i++) { }
+
+          while (n > 0) { n--; }
+
+          do { } while (cond);
+
+          for (const item of [10, 20]) { }        // значения итерируемого
+          for (const key in { a: 1, b: 2 }) { }   // ключи объекта
+          ```
+
+          > ⚠️ `for...in` — для ключей объектов. Для массивов используйте `for...of` или методы массива.
+
+          `break` и `continue` работают как в других языках.
+
+          ## Ловушка с var
+
+          ```javascript
+          for (var i = 0; i < 3; i++) setTimeout(() => console.log(i)); // 3 3 3
+          for (let i = 0; i < 3; i++) setTimeout(() => console.log(i)); // 0 1 2
+          ```
+
+          `let` создаёт новую переменную на каждой итерации.
+        practice:
+          - type: output
+            q: Что выведет код? (через пробел)
+            code: |
+              const out = [];
+              for (let i = 0; i < 10; i += 3) out.push(i);
+              console.log(out.join(" "));
+            answer: 0 3 6 9
+          - type: output
+            q: Что выведет код?
+            code: |
+              const arr = ["a", "b"];
+              for (const x in arr) console.log(x);
+            answer: |
+              0
+              1
+            explain: "`for...in` перебирает ключи (индексы), а не значения."
+          - type: output
+            q: Что выведет код?
+            code: |
+              switch ("1") {
+                case 1: console.log("number"); break;
+                case "1": console.log("string"); break;
+              }
+            answer: string
+          - type: fill
+            q: Переберите значения массива
+            code: |
+              for (const item ___ items) {
+                console.log(item);
+              }
+            answers: [of]
+          - type: bug
+            q: Где бесконечный цикл?
+            code: |
+              let i = 10;
+              while (i > 0) {
+                console.log(i);
+                i++;
+              }
+            bugLine: 4
+            fix: "  i--;"
+        homework:
+          task: |
+            **FizzBuzz+.** Выведите числа от 1 до 100: вместо кратных 3 — `Fizz`, кратных 5 — `Buzz`, кратных обоим — `FizzBuzz`. Затем посчитайте, сколько раз встретилось каждое слово.
+          checklist:
+            - Правильный порядок проверок
+            - Подсчёт без повторного прохода по числам
+          solution: |
+            const stats = { Fizz: 0, Buzz: 0, FizzBuzz: 0 };
+            for (let i = 1; i <= 100; i++) {
+              let out = "";
+              if (i % 3 === 0) out += "Fizz";
+              if (i % 5 === 0) out += "Buzz";
+              if (out) stats[out]++;
+              console.log(out || i);
+            }
+            console.log(stats);
+
+      - id: js-01-05
+        title: Функции и стрелочные функции
+        minutes: 25
+        xp: 25
+        theory: |
+          ## Способы объявления
+
+          ```javascript
+          function add(a, b) {             // Function Declaration — доступна до объявления (hoisting)
+            return a + b;
+          }
+
+          const sub = function (a, b) {    // Function Expression
+            return a - b;
+          };
+
+          const mul = (a, b) => a * b;     // стрелочная функция
+          const square = x => x * x;       // один параметр — без скобок
+          const makeUser = name => ({ name });  // возврат объекта — в скобках
+          ```
+
+          Функция без `return` возвращает `undefined`.
+
+          ## Параметры
+
+          ```javascript
+          function greet(name = "Гость") { }       // по умолчанию
+          function sum(...nums) {                   // rest-параметры → массив
+            return nums.reduce((s, n) => s + n, 0);
+          }
+          sum(1, 2, 3);
+          Math.max(...[4, 9, 2]);                   // spread — развернуть массив
+          ```
+
+          ## Функции — это значения
+
+          Их можно сохранять в переменные, передавать в другие функции и возвращать:
+
+          ```javascript
+          function repeat(n, action) {
+            for (let i = 0; i < n; i++) action(i);
+          }
+          repeat(3, i => console.log("шаг", i));
+          ```
+
+          ## Замыкания
+
+          Функция «помнит» переменные места, где была создана:
+
+          ```javascript
+          function counter() {
+            let count = 0;
+            return () => ++count;
+          }
+          const next = counter();
+          next(); next();  // 2
+          ```
+
+          > 💡 Стрелочные функции не имеют своего `this` — они берут его снаружи. Подробнее — в модуле про объекты.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              const f = (a, b = 10) => a + b;
+              console.log(f(5), f(5, 1));
+            answer: 15 6
+          - type: output
+            q: Что выведет код?
+            code: |
+              function test() {}
+              console.log(test());
+            answer: undefined
+          - type: output
+            q: Что выведет код?
+            code: |
+              function counter() {
+                let c = 0;
+                return () => ++c;
+              }
+              const a = counter();
+              const b = counter();
+              a(); a();
+              console.log(a(), b());
+            answer: 3 1
+            explain: Каждый вызов `counter()` создаёт своё замыкание со своей переменной `c`.
+          - type: fill
+            q: Функция суммы любого числа аргументов
+            code: |
+              const sum = (___nums) => nums.reduce((s, n) => s + n, 0);
+            answers: ["..."]
+          - type: bug
+            q: Функция должна вернуть объект. Где ошибка?
+            code: |
+              const makeUser = name => { name: name };
+              console.log(makeUser("Аня"));
+            bugLine: 1
+            explain: Фигурные скобки воспринимаются как тело функции. Объект нужно обернуть в круглые скобки.
+            fix: "const makeUser = name => ({ name: name });"
+        homework:
+          task: |
+            Напишите:
+            1. `once(fn)` — возвращает функцию, которая вызывает `fn` только первый раз, а дальше возвращает сохранённый результат;
+            2. `memoize(fn)` — кэширует результаты по аргументу;
+            3. `compose(...fns)` — `compose(f, g)(x) === f(g(x))`.
+          hints:
+            - Все три — на замыканиях.
+            - "Для memoize используйте `Map`."
+          checklist:
+            - once не вызывает fn повторно
+            - compose работает с любым числом функций
+          solution: |
+            const once = fn => {
+              let done = false, result;
+              return (...args) => {
+                if (!done) { done = true; result = fn(...args); }
+                return result;
+              };
+            };
+            const memoize = fn => {
+              const cache = new Map();
+              return x => {
+                if (!cache.has(x)) cache.set(x, fn(x));
+                return cache.get(x);
+              };
+            };
+            const compose = (...fns) => x => fns.reduceRight((acc, f) => f(acc), x);
+
+            const inc = x => x + 1, dbl = x => x * 2;
+            console.log(compose(inc, dbl)(5)); // 11
+
+      - id: js-01-06
+        title: Массивы и их методы
+        minutes: 25
+        xp: 30
+        theory: |
+          ```javascript
+          const nums = [3, 1, 4];
+          nums.push(5);         // в конец
+          nums.pop();           // убрать последний
+          nums.unshift(0);      // в начало
+          nums.shift();         // убрать первый
+          nums.length;          // 3
+          nums.includes(4);     // true
+          nums.indexOf(4);      // 2
+          nums.slice(0, 2);     // [3, 1] — копия части, без изменений
+          nums.splice(1, 1);    // удаляет 1 элемент с индекса 1 (меняет массив!)
+          [...nums, 7];         // новый массив
+          nums.at(-1);          // последний элемент
+          ```
+
+          ## Методы высшего порядка
+
+          ```javascript
+          const prices = [100, 250, 40];
+
+          prices.map(p => p * 2);              // [200, 500, 80] — преобразовать
+          prices.filter(p => p > 50);          // [100, 250] — отфильтровать
+          prices.reduce((sum, p) => sum + p, 0); // 390 — свернуть в одно значение
+          prices.find(p => p > 200);           // 250 — первый подходящий
+          prices.some(p => p > 200);           // true
+          prices.every(p => p > 0);            // true
+          prices.forEach(p => console.log(p)); // просто перебрать
+          ```
+
+          Цепочки: `orders.filter(o => o.paid).map(o => o.total).reduce((a, b) => a + b, 0)`.
+
+          ## Сортировка
+
+          ```javascript
+          [10, 9, 1].sort();              // [1, 10, 9] ⚠️ сравнивает как строки!
+          [10, 9, 1].sort((a, b) => a - b); // [1, 9, 10]
+          users.sort((a, b) => a.name.localeCompare(b.name));
+          arr.toSorted((a, b) => a - b);  // ES2023 — без изменения исходного
+          ```
+
+          ## Деструктуризация
+
+          ```javascript
+          const [first, second, ...rest] = [1, 2, 3, 4];
+          [a, b] = [b, a];   // обмен
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log([1, 2, 3, 4].filter(x => x % 2 === 0).map(x => x * 10));
+            answer: ["[ 20, 40 ]", "[20, 40]", "[20,40]"]
+            explain: Node.js печатает массив как `[ 20, 40 ]`, браузер — `[20, 40]`. Оба варианта засчитываются.
+          - type: output
+            q: Что выведет код?
+            code: |
+              console.log([10, 1, 5].sort().join(","));
+            answer: 1,10,5
+            explain: Без функции сравнения элементы сортируются как строки.
+          - type: output
+            q: Что выведет код?
+            code: |
+              const total = [5, 10, 15].reduce((acc, x) => acc + x, 100);
+              console.log(total);
+            answer: "130"
+          - type: fill
+            q: Отсортируйте числа по возрастанию
+            code: |
+              nums.sort((a, b) => ___);
+            answers: [["a - b", "a-b"]]
+          - type: choice
+            q: Какие методы НЕ изменяют исходный массив?
+            options: ["`map`", "`splice`", "`slice`", "`sort`"]
+            answer: [0, 2]
+          - type: output
+            q: Что выведет код?
+            code: |
+              const [a, , b, ...rest] = [1, 2, 3, 4, 5];
+              console.log(a, b, rest.length);
+            answer: 1 3 2
+        homework:
+          task: |
+            Дан массив заказов:
+
+            ```javascript
+            const orders = [
+              { id: 1, user: "Аня", total: 1200, paid: true },
+              { id: 2, user: "Боб", total: 300, paid: false },
+              { id: 3, user: "Аня", total: 800, paid: true },
+              { id: 4, user: "Вика", total: 2500, paid: true },
+            ];
+            ```
+
+            Без циклов `for`, только методами массивов, получите: сумму оплаченных заказов; список уникальных пользователей; самый крупный заказ; объект `{ Аня: 2000, Вика: 2500 }` — сумма оплаченных по пользователям.
+          checklist:
+            - Используются map, filter, reduce
+            - Исходный массив не изменяется
+          solution: |
+            const paid = orders.filter(o => o.paid);
+            const sum = paid.reduce((s, o) => s + o.total, 0);
+            const users = [...new Set(orders.map(o => o.user))];
+            const biggest = orders.reduce((m, o) => (o.total > m.total ? o : m));
+            const byUser = paid.reduce((acc, o) => {
+              acc[o.user] = (acc[o.user] ?? 0) + o.total;
+              return acc;
+            }, {});
+            console.log(sum, users, biggest.id, byUser);
+
+  - id: js-m2
+    title: Объекты и строки
+    level: Junior
+    lessons:
+      - Объекты, свойства и методы
+      - Деструктуризация и spread объектов
+      - Строки и шаблонные литералы
+      - Map, Set, WeakMap
+      - JSON
+      - Дата и время
+  - id: js-m3
+    title: Браузер и DOM
+    level: Junior
+    lessons:
+      - DOM — поиск и изменение элементов
+      - События и делегирование
+      - Формы и валидация
+      - localStorage и sessionStorage
+      - "Практикум: To-Do приложение"
+  - id: js-m4
+    title: Как устроен JS
+    level: Junior+
+    lessons:
+      - Контекст this, call, apply, bind
+      - Прототипы и наследование
+      - Классы ES6
+      - Область видимости, hoisting, TDZ
+      - Event loop, микро- и макрозадачи
+  - id: js-m5
+    title: Асинхронность
+    level: Junior+
+    lessons:
+      - Колбэки
+      - Promise
+      - async / await
+      - fetch и работа с API
+      - Обработка ошибок и AbortController
+  - id: js-m6
+    title: Модули и инструменты
+    level: Junior+
+    lessons:
+      - ES-модули import/export
+      - npm и package.json
+      - Сборщики — Vite
+      - ESLint и Prettier
+      - Тестирование — Vitest/Jest
+  - id: js-m7
+    title: TypeScript
+    level: Middle
+    lessons:
+      - Базовые типы и интерфейсы
+      - Union, generics, utility types
+      - Типизация функций и классов
+      - TypeScript в проекте
+  - id: js-m8
+    title: React
+    level: Middle
+    lessons:
+      - Компоненты и JSX
+      - Состояние и пропсы
+      - Хуки useEffect, useMemo, useRef
+      - Формы и списки
+      - Роутинг
+      - Управление состоянием и запросы к API
+  - id: js-m9
+    title: Node.js
+    level: Middle
+    lessons:
+      - Модули Node.js, fs, path
+      - HTTP-сервер и Express
+      - REST API и валидация
+      - Базы данных — PostgreSQL и Prisma
+      - Аутентификация JWT
+  - id: js-m10
+    title: Инженерные практики
+    level: Middle
+    lessons:
+      - Производительность и Web Vitals
+      - Безопасность — XSS, CSRF, CORS
+      - Git, CI/CD, Docker
+      - "Итоговый проект: full-stack приложение"

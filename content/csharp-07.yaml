@@ -1,0 +1,482 @@
+id: csharp
+modules:
+  - id: cs-m7
+    title: Устройство .NET
+    level: Middle
+    lessons:
+      - id: cs-07-01
+        title: CLR, JIT, сборки
+        minutes: 25
+        xp: 35
+        theory: |
+          ## Путь от кода до процессора
+
+          1. Компилятор **Roslyn** превращает C# в **IL** (Intermediate Language) — платформенно-независимый байт-код — и метаданные о типах.
+          2. Результат упаковывается в **сборку** (assembly): `.dll` или `.exe`.
+          3. При запуске **CLR** (Common Language Runtime) загружает сборку, а **JIT-компилятор** (RyuJIT) переводит IL в машинный код **при первом вызове** каждого метода.
+
+          ```
+          C# → (Roslyn) → IL + метаданные (.dll) → (JIT в рантайме) → x64/ARM машинный код
+          ```
+
+          Посмотреть IL: `ildasm`, ILSpy, dotPeek или сайт sharplab.io.
+
+          ## Что даёт CLR
+
+          - управление памятью и сборку мусора;
+          - проверку типов и безопасность;
+          - обработку исключений;
+          - потоки, рефлексию, загрузку сборок;
+          - межъязыковую совместимость (C#, F#, VB.NET компилируются в один IL).
+
+          ## Tiered JIT и PGO
+
+          Сначала метод компилируется быстро и без оптимизаций (**Tier 0**), а горячие методы (вызванные >30 раз) перекомпилируются с оптимизациями (**Tier 1**). Dynamic PGO собирает статистику выполнения и оптимизирует под реальную нагрузку (например, девиртуализирует вызовы).
+
+          ## AOT
+
+          - **ReadyToRun** — предкомпиляция для быстрого старта, JIT остаётся.
+          - **Native AOT** (`<PublishAot>true</PublishAot>`) — один нативный бинарник без JIT: мгновенный старт, малая память; но ограничена рефлексия и динамическая загрузка.
+
+          ## Сборки и зависимости
+
+          - Сборка содержит манифест: имя, версия, ссылки на другие сборки.
+          - **NuGet** — менеджер пакетов; зависимости описываются в `.csproj`:
+
+          ```xml
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net8.0</TargetFramework>
+              <Nullable>enable</Nullable>
+              <ImplicitUsings>enable</ImplicitUsings>
+            </PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="Serilog" Version="3.1.1" />
+              <ProjectReference Include="..\Core\Core.csproj" />
+            </ItemGroup>
+          </Project>
+          ```
+
+          - `internal` — видимость в пределах сборки; `[InternalsVisibleTo("Tests")]` открывает их тестовому проекту.
+
+          ## .NET Framework vs .NET
+
+          .NET Framework 4.x — только Windows, развитие остановлено. Современный **.NET 8/9** — кроссплатформенный, open-source, быстрее. Новые проекты — только на .NET 8+ (LTS-версии — чётные).
+        practice:
+          - type: choice
+            q: Во что компилятор C# превращает исходный код?
+            options: ["В машинный код x64", "В IL (промежуточный язык)", "В JavaScript", "В байт-код JVM"]
+            answer: 1
+          - type: choice
+            q: Когда JIT компилирует метод?
+            options: ["При сборке проекта", "При первом вызове метода", "При установке программы", "Никогда"]
+            answer: 1
+          - type: fill
+            q: Включите Native AOT в .csproj
+            code: |
+              <___>true</___>
+            answers: ["PublishAot", "PublishAot"]
+          - type: choice
+            q: Какие версии .NET имеют долгосрочную поддержку (LTS)?
+            options: ["Нечётные (7, 9)", "Чётные (6, 8, 10)", "Все", "Только .NET Framework"]
+            answer: 1
+        homework:
+          task: |
+            Создайте решение из двух проектов: `Calc.Core` (библиотека с internal-классом и публичным API) и `Calc.App` (консоль). Подключите ProjectReference, NuGet-пакет `Humanizer`, откройте internal для тестового проекта через InternalsVisibleTo. Опубликуйте приложение: обычный `dotnet publish`, self-contained single-file и Native AOT; сравните размер и время старта.
+          checklist:
+            - Решение собирается dotnet build
+            - Три варианта публикации
+            - Записаны размеры и время старта
+          solution: |
+            dotnet new sln -n Calc
+            dotnet new classlib -n Calc.Core
+            dotnet new console -n Calc.App
+            dotnet sln add Calc.Core Calc.App
+            dotnet add Calc.App reference Calc.Core
+            dotnet add Calc.App package Humanizer
+
+            # в Calc.Core.csproj:
+            # <ItemGroup><InternalsVisibleTo Include="Calc.Tests" /></ItemGroup>
+
+            dotnet publish Calc.App -c Release -o out/fdd
+            dotnet publish Calc.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o out/single
+            dotnet publish Calc.App -c Release -r win-x64 -p:PublishAot=true -o out/aot
+            # Замер: Measure-Command { .\out\aot\Calc.App.exe }
+      - id: cs-07-02
+        title: GC и поколения
+        minutes: 30
+        xp: 40
+        theory: |
+          **Сборщик мусора** (GC) автоматически освобождает память объектов, на которые больше нет ссылок.
+
+          ## Как GC находит мусор
+
+          Начиная с **корней** (локальные переменные в стеке, статические поля, регистры, GC-handles) GC обходит граф ссылок и помечает живые объекты. Всё непомеченное — мусор. Затем живые объекты **уплотняются** (compacting), чтобы не было фрагментации.
+
+          ## Поколения
+
+          Гипотеза: большинство объектов умирают молодыми. Поэтому куча делится на поколения:
+
+          | Поколение | Что там | Сборка |
+          |---|---|---|
+          | Gen 0 | новые объекты | очень часто, быстро |
+          | Gen 1 | пережили одну сборку | буфер между 0 и 2 |
+          | Gen 2 | долгоживущие (кеши, синглтоны) | редко, дорого |
+          | LOH | объекты ≥ 85 000 байт | вместе с Gen 2, по умолчанию без уплотнения |
+
+          ```csharp
+          var o = new object();
+          Console.WriteLine(GC.GetGeneration(o));  // 0
+          GC.Collect();
+          Console.WriteLine(GC.GetGeneration(o));  // 1
+          ```
+
+          Во время сборки потоки приложения могут приостанавливаться (**stop-the-world**). Фоновый (background) GC делает большую часть Gen 2 параллельно.
+
+          ## Режимы
+
+          - **Workstation** — для десктопа, минимальные паузы.
+          - **Server** — по куче на ядро, высокая пропускная способность; по умолчанию в ASP.NET Core.
+          - `<ConcurrentGarbageCollection>`, `<TieredPGO>`, `DOTNET_GCHeapHardLimit` — настройки.
+
+          ## Что делать разработчику
+
+          - Уменьшать **аллокации** на горячих путях: `StringBuilder`, `Span<T>`, `ArrayPool`, структуры, кеширование.
+          - Избегать «кризиса среднего возраста»: объекты, живущие чуть дольше Gen 0, доходят до Gen 2 и делают сборки дорогими.
+          - Не вызывать `GC.Collect()` вручную (почти никогда).
+          - Освобождать ссылки из долгоживущих объектов: события, статические кеши → утечки памяти.
+
+          ## Финализаторы
+
+          `~MyClass()` вызывается GC перед удалением объекта, но объект с финализатором живёт на сборку дольше и обрабатывается отдельным потоком. Используйте `IDisposable`, а финализатор — только как страховку для неуправляемых ресурсов (`GC.SuppressFinalize(this)` в Dispose).
+
+          ## Диагностика
+
+          `dotnet-counters monitor -p <pid>` (gen-0/1/2 GC count, alloc rate), `dotnet-gcdump`, `dotnet-trace`, Visual Studio Diagnostic Tools, JetBrains dotMemory.
+
+          `WeakReference<T>` — ссылка, которая не мешает GC собрать объект (для кешей).
+        practice:
+          - type: choice
+            q: В какое поколение попадает только что созданный небольшой объект?
+            options: ["Gen 0", "Gen 1", "Gen 2", "LOH"]
+            answer: 0
+          - type: choice
+            q: Куда попадает массив на 1 МБ?
+            options: ["Gen 0", "Gen 1", "Stack", "LOH (Large Object Heap)"]
+            answer: 3
+          - type: choice
+            q: Что является корнем (root) для GC?
+            options: ["Любой объект в куче", "Локальные переменные и статические поля", "Только финализаторы", "Объекты Gen 2"]
+            answer: 1
+          - type: bug
+            q: Где утечка памяти (объекты окна никогда не соберутся)?
+            code: |
+              public class PriceWindow
+              {
+                  public PriceWindow(PriceService global)
+                  {
+                      global.PriceChanged += OnPrice;
+                  }
+                  void OnPrice(object? s, decimal p) => Render(p);
+              }
+            bugLine: 5
+            explain: Долгоживущий сервис держит ссылку на окно через подписку. Нужна отписка (Dispose/закрытие окна).
+          - type: choice
+            q: Какой режим GC используется в ASP.NET Core по умолчанию?
+            options: ["Workstation", "Server", "Без GC", "Manual"]
+            answer: 1
+        homework:
+          task: |
+            Напишите программу, которая в цикле 1 000 000 раз строит строку отчёта двумя способами: конкатенацией `+=` (10 частей) и через `StringBuilder` (переиспользуемый, `Clear()`). Для каждого выведите `GC.CollectionCount(0/1/2)` и `GC.GetTotalAllocatedBytes()` до и после. Объясните разницу. Запустите с `dotnet-counters` и посмотрите alloc rate.
+          checklist:
+            - Замерены сборки по поколениям
+            - Замерен объём аллокаций
+            - Сделан вывод
+          solution: |
+            using System.Text;
+
+            static void Measure(string name, Action a)
+            {
+                long b = GC.GetTotalAllocatedBytes();
+                int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+                a();
+                Console.WriteLine($"{name}: {(GC.GetTotalAllocatedBytes() - b) / 1_048_576} МБ, " +
+                    $"gen0={GC.CollectionCount(0) - g0} gen1={GC.CollectionCount(1) - g1} gen2={GC.CollectionCount(2) - g2}");
+            }
+
+            Measure("concat", () =>
+            {
+                for (int i = 0; i < 1_000_000; i++)
+                {
+                    string s = "";
+                    for (int j = 0; j < 10; j++) s += j;
+                }
+            });
+
+            var sb = new StringBuilder(64);
+            Measure("builder", () =>
+            {
+                for (int i = 0; i < 1_000_000; i++)
+                {
+                    sb.Clear();
+                    for (int j = 0; j < 10; j++) sb.Append(j);
+                }
+            });
+            // Вывод: конкатенация создаёт 10 промежуточных строк на итерацию → сотни МБ и тысячи Gen0-сборок.
+      - id: cs-07-03
+        title: Value vs reference глубже, boxing
+        minutes: 30
+        xp: 40
+        theory: |
+          ## Где что лежит
+
+          - **Ссылочные типы** (class, string, массивы, делегаты) — объект в управляемой куче, переменная хранит ссылку. У объекта есть заголовок (sync block + указатель на тип) — 16 байт оверхеда на x64.
+          - **Значимые типы** (int, double, struct, enum, bool) — хранятся **там, где объявлены**: локальная переменная — в стеке (или регистре), поле класса — внутри объекта в куче, элемент массива — прямо в массиве.
+
+          > Утверждение «struct всегда в стеке» — миф.
+
+          ## Передача параметров
+
+          ```csharp
+          void Change(Point p) { p.X = 10; }           // копия struct
+          void Change(ref Point p) { p.X = 10; }       // по ссылке — изменит оригинал
+          void Read(in Point p) { }                    // только чтение, без копирования
+          void Make(out Point p) { p = new(1, 2); }    // обязан присвоить
+          ```
+
+          Для классов передаётся копия **ссылки**: изменить поля объекта можно, а заменить сам объект для вызывающего — нет (без `ref`).
+
+          ## Boxing и unboxing
+
+          **Boxing** — упаковка значимого типа в объект в куче, когда он используется как `object` или интерфейс.
+
+          ```csharp
+          int x = 42;
+          object o = x;          // boxing: аллокация в куче + копия
+          int y = (int)o;        // unboxing: проверка типа + копия
+
+          ArrayList list = new(); list.Add(1);           // boxing — поэтому ArrayList устарел
+          string s = string.Format("{0}", 5);             // boxing аргумента
+          IComparable c = 5;                               // boxing
+          Console.WriteLine($"{x}");                       // C# 10+ — без boxing (интерполяция оптимизирована)
+          ```
+
+          Как избежать: generics (`List<int>`), перегрузки для конкретных типов, `IEquatable<T>` у структур (иначе `Equals(object)` боксит).
+
+          ## Ловушки struct
+
+          ```csharp
+          var list = new List<Point> { new(1, 2) };
+          // list[0].X = 5;           // ошибка: индексатор возвращает КОПИЮ
+          var p = list[0]; p.X = 5; list[0] = p;
+          ```
+
+          - Изменяемые структуры — источник багов. Делайте `readonly struct`.
+          - Большие структуры (> 16–32 байт) дорого копировать — передавайте через `in` или используйте класс.
+          - `Equals` по умолчанию у struct использует рефлексию — переопределяйте или используйте `record struct`.
+
+          ## string — особый случай
+
+          `string` — ссылочный, но **неизменяемый** и сравнивается `==` по значению. Литералы интернируются (`string.IsInterned`).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              struct P { public int X; }
+              static void Set(P p) => p.X = 5;
+              var a = new P();
+              Set(a);
+              Console.WriteLine(a.X);
+            answer: "0"
+          - type: output
+            q: Что выведет код?
+            code: |
+              class C { public int X; }
+              static void Reset(C c) { c.X = 1; c = new C { X = 2 }; }
+              var obj = new C();
+              Reset(obj);
+              Console.WriteLine(obj.X);
+            answer: "1"
+          - type: choice
+            q: В какой строке происходит boxing?
+            options: ["`int a = 5;`", "`object o = a;`", "`List<int> l = [a];`", "`long b = a;`"]
+            answer: 1
+          - type: fill
+            q: Передайте большую структуру по ссылке только для чтения
+            code: |
+              static double Len(___ Vector3 v) => Math.Sqrt(v.X * v.X + v.Y * v.Y);
+            answers: ["in"]
+          - type: choice
+            q: Где хранится поле int внутри объекта класса?
+            options: ["В стеке", "В куче, внутри объекта", "В регистре", "В LOH"]
+            answer: 1
+        homework:
+          task: |
+            Сравните `List<int>` и `ArrayList` на 10 млн добавлений и суммировании: время и `GC.GetTotalAllocatedBytes`. Затем создайте `struct Money` без `IEquatable` и с `IEquatable<Money>`; положите 1 млн элементов в `HashSet<Money>` и сравните время и аллокации. Опишите выводы.
+          checklist:
+            - Показан эффект boxing в ArrayList
+            - Реализован IEquatable<Money> и GetHashCode
+            - Выводы записаны
+          solution: |
+            using System.Collections;
+            using System.Diagnostics;
+
+            static void Bench(string name, Action a)
+            {
+                long b = GC.GetTotalAllocatedBytes(); var sw = Stopwatch.StartNew();
+                a();
+                Console.WriteLine($"{name}: {sw.ElapsedMilliseconds} мс, {(GC.GetTotalAllocatedBytes() - b) >> 20} МБ");
+            }
+
+            Bench("List<int>", () => { var l = new List<int>(); for (int i = 0; i < 10_000_000; i++) l.Add(i); long s = 0; foreach (var x in l) s += x; });
+            Bench("ArrayList", () => { var l = new ArrayList(); for (int i = 0; i < 10_000_000; i++) l.Add(i); long s = 0; foreach (var x in l) s += (int)x!; });
+            Bench("Slow", () => { var h = new HashSet<SlowMoney>(); for (int i = 0; i < 1_000_000; i++) h.Add(new(i, 1)); });
+            Bench("Fast", () => { var h = new HashSet<FastMoney>(); for (int i = 0; i < 1_000_000; i++) h.Add(new(i, 1)); });
+
+            struct SlowMoney(long a, int c) { public long A = a; public int C = c; }
+            readonly struct FastMoney(long a, int c) : IEquatable<FastMoney>
+            {
+                public long A { get; } = a; public int C { get; } = c;
+                public bool Equals(FastMoney o) => A == o.A && C == o.C;
+                public override bool Equals(object? o) => o is FastMoney m && Equals(m);
+                public override int GetHashCode() => HashCode.Combine(A, C);
+            }
+      - id: cs-07-04
+        title: Производительность и BenchmarkDotNet
+        minutes: 30
+        xp: 40
+        theory: |
+          Замерять производительность через `Stopwatch` в цикле — ненадёжно: JIT-прогрев, Tier-0 код, GC, турбобуст процессора искажают результат. Стандарт в .NET — **BenchmarkDotNet**.
+
+          ```bash
+          dotnet new console -n Bench
+          dotnet add package BenchmarkDotNet
+          ```
+
+          ```csharp
+          using BenchmarkDotNet.Attributes;
+          using BenchmarkDotNet.Running;
+
+          [MemoryDiagnoser]                      // покажет аллокации
+          public class StringBench
+          {
+              [Params(10, 1000)]
+              public int N;
+
+              [Benchmark(Baseline = true)]
+              public string Concat()
+              {
+                  var s = "";
+                  for (int i = 0; i < N; i++) s += i;
+                  return s;
+              }
+
+              [Benchmark]
+              public string Builder()
+              {
+                  var sb = new StringBuilder();
+                  for (int i = 0; i < N; i++) sb.Append(i);
+                  return sb.ToString();
+              }
+          }
+
+          BenchmarkRunner.Run<StringBench>();
+          ```
+
+          Запуск **только в Release**: `dotnet run -c Release`.
+
+          Результат — таблица: `Mean`, `Error`, `StdDev`, `Ratio`, `Gen0`, `Allocated`.
+
+          ## Типичные оптимизации
+
+          | Проблема | Решение |
+          |---|---|
+          | Много мелких строк | `StringBuilder`, `string.Create`, интерполяция с `Span` |
+          | LINQ в горячем цикле | обычный `for`/`foreach` |
+          | Поиск в `List` | `HashSet`/`Dictionary` (O(1)) |
+          | Изменение размера коллекции | задать `capacity` заранее |
+          | Временные массивы | `ArrayPool<T>`, `stackalloc` |
+          | Regex на каждый вызов | `static readonly` или `[GeneratedRegex]` |
+          | Исключения в обычном потоке | `TryParse` и проверки |
+          | Блокирующий I/O | async |
+          | `params object[]`, boxing | generics, перегрузки |
+
+          ## Порядок работы
+
+          1. Сформулируйте цель (p95 < 200 мс, 1000 RPS).
+          2. **Профилируйте** (dotnet-trace, PerfView, VS Profiler, dotTrace) — найдите узкое место. Чаще всего это БД и сеть, а не код.
+          3. Напишите бенчмарк, оптимизируйте, проверьте.
+          4. Не жертвуйте читаемостью ради 2% в холодном коде.
+
+          > 💡 Ловушка: если результат бенчмарк-метода не используется, JIT может выкинуть вычисление (dead code elimination). Всегда **возвращайте** результат.
+        practice:
+          - type: choice
+            q: В какой конфигурации нужно запускать BenchmarkDotNet?
+            options: ["Debug", "Release", "Любой", "Только в Docker"]
+            answer: 1
+          - type: fill
+            q: Добавьте измерение аллокаций в бенчмарк
+            code: |
+              [___]
+              public class MyBench { }
+            answers: ["MemoryDiagnoser"]
+          - type: choice
+            q: Почему бенчмарк-метод должен возвращать результат?
+            options: ["Так требует синтаксис", "Иначе JIT может выкинуть неиспользуемые вычисления", "Для красоты отчёта", "Для многопоточности"]
+            answer: 1
+          - type: choice
+            q: Что обычно делать первым при проблемах с производительностью?
+            options: ["Переписать всё на Span", "Профилировать и найти узкое место", "Отключить GC", "Поменять язык"]
+            answer: 1
+          - type: bug
+            q: Какая строка — главный кандидат на оптимизацию в горячем методе?
+            code: |
+              public bool IsValidEmail(string s)
+              {
+                  var re = new Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+                  return re.IsMatch(s);
+              }
+            bugLine: 3
+            fix: "[GeneratedRegex(...)] private static partial Regex EmailRegex();"
+            explain: Regex создаётся и разбирается при каждом вызове. Сделайте его static readonly или source-generated.
+        homework:
+          task: |
+            Напишите бенчмарк (BenchmarkDotNet, MemoryDiagnoser) для задачи «найти все уникальные слова в тексте 100 КБ»: (1) `Split` + `Distinct().ToList()`, (2) `Split` + `HashSet`, (3) ручной разбор через `ReadOnlySpan<char>` + `HashSet<string>` с `capacity`. Приложите таблицу и вывод, какой вариант и почему лучше.
+          checklist:
+            - Запуск в Release
+            - Указан Baseline
+            - В выводе есть Mean и Allocated
+          solution: |
+            using BenchmarkDotNet.Attributes;
+            using BenchmarkDotNet.Running;
+
+            BenchmarkRunner.Run<WordsBench>();
+
+            [MemoryDiagnoser]
+            public class WordsBench
+            {
+                private string text = "";
+                [GlobalSetup]
+                public void Setup() => text = string.Join(' ', Enumerable.Range(0, 20000).Select(i => "w" + i % 3000));
+
+                [Benchmark(Baseline = true)]
+                public int Linq() => text.Split(' ').Distinct().Count();
+
+                [Benchmark]
+                public int Hash() => new HashSet<string>(text.Split(' ')).Count;
+
+                [Benchmark]
+                public int Span()
+                {
+                    var set = new HashSet<string>(4096);
+                    ReadOnlySpan<char> s = text;
+                    while (!s.IsEmpty)
+                    {
+                        int i = s.IndexOf(' ');
+                        var w = i < 0 ? s : s[..i];
+                        set.Add(w.ToString());
+                        s = i < 0 ? ReadOnlySpan<char>.Empty : s[(i + 1)..];
+                    }
+                    return set.Count;
+                }
+            }

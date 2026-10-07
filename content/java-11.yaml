@@ -1,0 +1,562 @@
+id: java
+modules:
+  - id: java-m11
+    title: Инженерные практики
+    level: Middle
+    lessons:
+      - id: java-11-01
+        title: Паттерны проектирования
+        minutes: 45
+        xp: 50
+        theory: |
+          **Паттерны** — проверенные решения типовых задач проектирования. Знать их нужно, чтобы говорить с командой на одном языке, а не чтобы вставлять везде.
+
+          ## Порождающие
+
+          **Builder** — пошаговое создание объекта с множеством параметров:
+
+          ```java
+          HttpRequest req = HttpRequest.newBuilder()
+              .uri(URI.create("https://api.example.com"))
+              .header("Accept", "application/json")
+              .timeout(Duration.ofSeconds(5))
+              .GET().build();
+          ```
+
+          **Factory Method / Static factory** — `List.of()`, `Optional.of()`, `LocalDate.of()`: понятное имя, кеширование, возврат подтипа.
+
+          **Singleton** — один экземпляр. В Spring бины и так singleton; вручную — `enum Singleton { INSTANCE; }`.
+
+          ## Структурные
+
+          **Adapter** — приводит чужой интерфейс к нужному (обёртка над старым API). **Decorator** — добавляет поведение, оборачивая объект с тем же интерфейсом (`new BufferedReader(new FileReader(f))`). **Facade** — простой интерфейс к сложной подсистеме. **Proxy** — заместитель (на нём построены `@Transactional`, lazy-loading Hibernate).
+
+          ## Поведенческие
+
+          **Strategy** — взаимозаменяемые алгоритмы:
+
+          ```java
+          interface DiscountPolicy { BigDecimal apply(BigDecimal sum); }
+          class NoDiscount implements DiscountPolicy { public BigDecimal apply(BigDecimal s) { return s; } }
+          class Percent implements DiscountPolicy {
+              private final int p;
+              Percent(int p) { this.p = p; }
+              public BigDecimal apply(BigDecimal s) { return s.multiply(BigDecimal.valueOf(100 - p)).divide(BigDecimal.valueOf(100)); }
+          }
+          // в Java часто стратегия — просто лямбда: Function<BigDecimal, BigDecimal>
+          ```
+
+          **Observer** — подписка на события (`ApplicationEventPublisher` + `@EventListener` в Spring). **Template Method** — скелет алгоритма в базовом классе, шаги в наследниках (`JdbcTemplate`, `AbstractList`). **Chain of Responsibility** — цепочка обработчиков (фильтры Servlet/Spring Security). **Command** — действие как объект (очереди, undo).
+
+          ## SOLID
+
+          - **S** — один класс, одна причина для изменения.
+          - **O** — открыт для расширения, закрыт для изменения (новая стратегия вместо нового `if`).
+          - **L** — подтип можно подставить вместо базового без сюрпризов.
+          - **I** — много узких интерфейсов лучше одного «толстого».
+          - **D** — зависеть от абстракций; DI-контейнер внедряет реализации.
+
+          Плюс **KISS**, **DRY**, **YAGNI**: не усложняйте без необходимости.
+        practice:
+          - type: choice
+            q: Какой паттерн используется в new BufferedReader(new FileReader(file))?
+            options: ["Adapter", "Decorator", "Singleton", "Builder"]
+            answer: 1
+          - type: choice
+            q: Как Spring реализует @Transactional?
+            options: ["Через Observer", "Через Proxy вокруг бина", "Через Builder", "Через Singleton"]
+            answer: 1
+          - type: choice
+            q: Метод с большим switch по типу оплаты растёт с каждым новым способом. Какой паттерн поможет?
+            options: ["Strategy", "Singleton", "Facade", "Builder"]
+            answer: 0
+          - type: output
+            q: Что выведет код?
+            code: |
+              Function<Integer, Integer> tax = x -> x + x / 10;
+              Function<Integer, Integer> discount = x -> x - 50;
+              System.out.println(discount.andThen(tax).apply(1050));
+            answer: "1100"
+          - type: choice
+            q: Какой принцип SOLID нарушает класс, который и считает зарплату, и пишет отчёт в PDF, и отправляет email?
+            options: ["Single Responsibility", "Liskov Substitution", "Interface Segregation", "Dependency Inversion"]
+            answer: 0
+        homework:
+          task: |
+            Отрефакторьте «спагетти»-метод расчёта доставки: `if (type.equals("courier")) ... else if ("pickup") ... else if ("post") ...` с правилами (курьер — 300 ₽, бесплатно от 3000; самовывоз — 0; почта — 200 + 50 за кг). Примените Strategy (интерфейс + реализации, выбор через `Map<String, DeliveryStrategy>`), Builder для `Order`, Observer для события «заказ оформлен» (2 слушателя: email и аналитика). Напишите тесты на каждую стратегию.
+          checklist:
+            - Нет цепочки if/else по типу
+            - Новый способ доставки добавляется новым классом
+            - Слушатели не знают друг о друге
+          solution: |
+            import java.util.*;
+            import java.util.function.Consumer;
+
+            interface DeliveryStrategy { int cost(Order o); }
+            class Courier implements DeliveryStrategy { public int cost(Order o) { return o.sum() >= 3000 ? 0 : 300; } }
+            class Pickup implements DeliveryStrategy { public int cost(Order o) { return 0; } }
+            class Post implements DeliveryStrategy { public int cost(Order o) { return 200 + 50 * (int) Math.ceil(o.weightKg()); } }
+
+            record Order(String customer, int sum, double weightKg, String delivery) {
+                static Builder builder() { return new Builder(); }
+                static class Builder {
+                    private String customer, delivery = "pickup"; private int sum; private double weight;
+                    Builder customer(String c) { customer = c; return this; }
+                    Builder sum(int s) { sum = s; return this; }
+                    Builder weight(double w) { weight = w; return this; }
+                    Builder delivery(String d) { delivery = d; return this; }
+                    Order build() { return new Order(Objects.requireNonNull(customer), sum, weight, delivery); }
+                }
+            }
+
+            class OrderService {
+                private final Map<String, DeliveryStrategy> strategies = Map.of("courier", new Courier(), "pickup", new Pickup(), "post", new Post());
+                private final List<Consumer<Order>> listeners = new ArrayList<>();
+                void subscribe(Consumer<Order> l) { listeners.add(l); }
+                int place(Order o) {
+                    DeliveryStrategy s = Optional.ofNullable(strategies.get(o.delivery()))
+                        .orElseThrow(() -> new IllegalArgumentException("Нет доставки " + o.delivery()));
+                    int total = o.sum() + s.cost(o);
+                    listeners.forEach(l -> l.accept(o));
+                    return total;
+                }
+                public static void main(String[] args) {
+                    var svc = new OrderService();
+                    svc.subscribe(o -> System.out.println("Email для " + o.customer()));
+                    svc.subscribe(o -> System.out.println("Аналитика: +" + o.sum()));
+                    System.out.println(svc.place(Order.builder().customer("Анна").sum(2500).weight(2.3).delivery("post").build())); // 2850
+                }
+            }
+      - id: java-11-02
+        title: Git, code review
+        minutes: 35
+        xp: 40
+        theory: |
+          ## Ежедневный Git
+
+          ```bash
+          git switch -c feature/order-discount      # новая ветка от текущей
+          git add -p                                # добавлять изменения кусками
+          git commit -m "feat(order): скидка 10% для постоянных клиентов"
+          git fetch origin
+          git rebase origin/main                    # подтянуть свежий main, история линейная
+          git push -u origin feature/order-discount
+          ```
+
+          **merge** сохраняет историю как есть (появляется merge-коммит), **rebase** переписывает ваши коммиты поверх новой базы — не делайте rebase уже опубликованных общих веток. `git push --force-with-lease` безопаснее, чем `--force`.
+
+          Полезное: `git stash`, `git log --oneline --graph`, `git commit --amend`, `git rebase -i HEAD~3` (склеить/переименовать коммиты), `git cherry-pick <sha>`, `git revert <sha>` (откат через новый коммит), `git bisect` (поиск коммита с багом), `git reflog` (спасение «потерянных» коммитов).
+
+          ## Модели ветвления
+
+          - **GitHub Flow / trunk-based** — короткие фича-ветки от `main`, Pull Request, merge, деплой. Стандарт для большинства команд.
+          - **Git Flow** — `develop`, `release/*`, `hotfix/*`; для продуктов с редкими релизами.
+
+          ## Сообщения коммитов
+
+          Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. Сообщение отвечает на вопрос «что и зачем», а не «как».
+
+          ## .gitignore для Java
+
+          ```
+          target/
+          build/
+          .gradle/
+          .idea/
+          *.iml
+          *.log
+          .env
+          ```
+
+          ## Code review
+
+          **Автору**: маленький PR (до ~400 строк), понятное описание (что, зачем, как проверить), зелёный CI, самопроверка диффа перед запросом ревью.
+
+          **Ревьюеру** смотреть: корректность и граничные случаи, тесты, читаемость и имена, обработку ошибок, безопасность (SQL-инъекции, секреты в коде), производительность (N+1, лишние запросы в цикле), соответствие архитектуре.
+
+          Тон: комментируйте код, а не человека; предлагайте («может, вынести в метод?»), отмечайте мелочи как `nit:`. Стиль кода проверяют автоматически (Checkstyle, Spotless, SonarQube), а не люди.
+        practice:
+          - type: choice
+            q: Чем git revert отличается от git reset?
+            options: ["Ничем", "revert создаёт новый коммит, отменяющий изменения, — безопасно для общей истории", "revert удаляет ветку", "reset работает только с удалённым репозиторием"]
+            answer: 1
+          - type: fill
+            q: Создайте и переключитесь на новую ветку
+            code: |
+              git ___ -c feature/login
+            answers: ["switch"]
+          - type: choice
+            q: Какое сообщение коммита лучше?
+            options: ["fix", "правки", "fix(cart): не учитывалась скидка при пустой корзине", "обновил CartService.java"]
+            answer: 2
+          - type: order
+            q: Расставьте шаги работы над задачей в GitHub Flow
+            lines:
+              - git switch -c feature/x от свежего main
+              - Коммиты с изменениями и тестами
+              - git push и открыть Pull Request
+              - Code review и зелёный CI
+              - Merge в main и удаление ветки
+          - type: choice
+            q: Как найти коммит, в котором появился баг, среди 200 коммитов?
+            options: ["git blame", "git bisect", "git stash", "git tag"]
+            answer: 1
+        homework:
+          task: |
+            Создайте репозиторий на GitHub для проекта «Задачи». Настройте `.gitignore`, защиту ветки `main` (только через PR, обязательный CI). Сделайте 2 фича-ветки с несколькими коммитами в стиле Conventional Commits, откройте PR с шаблоном описания (`.github/pull_request_template.md`). Попрактикуйте: `rebase -i` для склейки коммитов, разрешение конфликта, `git revert`. Проведите self-review по чек-листу и подключите Spotless или Checkstyle в сборку.
+          checklist:
+            - main защищён
+            - Есть шаблон PR
+            - История коммитов аккуратная
+            - Стиль проверяется автоматически
+          solution: |
+            # .github/pull_request_template.md
+            ## Что сделано
+            -
+            ## Зачем
+            Closes #
+            ## Как проверить
+            1.
+            ## Чек-лист
+            - [ ] Тесты добавлены и проходят
+            - [ ] Нет секретов в коде
+            - [ ] Обновлена документация
+
+            # Практика
+            git switch -c feature/task-priority
+            git commit -am "feat(task): поле priority"
+            git commit -am "test(task): тесты приоритета"
+            git commit -am "fix typo"
+            git rebase -i HEAD~3          # fixup последнего коммита
+            git fetch && git rebase origin/main
+            # при конфликте: правим файлы → git add . → git rebase --continue
+            git push --force-with-lease
+            git revert <sha>              # отмена неудачного коммита в main
+
+            <!-- pom.xml: Spotless -->
+            <plugin>
+              <groupId>com.diffplug.spotless</groupId>
+              <artifactId>spotless-maven-plugin</artifactId>
+              <version>2.43.0</version>
+              <configuration><java><googleJavaFormat/></java></configuration>
+              <executions><execution><goals><goal>check</goal></goals></execution></executions>
+            </plugin>
+      - id: java-11-03
+        title: Docker и CI/CD
+        minutes: 40
+        xp: 50
+        theory: |
+          **Docker** упаковывает приложение со всем окружением в **образ**; запущенный образ — **контейнер**. «Работает у меня» = работает везде.
+
+          ## Dockerfile для Spring Boot (multi-stage)
+
+          ```dockerfile
+          # 1. Сборка
+          FROM eclipse-temurin:21-jdk AS build
+          WORKDIR /app
+          COPY mvnw pom.xml ./
+          COPY .mvn .mvn
+          RUN ./mvnw dependency:go-offline          # кеш зависимостей в отдельном слое
+          COPY src src
+          RUN ./mvnw package -DskipTests
+
+          # 2. Запуск — только JRE, меньше и безопаснее
+          FROM eclipse-temurin:21-jre
+          WORKDIR /app
+          RUN useradd -r app
+          USER app
+          COPY --from=build /app/target/*.jar app.jar
+          EXPOSE 8080
+          ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+          ```
+
+          ```bash
+          docker build -t shop:1.0 .
+          docker run -p 8080:8080 -e SPRING_PROFILES_ACTIVE=prod shop:1.0
+          ```
+
+          Альтернатива без Dockerfile: `./mvnw spring-boot:build-image` (Buildpacks).
+
+          ## docker-compose
+
+          ```yaml
+          services:
+            db:
+              image: postgres:16
+              environment: { POSTGRES_DB: shop, POSTGRES_PASSWORD: pg }
+              volumes: [pgdata:/var/lib/postgresql/data]
+            app:
+              build: .
+              ports: ["8080:8080"]
+              environment:
+                SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/shop
+                SPRING_DATASOURCE_PASSWORD: pg
+              depends_on: [db]
+          volumes: { pgdata: {} }
+          ```
+
+          ## CI/CD на GitHub Actions
+
+          ```yaml
+          name: ci
+          on: [push, pull_request]
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-java@v4
+                  with: { distribution: temurin, java-version: 21, cache: maven }
+                - run: ./mvnw -B verify             # компиляция, тесты, проверки стиля
+                - uses: docker/login-action@v3
+                  if: github.ref == 'refs/heads/main'
+                  with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+                - run: docker build -t ghcr.io/${{ github.repository }}:${{ github.sha }} . && docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+                  if: github.ref == 'refs/heads/main'
+          ```
+
+          **CI** (Continuous Integration) — каждое изменение собирается и тестируется автоматически. **CD** (Delivery/Deployment) — готовый артефакт автоматически выкатывается на стенд/прод.
+
+          ## Готовность к продакшену
+
+          Spring Boot Actuator: `/actuator/health` (liveness/readiness для Kubernetes), `/actuator/prometheus` — метрики (Micrometer). Конфигурация и секреты — через переменные окружения, а не в образе (принцип 12-factor).
+        practice:
+          - type: choice
+            q: Зачем multi-stage сборка в Dockerfile?
+            options: ["Ускорить запуск JVM", "Итоговый образ содержит только JRE и jar, без JDK и исходников", "Чтобы запускать несколько контейнеров", "Это требование Spring"]
+            answer: 1
+          - type: fill
+            q: Пробросьте порт 8080 контейнера на 8080 хоста
+            code: |
+              docker run ___ 8080:8080 shop:1.0
+            answers: ["-p"]
+          - type: choice
+            q: Почему COPY pom.xml и загрузку зависимостей делают до COPY src?
+            options: ["Так требует Maven", "Слой с зависимостями кешируется и не пересобирается при изменении кода", "Чтобы образ был меньше", "Без разницы"]
+            answer: 1
+          - type: choice
+            q: Где хранить пароль от БД для контейнера?
+            options: ["В Dockerfile", "В application.properties в образе", "В переменных окружения/секретах оркестратора", "В коде"]
+            answer: 2
+          - type: order
+            q: Расставьте шаги типичного CI-пайплайна
+            lines:
+              - Checkout кода
+              - Установка JDK и кеша зависимостей
+              - Сборка и тесты (mvn verify)
+              - Сборка Docker-образа
+              - Публикация образа в registry
+        homework:
+          task: |
+            Контейнеризируйте API «Задачи»: multi-stage Dockerfile (непривилегированный пользователь), `docker-compose.yml` с PostgreSQL и приложением (Flyway применит миграции при старте), Actuator health. Настройте GitHub Actions: на каждый PR — `mvn verify` с Testcontainers; на push в main — сборка и публикация образа в GHCR с тегом SHA коммита. Добавьте бейдж статуса CI в README.
+          checklist:
+            - Образ основан на JRE и не работает от root
+            - docker compose up поднимает всё одной командой
+            - CI запускает тесты на каждый PR
+            - Образ публикуется из main
+          solution: |
+            # Dockerfile
+            FROM eclipse-temurin:21-jdk AS build
+            WORKDIR /src
+            COPY mvnw pom.xml ./
+            COPY .mvn .mvn
+            RUN ./mvnw -B dependency:go-offline
+            COPY src src
+            RUN ./mvnw -B package -DskipTests
+
+            FROM eclipse-temurin:21-jre
+            RUN useradd -r -u 1001 app
+            USER app
+            COPY --from=build /src/target/*.jar /app/app.jar
+            EXPOSE 8080
+            HEALTHCHECK CMD curl -f http://localhost:8080/actuator/health || exit 1
+            ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/app.jar"]
+
+            # docker-compose.yml
+            services:
+              db:
+                image: postgres:16
+                environment: { POSTGRES_DB: tasks, POSTGRES_PASSWORD: pg }
+                healthcheck: { test: ["CMD", "pg_isready", "-U", "postgres"], interval: 5s }
+              app:
+                build: .
+                ports: ["8080:8080"]
+                environment:
+                  SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tasks
+                  SPRING_DATASOURCE_USERNAME: postgres
+                  SPRING_DATASOURCE_PASSWORD: pg
+                depends_on: { db: { condition: service_healthy } }
+
+            # .github/workflows/ci.yml
+            name: ci
+            on: { pull_request: {}, push: { branches: [main] } }
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                permissions: { contents: read, packages: write }
+                steps:
+                  - uses: actions/checkout@v4
+                  - uses: actions/setup-java@v4
+                    with: { distribution: temurin, java-version: 21, cache: maven }
+                  - run: ./mvnw -B verify
+                  - if: github.ref == 'refs/heads/main'
+                    run: |
+                      echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+                      docker build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
+                      docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+      - id: java-11-04
+        title: "Итоговый проект: REST API на Spring Boot"
+        minutes: 60
+        xp: 100
+        theory: |
+          Пора собрать всё изученное в один проект уровня **Middle**, который не стыдно показать на собеседовании.
+
+          ## Проект: «Библиотека» (Library API)
+
+          **Функции:**
+          - Регистрация и вход (JWT), роли `READER` и `LIBRARIAN`.
+          - Каталог книг: CRUD (только библиотекарь), поиск по названию/автору/жанру, пагинация и сортировка.
+          - Экземпляры книг (у книги несколько копий).
+          - Выдача: читатель бронирует свободный экземпляр, библиотекарь выдаёт и принимает. Не больше 5 книг на руках, срок 14 дней.
+          - Просроченные выдачи: ежедневная задача `@Scheduled` помечает их и «отправляет» уведомление (лог/email).
+          - Статистика: топ-10 популярных книг за месяц (DTO-проекция с GROUP BY).
+
+          ## Архитектура
+
+          ```
+          ru.library
+           ├── auth        (контроллер, JwtService, фильтр, SecurityConfig)
+           ├── book        (Book, BookCopy, репозитории, сервис, контроллер, DTO)
+           ├── loan        (Loan, LoanService, LoanController, OverdueJob)
+           ├── common      (ApiExceptionHandler, ProblemDetail, BaseEntity)
+           └── LibraryApplication
+          ```
+
+          Пакеты **по фичам**, а не по слоям — проще ориентироваться. Контроллер → сервис (`@Transactional`, бизнес-правила) → репозиторий.
+
+          ## Технические требования
+
+          | Тема | Что применить |
+          |---|---|
+          | БД | PostgreSQL, Flyway, `ddl-auto=validate` |
+          | JPA | связи LAZY, без N+1 (`@EntityGraph`/fetch join), `@Version` у экземпляра |
+          | API | DTO-records, коды ответов, ProblemDetail, валидация, springdoc |
+          | Конкурентность | два читателя не могут забронировать один экземпляр (оптимистическая блокировка) |
+          | Тесты | модульные (Mockito), `@WebMvcTest`, Testcontainers, покрытие ≥ 70% (JaCoCo) |
+          | Логи | SLF4J, MDC с requestId |
+          | Инфраструктура | Dockerfile, docker-compose, GitHub Actions CI |
+
+          ## Ключевой бизнес-метод
+
+          ```java
+          @Transactional
+          public LoanDto borrow(String login, long bookId) {
+              Reader reader = readers.findByLogin(login).orElseThrow(NotFoundException::new);
+              if (loans.countByReaderAndReturnedAtIsNull(reader) >= 5)
+                  throw new BusinessException("Лимит 5 книг");
+              BookCopy copy = copies.findFirstByBookIdAndStatus(bookId, CopyStatus.AVAILABLE)
+                  .orElseThrow(() -> new BusinessException("Нет свободных экземпляров"));
+              copy.setStatus(CopyStatus.LOANED);       // @Version защитит от гонки
+              Loan loan = loans.save(new Loan(reader, copy, LocalDate.now().plusDays(14)));
+              log.info("Книга {} выдана {}", bookId, login);
+              return LoanDto.from(loan);
+          }
+          ```
+
+          ## Как сдавать
+
+          README с описанием, схемой БД, командой запуска (`docker compose up`), примерами запросов и ссылкой на Swagger UI. Чистая история коммитов и зелёный CI — это тоже часть оценки.
+        practice:
+          - type: choice
+            q: Как предотвратить выдачу одного экземпляра двум читателям одновременно?
+            options: ["synchronized на методе контроллера", "Оптимистическая блокировка @Version на экземпляре", "Проверка в JavaScript на клиенте", "Увеличить пул соединений"]
+            answer: 1
+          - type: choice
+            q: Какой код ответа вернуть, если у читателя уже 5 книг?
+            options: ["200", "404", "409 или 422 (бизнес-правило)", "500"]
+            answer: 2
+          - type: fill
+            q: Запускайте проверку просрочек каждый день в 9:00
+            code: |
+              @___(cron = "0 0 9 * * *")
+              public void markOverdue() { ... }
+            answers: ["Scheduled"]
+          - type: order
+            q: Расставьте слои обработки запроса на выдачу книги
+            lines:
+              - JwtFilter аутентифицирует пользователя
+              - LoanController принимает и валидирует запрос
+              - LoanService проверяет правила в транзакции
+              - Репозитории читают и сохраняют данные
+              - Контроллер возвращает LoanDto с кодом 201
+          - type: choice
+            q: Что лучше всего докажет работоспособность всего сценария выдачи?
+            options: ["Ручная проверка в Postman", "Интеграционный тест с Testcontainers", "Логи", "Swagger UI"]
+            answer: 1
+        homework:
+          task: |
+            Реализуйте проект «Библиотека» по требованиям урока и опубликуйте на GitHub. Минимальный объём: 4 сущности (User, Book, BookCopy, Loan), 12+ эндпоинтов, 5+ миграций, 30+ тестов, Docker Compose, CI. Дополнительно (по желанию): кеширование каталога (`@Cacheable` + Caffeine), rate limiting, виртуальные потоки (`spring.threads.virtual.enabled=true`), метрики Prometheus и дашборд Grafana.
+          checklist:
+            - Все эндпоинты задокументированы в Swagger
+            - Бизнес-правила покрыты тестами
+            - Нет N+1 в логах SQL
+            - Проект запускается одной командой docker compose up
+            - README с примерами запросов
+          solution: |
+            // Сокращённый каркас ключевых частей
+
+            @Entity
+            public class BookCopy {
+                @Id @GeneratedValue Long id;
+                @ManyToOne(fetch = FetchType.LAZY) Book book;
+                @Enumerated(EnumType.STRING) CopyStatus status = CopyStatus.AVAILABLE;
+                @Version Long version;
+            }
+
+            @Entity
+            public class Loan {
+                @Id @GeneratedValue Long id;
+                @ManyToOne(fetch = FetchType.LAZY) Reader reader;
+                @ManyToOne(fetch = FetchType.LAZY) BookCopy copy;
+                LocalDate dueDate; LocalDate returnedAt; boolean overdue;
+                protected Loan() {}
+                Loan(Reader r, BookCopy c, LocalDate due) { reader = r; copy = c; dueDate = due; }
+            }
+
+            public interface LoanRepository extends JpaRepository<Loan, Long> {
+                long countByReaderAndReturnedAtIsNull(Reader r);
+                @Modifying
+                @Query("UPDATE Loan l SET l.overdue = true WHERE l.returnedAt IS NULL AND l.dueDate < :today")
+                int markOverdue(@Param("today") LocalDate today);
+                @Query("""
+                    SELECT new ru.library.loan.TopBook(b.title, COUNT(l))
+                    FROM Loan l JOIN l.copy c JOIN c.book b
+                    WHERE l.dueDate >= :from GROUP BY b.title ORDER BY COUNT(l) DESC""")
+                List<TopBook> top(@Param("from") LocalDate from, Pageable limit);
+            }
+
+            @Component
+            class OverdueJob {
+                private static final Logger log = LoggerFactory.getLogger(OverdueJob.class);
+                private final LoanRepository loans;
+                OverdueJob(LoanRepository loans) { this.loans = loans; }
+                @Scheduled(cron = "0 0 9 * * *") @Transactional
+                public void run() { log.info("Просрочено выдач: {}", loans.markOverdue(LocalDate.now())); }
+            }
+
+            @RestController @RequestMapping("/api/loans")
+            class LoanController {
+                private final LoanService service;
+                LoanController(LoanService s) { service = s; }
+                @PostMapping("/books/{bookId}")
+                ResponseEntity<LoanDto> borrow(@PathVariable long bookId, Authentication auth) {
+                    LoanDto dto = service.borrow(auth.getName(), bookId);
+                    return ResponseEntity.created(URI.create("/api/loans/" + dto.id())).body(dto);
+                }
+                @PostMapping("/{id}/return") @PreAuthorize("hasRole('LIBRARIAN')")
+                LoanDto giveBack(@PathVariable long id) { return service.giveBack(id); }
+                @GetMapping("/top") List<TopBook> top() { return service.topOfMonth(); }
+            }
+
+            // ApiExceptionHandler: BusinessException → 422, NotFoundException → 404,
+            // ObjectOptimisticLockingFailureException → 409 "Экземпляр уже забронирован"

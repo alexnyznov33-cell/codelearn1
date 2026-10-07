@@ -1,0 +1,772 @@
+id: csharp
+modules:
+  - id: cs-m4
+    title: Исключения, файлы, generics
+    level: Junior+
+    lessons:
+      - id: cs-04-01
+        title: try/catch/finally и свои исключения
+        minutes: 30
+        xp: 35
+        theory: |
+          Исключение — объект-наследник `System.Exception`, который «пробрасывается» вверх по стеку вызовов, пока его не поймают.
+
+          ```csharp
+          try
+          {
+              int n = int.Parse(Console.ReadLine()!);
+              Console.WriteLine(100 / n);
+          }
+          catch (FormatException)
+          {
+              Console.WriteLine("Это не число");
+          }
+          catch (DivideByZeroException ex)
+          {
+              Console.WriteLine($"Ошибка: {ex.Message}");
+          }
+          catch (Exception ex) when (ex is not OutOfMemoryException)   // фильтр
+          {
+              Console.WriteLine("Что-то ещё");
+          }
+          finally
+          {
+              Console.WriteLine("Выполнится всегда");
+          }
+          ```
+
+          Блоки `catch` проверяются **сверху вниз** — сначала конкретные, потом общие.
+
+          ## throw и throw;
+
+          ```csharp
+          catch (IOException ex)
+          {
+              logger.Log(ex);
+              throw;          // ✅ пробросить дальше, сохранив стек
+              // throw ex;    // ❌ стек вызовов обнулится
+          }
+          ```
+
+          ## Свои исключения
+
+          ```csharp
+          public class InsufficientFundsException : Exception
+          {
+              public decimal Needed { get; }
+              public InsufficientFundsException(decimal needed)
+                  : base($"Не хватает {needed}") => Needed = needed;
+              public InsufficientFundsException(string msg, Exception inner) : base(msg, inner) { }
+          }
+
+          if (amount > balance) throw new InsufficientFundsException(amount - balance);
+          ```
+
+          ## Полезные стандартные
+
+          `ArgumentException`, `ArgumentNullException.ThrowIfNull(x)`, `ArgumentOutOfRangeException`, `InvalidOperationException` (неверное состояние объекта), `NotSupportedException`, `KeyNotFoundException`.
+
+          ## Правила
+
+          - Исключения — для **исключительных** ситуаций, не для обычного потока управления. Для ожидаемых ошибок есть `TryParse`.
+          - Не глотайте исключения пустым `catch {}`.
+          - Ловите там, где можете что-то сделать (показать ошибку, повторить, откатить).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              try
+              {
+                  Console.Write("A");
+                  throw new Exception();
+                  Console.Write("B");
+              }
+              catch { Console.Write("C"); }
+              finally { Console.Write("D"); }
+            answer: ACD
+          - type: choice
+            q: Чем `throw;` лучше `throw ex;` внутри catch?
+            options: ["Работает быстрее", "Сохраняет исходный стек вызовов", "Не требует catch", "Ничем"]
+            answer: 1
+          - type: fill
+            q: Добавьте фильтр исключения
+            code: |
+              catch (HttpRequestException ex) ___ (ex.StatusCode == HttpStatusCode.NotFound)
+            answers: ["when"]
+          - type: bug
+            q: Какой catch никогда не сработает (ошибка компиляции)?
+            code: |
+              try { Run(); }
+              catch (Exception ex) { Log(ex); }
+              catch (IOException ex) { Retry(); }
+            bugLine: 3
+            explain: IOException — наследник Exception, а общий catch стоит выше. Конкретные исключения ловят первыми.
+          - type: output
+            q: Что выведет код?
+            code: |
+              static int F()
+              {
+                  try { return 1; }
+                  finally { Console.Write("F"); }
+              }
+              Console.Write(F());
+            answer: F1
+        homework:
+          task: |
+            Напишите метод `Transfer(Account from, Account to, decimal sum)`, который бросает `ArgumentOutOfRangeException` для sum ≤ 0, своё `InsufficientFundsException` при нехватке средств и `InvalidOperationException`, если счёт заблокирован. В Main обработайте каждый тип по-разному, в finally выведите «Операция завершена».
+          checklist:
+            - Своё исключение наследуется от Exception и несёт данные
+            - Порядок catch — от частного к общему
+            - Нет пустых catch
+          solution: |
+            public class InsufficientFundsException(decimal lack) : Exception($"Не хватает {lack}")
+            {
+                public decimal Lack { get; } = lack;
+            }
+            public class Account(string name, decimal balance)
+            {
+                public string Name = name;
+                public decimal Balance = balance;
+                public bool Blocked;
+            }
+
+            static void Transfer(Account from, Account to, decimal sum)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sum);
+                if (from.Blocked || to.Blocked) throw new InvalidOperationException("Счёт заблокирован");
+                if (from.Balance < sum) throw new InsufficientFundsException(sum - from.Balance);
+                from.Balance -= sum; to.Balance += sum;
+            }
+
+            try { Transfer(new("A", 100), new("B", 0), 500); }
+            catch (InsufficientFundsException ex) { Console.WriteLine($"Пополните на {ex.Lack}"); }
+            catch (ArgumentOutOfRangeException) { Console.WriteLine("Неверная сумма"); }
+            catch (InvalidOperationException ex) { Console.WriteLine(ex.Message); }
+            finally { Console.WriteLine("Операция завершена"); }
+      - id: cs-04-02
+        title: using и IDisposable
+        minutes: 25
+        xp: 30
+        theory: |
+          Сборщик мусора освобождает **память**, но не знает о «неуправляемых» ресурсах: файлах, сокетах, соединениях с БД. Их надо закрывать явно — через интерфейс `IDisposable` с методом `Dispose()`.
+
+          ## using-блок
+
+          ```csharp
+          using (var reader = new StreamReader("data.txt"))
+          {
+              Console.WriteLine(reader.ReadLine());
+          }   // здесь вызовется reader.Dispose(), даже при исключении
+          ```
+
+          Компилятор превращает это в `try { ... } finally { reader?.Dispose(); }`.
+
+          ## using-объявление (C# 8)
+
+          ```csharp
+          void Process()
+          {
+              using var conn = new SqlConnection(cs);
+              using var cmd = conn.CreateCommand();
+              conn.Open();
+              // ...
+          }   // Dispose в обратном порядке: cmd, затем conn
+          ```
+
+          ## Своя реализация
+
+          ```csharp
+          public sealed class Timer : IDisposable
+          {
+              private readonly Stopwatch sw = Stopwatch.StartNew();
+              private readonly string name;
+              private bool disposed;
+
+              public Timer(string name) => this.name = name;
+
+              public void Dispose()
+              {
+                  if (disposed) return;          // повторный Dispose безопасен
+                  disposed = true;
+                  Console.WriteLine($"{name}: {sw.ElapsedMilliseconds} мс");
+              }
+          }
+
+          using (new Timer("Загрузка")) { LoadData(); }
+          ```
+
+          Для неуправляемых ресурсов в не-sealed классах применяется полный **Dispose pattern** с `protected virtual void Dispose(bool disposing)` и финализатором — но сегодня чаще используют `SafeHandle`.
+
+          ## IAsyncDisposable
+
+          ```csharp
+          await using var stream = File.OpenWrite("a.bin");   // DisposeAsync
+          ```
+
+          > 💡 Правило: если тип реализует `IDisposable` и вы его создали — вы обязаны его освободить. Исключение — `HttpClient`, его лучше переиспользовать (через `IHttpClientFactory`).
+        practice:
+          - type: choice
+            q: Во что компилятор превращает using-блок?
+            options: ["в if/else", "в try/finally с Dispose", "в lock", "в async-метод"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              class R : IDisposable
+              {
+                  public string N;
+                  public R(string n) { N = n; Console.Write("+" + n); }
+                  public void Dispose() => Console.Write("-" + N);
+              }
+              using (var a = new R("a"))
+              using (var b = new R("b")) { Console.Write("!"); }
+            answer: +a+b!-b-a
+          - type: fill
+            q: Объявите ресурс, который освободится в конце метода
+            code: |
+              ___ var file = File.OpenRead(path);
+            answers: ["using"]
+          - type: choice
+            q: Что освобождает сборщик мусора автоматически?
+            options: ["Дескрипторы файлов", "Сетевые соединения", "Управляемую память", "Блокировки БД"]
+            answer: 2
+        homework:
+          task: |
+            Создайте класс `LogFile : IDisposable`, который в конструкторе открывает `StreamWriter` в режиме дописывания, метод `Write(string)` пишет строку с временем, а `Dispose` закрывает поток и пишет «лог закрыт». Защитите от двойного Dispose и от записи после Dispose (`ObjectDisposedException`).
+          checklist:
+            - Используется using при создании
+            - Повторный Dispose ничего не ломает
+            - После Dispose Write бросает ObjectDisposedException
+          solution: |
+            public sealed class LogFile : IDisposable
+            {
+                private readonly StreamWriter writer;
+                private bool disposed;
+
+                public LogFile(string path) => writer = new StreamWriter(path, append: true);
+
+                public void Write(string msg)
+                {
+                    ObjectDisposedException.ThrowIf(disposed, this);
+                    writer.WriteLine($"{DateTime.Now:HH:mm:ss} {msg}");
+                }
+
+                public void Dispose()
+                {
+                    if (disposed) return;
+                    writer.WriteLine("лог закрыт");
+                    writer.Dispose();
+                    disposed = true;
+                }
+            }
+
+            using (var log = new LogFile("app.log"))
+            {
+                log.Write("Старт");
+                log.Write("Работа");
+            }
+      - id: cs-04-03
+        title: Работа с файлами System.IO
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Быстрые методы File
+
+          ```csharp
+          File.WriteAllText("a.txt", "Привет\n");
+          File.AppendAllText("a.txt", "ещё строка\n");
+          string all = File.ReadAllText("a.txt");
+          string[] lines = File.ReadAllLines("a.txt");
+          File.WriteAllLines("b.txt", new[] { "1", "2" });
+          bool ok = File.Exists("a.txt");
+          File.Copy("a.txt", "c.txt", overwrite: true);
+          File.Delete("c.txt");
+          ```
+
+          Асинхронные версии: `await File.ReadAllTextAsync(path)`.
+
+          ## Большие файлы — построчно
+
+          ```csharp
+          foreach (var line in File.ReadLines("huge.log"))   // ленивое чтение, не грузит весь файл
+          {
+              if (line.Contains("ERROR")) Console.WriteLine(line);
+          }
+
+          using var writer = new StreamWriter("out.csv");
+          writer.WriteLine("id;name");
+          ```
+
+          ## Пути и папки
+
+          ```csharp
+          string path = Path.Combine("data", "users", "list.txt"); // правильный разделитель для ОС
+          Path.GetFileName(path);              // list.txt
+          Path.GetExtension(path);             // .txt
+          Path.GetFileNameWithoutExtension(path);
+          Path.GetDirectoryName(path);
+
+          Directory.CreateDirectory("data/users");  // создаст всю цепочку
+          foreach (var f in Directory.GetFiles("data", "*.txt", SearchOption.AllDirectories))
+              Console.WriteLine(f);
+
+          var info = new FileInfo("a.txt");
+          Console.WriteLine(info.Length);           // размер в байтах
+          ```
+
+          ## Бинарные данные и потоки
+
+          ```csharp
+          byte[] bytes = File.ReadAllBytes("img.png");
+          using var fs = new FileStream("data.bin", FileMode.Create);
+          fs.Write(bytes);
+          ```
+
+          `Stream` — базовая абстракция: `FileStream`, `MemoryStream`, `NetworkStream`. Поверх них — `StreamReader/Writer` (текст), `BinaryReader/Writer`.
+
+          ## Ошибки
+
+          `FileNotFoundException`, `DirectoryNotFoundException`, `UnauthorizedAccessException`, `IOException` (файл занят). Не полагайтесь на `File.Exists` перед открытием — файл могут удалить между проверкой и чтением; ловите исключение.
+
+          > 💡 Кодировка по умолчанию — UTF-8. Для старых файлов Windows: `Encoding.GetEncoding(1251)` (нужен пакет `System.Text.Encoding.CodePages`).
+        practice:
+          - type: choice
+            q: Какой метод лучше для чтения файла на 10 ГБ построчно?
+            options: ["File.ReadAllText", "File.ReadAllLines", "File.ReadLines", "File.ReadAllBytes"]
+            answer: 2
+            explain: ReadLines возвращает ленивый IEnumerable и не держит весь файл в памяти.
+          - type: output
+            q: Что вернёт вызов?
+            code: |
+              Console.WriteLine(Path.GetExtension("docs/report.final.pdf"));
+            answer: .pdf
+          - type: fill
+            q: Соберите путь независимо от ОС
+            code: |
+              var p = Path.___("data", "file.txt");
+            answers: ["Combine"]
+          - type: order
+            q: Расставьте строки, чтобы дописать строку в файл и прочитать его
+            lines:
+              - File.AppendAllText("log.txt", "ok\n");
+              - var text = File.ReadAllText("log.txt");
+              - Console.WriteLine(text);
+          - type: choice
+            q: Какое исключение, если файл открыт другой программой на запись?
+            options: ["FileNotFoundException", "IOException", "FormatException", "NullReferenceException"]
+            answer: 1
+        homework:
+          task: |
+            Утилита «анализ логов»: принимает путь к папке, находит все `*.log` рекурсивно, считает строки с `ERROR`, `WARN`, `INFO` по каждому файлу и пишет отчёт `report.csv` (file;errors;warnings;info). Читайте файлы построчно.
+          checklist:
+            - Используется Directory.EnumerateFiles/GetFiles с AllDirectories
+            - File.ReadLines, а не ReadAllText
+            - Обработка UnauthorizedAccessException
+          solution: |
+            var dir = args.Length > 0 ? args[0] : ".";
+            using var report = new StreamWriter("report.csv");
+            report.WriteLine("file;errors;warnings;info");
+
+            foreach (var file in Directory.EnumerateFiles(dir, "*.log", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    int e = 0, w = 0, i = 0;
+                    foreach (var line in File.ReadLines(file))
+                    {
+                        if (line.Contains("ERROR")) e++;
+                        else if (line.Contains("WARN")) w++;
+                        else if (line.Contains("INFO")) i++;
+                    }
+                    report.WriteLine($"{Path.GetFileName(file)};{e};{w};{i}");
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Console.WriteLine($"Нет доступа: {file}");
+                }
+            }
+      - id: cs-04-04
+        title: JSON System.Text.Json
+        minutes: 25
+        xp: 30
+        theory: |
+          `System.Text.Json` — встроенная быстрая библиотека для JSON.
+
+          ## Сериализация и десериализация
+
+          ```csharp
+          using System.Text.Json;
+
+          public record User(string Name, int Age, List<string> Tags);
+
+          var u = new User("Аня", 25, ["admin"]);
+          string json = JsonSerializer.Serialize(u);
+          // {"Name":"Аня","Age":25,"Tags":["admin"]}  (кириллица экранируется \u0410...)
+
+          User? back = JsonSerializer.Deserialize<User>(json);
+          ```
+
+          ## Настройки
+
+          ```csharp
+          var opts = new JsonSerializerOptions
+          {
+              WriteIndented = true,                               // красиво
+              PropertyNamingPolicy = JsonNamingPolicy.CamelCase,  // name, age
+              PropertyNameCaseInsensitive = true,                 // при чтении
+              Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // кириллица как есть
+              DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+          };
+          opts.Converters.Add(new JsonStringEnumConverter());   // enum как строка
+          ```
+
+          Создавайте `JsonSerializerOptions` **один раз** и переиспользуйте — он кеширует метаданные. В ASP.NET Core camelCase включён по умолчанию.
+
+          ## Атрибуты
+
+          ```csharp
+          public class Product
+          {
+              [JsonPropertyName("product_id")] public int Id { get; set; }
+              [JsonIgnore] public string Secret { get; set; } = "";
+              [JsonRequired] public string Title { get; set; } = "";
+          }
+          ```
+
+          ## Файлы и потоки
+
+          ```csharp
+          await using var fs = File.Create("users.json");
+          await JsonSerializer.SerializeAsync(fs, users, opts);
+
+          await using var rs = File.OpenRead("users.json");
+          var list = await JsonSerializer.DeserializeAsync<List<User>>(rs, opts);
+          ```
+
+          ## Динамический JSON
+
+          ```csharp
+          using var doc = JsonDocument.Parse(json);
+          int age = doc.RootElement.GetProperty("Age").GetInt32();
+
+          var node = JsonNode.Parse(json)!;      // изменяемое дерево
+          node["Age"] = 26;
+          ```
+
+          Неверный JSON → `JsonException`.
+        practice:
+          - type: fill
+            q: Превратите объект в JSON-строку
+            code: |
+              string json = JsonSerializer.___(user);
+            answers: ["Serialize"]
+          - type: choice
+            q: Как получить в JSON имена свойств вида `firstName` вместо `FirstName`?
+            options: ["WriteIndented = true", "PropertyNamingPolicy = JsonNamingPolicy.CamelCase", "[JsonIgnore]", "IncludeFields = true"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              record P(int X, int Y);
+              Console.WriteLine(JsonSerializer.Serialize(new P(1, 2)));
+            answer: '{"X":1,"Y":2}'
+          - type: choice
+            q: Какой атрибут исключит свойство из JSON?
+            options: ["[NonSerialized]", "[JsonIgnore]", "[Obsolete]", "[JsonExclude]"]
+            answer: 1
+          - type: bug
+            q: Где ошибка производительности?
+            code: |
+              foreach (var item in items)
+              {
+                  var opts = new JsonSerializerOptions { WriteIndented = true };
+                  Console.WriteLine(JsonSerializer.Serialize(item, opts));
+              }
+            bugLine: 3
+            explain: Опции надо создать один раз вне цикла — иначе метаданные пересчитываются каждый раз.
+        homework:
+          task: |
+            Сделайте консольную «записную книжку»: контакты (Name, Phone, Email?, Group enum) хранятся в `contacts.json`. Команды: add, list, find <текст>, remove <имя>. При старте файл загружается (если есть), после каждого изменения — сохраняется. enum в JSON — строкой, отступы, кириллица без экранирования.
+          checklist:
+            - Опции созданы один раз
+            - JsonStringEnumConverter подключён
+            - Отсутствующий файл не роняет программу
+          solution: |
+            using System.Text.Encodings.Web;
+            using System.Text.Json;
+            using System.Text.Json.Serialization;
+
+            var opts = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                Converters = { new JsonStringEnumConverter() }
+            };
+            const string FileName = "contacts.json";
+            var contacts = File.Exists(FileName)
+                ? JsonSerializer.Deserialize<List<Contact>>(File.ReadAllText(FileName), opts) ?? []
+                : new List<Contact>();
+
+            void Save() => File.WriteAllText(FileName, JsonSerializer.Serialize(contacts, opts));
+
+            while (Console.ReadLine() is { } cmd && cmd != "exit")
+            {
+                var parts = cmd.Split(' ', 2);
+                switch (parts[0])
+                {
+                    case "add":
+                        var f = parts[1].Split(';');
+                        contacts.Add(new Contact(f[0], f[1], f.Length > 2 ? f[2] : null, Group.Friends));
+                        Save(); break;
+                    case "list": contacts.ForEach(c => Console.WriteLine(c)); break;
+                    case "find": contacts.Where(c => c.Name.Contains(parts[1])).ToList().ForEach(Console.WriteLine); break;
+                    case "remove": contacts.RemoveAll(c => c.Name == parts[1]); Save(); break;
+                }
+            }
+
+            public enum Group { Family, Friends, Work }
+            public record Contact(string Name, string Phone, string? Email, Group Group);
+      - id: cs-04-05
+        title: Обобщения и ограничения where
+        minutes: 30
+        xp: 35
+        theory: |
+          **Generics** — типы и методы с параметром-типом `T`. Дают переиспользование кода без потери типобезопасности и без boxing.
+
+          ```csharp
+          public class Box<T>
+          {
+              public T Value { get; }
+              public Box(T value) => Value = value;
+          }
+          var b = new Box<int>(5);
+          var s = new Box<string>("hi");
+
+          static void Swap<T>(ref T a, ref T b) => (a, b) = (b, a);
+
+          int x = 1, y = 2;
+          Swap(ref x, ref y);          // T выводится автоматически
+          ```
+
+          ## Ограничения where
+
+          ```csharp
+          static T Max<T>(T a, T b) where T : IComparable<T>
+              => a.CompareTo(b) >= 0 ? a : b;
+
+          class Repository<TEntity, TKey>
+              where TEntity : class, IEntity<TKey>, new()
+              where TKey : notnull
+          { }
+          ```
+
+          | Ограничение | Смысл |
+          |---|---|
+          | `where T : class` | ссылочный тип |
+          | `where T : struct` | значимый тип |
+          | `where T : new()` | есть конструктор без параметров |
+          | `where T : BaseClass` | наследник класса |
+          | `where T : IFoo` | реализует интерфейс |
+          | `where T : notnull` | не nullable |
+          | `where T : unmanaged` | простой тип без ссылок |
+
+          ## default(T)
+
+          ```csharp
+          static T FirstOrDefault<T>(List<T> list) => list.Count > 0 ? list[0] : default!;
+          ```
+
+          ## Обобщённая математика (C# 11)
+
+          ```csharp
+          static T Sum<T>(IEnumerable<T> items) where T : INumber<T>
+          {
+              T total = T.Zero;
+              foreach (var i in items) total += i;
+              return total;
+          }
+          Sum([1, 2, 3]);  Sum([1.5, 2.5]);
+          ```
+
+          ## Вариантность
+
+          `IEnumerable<out T>` — **ковариантен**: `IEnumerable<string>` можно присвоить в `IEnumerable<object>`. `Action<in T>` — контравариантен. `List<T>` — инвариантен: `List<string>` нельзя присвоить в `List<object>`.
+
+          > 💡 В отличие от Java, в .NET generics не стираются: `typeof(List<int>)` и `typeof(List<string>)` — разные типы во время выполнения.
+        practice:
+          - type: fill
+            q: Ограничьте T типами, которые можно сравнивать
+            code: |
+              static T Max<T>(T a, T b) ___ T : IComparable<T> => a.CompareTo(b) > 0 ? a : b;
+            answers: ["where"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              static T Pick<T>(T a, T b, bool first) => first ? a : b;
+              Console.WriteLine(Pick("x", "y", false) + Pick(1, 2, true));
+            answer: y1
+          - type: choice
+            q: Какое ограничение позволит писать `new T()`?
+            options: ["where T : class", "where T : new()", "where T : struct", "where T : notnull"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              static T Def<T>() => default!;
+              Console.WriteLine(Def<int>());
+            answer: "0"
+          - type: choice
+            q: Можно ли присвоить `List<string>` переменной типа `IEnumerable<object>`?
+            options: ["Да, IEnumerable<out T> ковариантен", "Нет, никогда", "Только через cast", "Только для массивов"]
+            answer: 0
+        homework:
+          task: |
+            Реализуйте обобщённый кеш `LruCache<TKey, TValue> where TKey : notnull` с ёмкостью, методами `TryGet`, `Put` (вытесняет давно неиспользуемый элемент). Используйте `Dictionary<TKey, LinkedListNode<...>>` + `LinkedList`. Добавьте обобщённый метод `static T Clamp<T>(T v, T min, T max) where T : IComparable<T>`.
+          checklist:
+            - Put и TryGet за O(1)
+            - При доступе элемент становится «свежим»
+            - Clamp работает и для int, и для string
+          solution: |
+            public class LruCache<TKey, TValue>(int capacity) where TKey : notnull
+            {
+                private readonly Dictionary<TKey, LinkedListNode<(TKey Key, TValue Val)>> map = new();
+                private readonly LinkedList<(TKey Key, TValue Val)> order = new();
+
+                public bool TryGet(TKey key, out TValue value)
+                {
+                    if (map.TryGetValue(key, out var node))
+                    {
+                        order.Remove(node); order.AddFirst(node);
+                        value = node.Value.Val; return true;
+                    }
+                    value = default!; return false;
+                }
+
+                public void Put(TKey key, TValue value)
+                {
+                    if (map.TryGetValue(key, out var old)) { order.Remove(old); map.Remove(key); }
+                    else if (map.Count == capacity)
+                    {
+                        var last = order.Last!;
+                        order.RemoveLast(); map.Remove(last.Value.Key);
+                    }
+                    map[key] = order.AddFirst((key, value));
+                }
+            }
+
+            static T Clamp<T>(T v, T min, T max) where T : IComparable<T> =>
+                v.CompareTo(min) < 0 ? min : v.CompareTo(max) > 0 ? max : v;
+      - id: cs-04-06
+        title: Nullable reference types
+        minutes: 25
+        xp: 30
+        theory: |
+          `NullReferenceException` — самая частая ошибка в .NET. С C# 8 компилятор умеет предупреждать о ней заранее. В новых проектах включено: `<Nullable>enable</Nullable>` в .csproj.
+
+          ## Синтаксис
+
+          ```csharp
+          string name = "Аня";     // не может быть null (компилятор следит)
+          string? nick = null;     // может быть null
+
+          Console.WriteLine(nick.Length);     // ⚠️ CS8602: возможное разыменование null
+          if (nick is not null)
+              Console.WriteLine(nick.Length); // ✅ компилятор понял проверку
+          ```
+
+          Это только **анализ на этапе компиляции**: во время выполнения `string` и `string?` — один и тот же тип.
+
+          ## Операторы
+
+          ```csharp
+          int? len = nick?.Length;             // ?. — null, если nick null
+          string shown = nick ?? "без ника";   // ?? — значение по умолчанию
+          nick ??= "гость";                     // присвоить, если null
+          string s = GetName()!;               // ! — «я уверен, тут не null» (подавить)
+          int first = list?[0] ?? -1;
+          ```
+
+          ## Значимые nullable
+
+          `int?` — это `Nullable<int>`: есть `HasValue`, `Value`, `GetValueOrDefault()`.
+
+          ## Аннотации для API
+
+          ```csharp
+          public bool TryFind(int id, [NotNullWhen(true)] out User? user) { ... }
+
+          public static void Require([NotNull] object? x)
+          {
+              ArgumentNullException.ThrowIfNull(x);
+          }
+          ```
+
+          Атрибуты из `System.Diagnostics.CodeAnalysis`: `NotNullWhen`, `MaybeNull`, `MemberNotNull`, `AllowNull`.
+
+          ## Практика
+
+          - Включайте nullable в каждом проекте и превращайте предупреждения в ошибки: `<WarningsAsErrors>nullable</WarningsAsErrors>`.
+          - Не злоупотребляйте `!` — это обман компилятора.
+          - Для свойств, которые задаются позже, используйте `required` или инициализатор `= ""`.
+
+          > 💡 Паттерн `if (x is { } value)` — проверка на не-null с присваиванием.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              string? s = null;
+              Console.WriteLine(s?.Length ?? -1);
+            answer: "-1"
+          - type: fill
+            q: Присвойте значение, только если переменная null
+            code: |
+              name ___ "Гость";
+            answers: ["??="]
+          - type: choice
+            q: Что делает оператор `!` в `user!.Name`?
+            options: ["Проверяет на null во время выполнения", "Подавляет предупреждение компилятора", "Инвертирует значение", "Бросает исключение при null"]
+            answer: 1
+          - type: choice
+            q: Различаются ли `string` и `string?` во время выполнения?
+            options: ["Да, это разные типы", "Нет, это только аннотация для компилятора", "string? — это Nullable<string>", "Зависит от платформы"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              int? a = null;
+              int? b = 5;
+              Console.WriteLine((a ?? 0) + (b ?? 0) + " " + a.HasValue);
+            answer: 5 False
+        homework:
+          task: |
+            Возьмите класс `UserService` с методами `FindByEmail(string)` (может не найти), `GetDisplayName(User)` (у пользователя необязательные FirstName/LastName/Nick) и `TryGetManager(User, out User? manager)` с атрибутом `[NotNullWhen(true)]`. Добейтесь компиляции без единого nullable-предупреждения и без оператора `!`.
+          checklist:
+            - Nullable включён
+            - Нет ни одного `!`
+            - Используются ?. ?? и is not null
+          solution: |
+            using System.Diagnostics.CodeAnalysis;
+
+            public class User
+            {
+                public required string Email { get; init; }
+                public string? FirstName { get; init; }
+                public string? LastName { get; init; }
+                public string? Nick { get; init; }
+                public User? Manager { get; init; }
+            }
+
+            public class UserService(List<User> users)
+            {
+                public User? FindByEmail(string email) =>
+                    users.FirstOrDefault(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
+
+                public string GetDisplayName(User u) =>
+                    u.Nick ?? (u.FirstName is not null ? $"{u.FirstName} {u.LastName}".Trim() : u.Email);
+
+                public bool TryGetManager(User u, [NotNullWhen(true)] out User? manager)
+                {
+                    manager = u.Manager;
+                    return manager is not null;
+                }
+            }

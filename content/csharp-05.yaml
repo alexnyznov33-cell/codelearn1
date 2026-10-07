@@ -1,0 +1,683 @@
+id: csharp
+modules:
+  - id: cs-m5
+    title: Продвинутый C#
+    level: Junior+
+    lessons:
+      - id: cs-05-01
+        title: Делегаты и события
+        minutes: 30
+        xp: 35
+        theory: |
+          **Делегат** — типобезопасная ссылка на метод. Лямбды и LINQ построены на делегатах.
+
+          ```csharp
+          delegate int Operation(int a, int b);     // свой тип делегата
+
+          int Add(int a, int b) => a + b;
+          Operation op = Add;
+          op += (a, b) => a * b;                     // multicast: цепочка методов
+          Console.WriteLine(op(2, 3));               // 6 — возвращается результат последнего
+          ```
+
+          ## Встроенные делегаты
+
+          | Тип | Сигнатура |
+          |---|---|
+          | `Action<T1, T2>` | `void (T1, T2)` |
+          | `Func<T1, TResult>` | `TResult (T1)` — последний параметр = результат |
+          | `Predicate<T>` | `bool (T)` |
+
+          ```csharp
+          Func<int, int, int> sum = (a, b) => a + b;
+          Action<string> log = Console.WriteLine;
+          Func<int, bool> isEven = x => x % 2 == 0;
+
+          static List<T> Filter<T>(List<T> src, Func<T, bool> pred) => src.Where(pred).ToList();
+          ```
+
+          ## Замыкания
+
+          Лямбда «захватывает» внешние переменные — не значения, а сами переменные:
+
+          ```csharp
+          int counter = 0;
+          Action inc = () => counter++;
+          inc(); inc();
+          Console.WriteLine(counter);   // 2
+          ```
+
+          ## События
+
+          Событие — делегат, который снаружи можно только подписать `+=` / отписать `-=`, а вызвать — только сам класс.
+
+          ```csharp
+          public class Downloader
+          {
+              public event EventHandler<int>? ProgressChanged;
+
+              public void Run()
+              {
+                  for (int p = 0; p <= 100; p += 50)
+                      ProgressChanged?.Invoke(this, p);   // ?. — если нет подписчиков
+              }
+          }
+
+          var d = new Downloader();
+          d.ProgressChanged += (sender, p) => Console.WriteLine($"{p}%");
+          d.Run();
+          ```
+
+          Стандарт: `EventHandler` / `EventHandler<TArgs>` с сигнатурой `(object? sender, TArgs e)`.
+
+          > ⚠️ Подписка держит ссылку на подписчика. Забыли отписаться от события долгоживущего объекта → утечка памяти.
+        practice:
+          - type: choice
+            q: Какой делегат подходит для метода `bool Check(string s)`?
+            options: ["Action<string>", "Func<string, bool>", "Func<bool, string>", "Action<bool>"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              int x = 1;
+              Func<int> f = () => x * 10;
+              x = 5;
+              Console.WriteLine(f());
+            answer: "50"
+            explain: Замыкание захватывает переменную, а не её значение на момент создания.
+          - type: output
+            q: Что выведет код?
+            code: |
+              Action a = () => Console.Write("1");
+              a += () => Console.Write("2");
+              a += () => Console.Write("3");
+              a -= () => Console.Write("2");
+              a();
+            answer: "123"
+            explain: Отписка новой лямбдой не работает — это другой объект-делегат.
+          - type: fill
+            q: Безопасно вызовите событие
+            code: |
+              Changed___Invoke(this, EventArgs.Empty);
+            answers: ["?."]
+          - type: choice
+            q: Чем event отличается от публичного поля-делегата?
+            options: ["Ничем", "Снаружи можно только += и -=, вызвать нельзя", "event работает асинхронно", "event нельзя отписать"]
+            answer: 1
+        homework:
+          task: |
+            Класс `Stock` (тикер, цена) с событием `PriceChanged` (аргументы: старая и новая цена). Подписчики: `ConsoleLogger` (выводит изменения), `AlertService` (сообщает, если цена изменилась более чем на 5%). Сделайте метод `Unsubscribe` и проверьте, что после отписки уведомления не приходят.
+          checklist:
+            - Используется EventHandler<PriceChangedEventArgs>
+            - Вызов через ?.Invoke
+            - Отписка через сохранённую ссылку на обработчик
+          solution: |
+            public record PriceChangedEventArgs(decimal Old, decimal New);
+
+            public class Stock(string ticker, decimal price)
+            {
+                public string Ticker { get; } = ticker;
+                public event EventHandler<PriceChangedEventArgs>? PriceChanged;
+                public decimal Price
+                {
+                    get => price;
+                    set
+                    {
+                        if (value == price) return;
+                        var old = price; price = value;
+                        PriceChanged?.Invoke(this, new(old, value));
+                    }
+                }
+            }
+
+            public class AlertService
+            {
+                public void OnChanged(object? s, PriceChangedEventArgs e)
+                {
+                    var pct = Math.Abs(e.New - e.Old) / e.Old * 100;
+                    if (pct > 5) Console.WriteLine($"ALERT {((Stock)s!).Ticker}: {pct:F1}%");
+                }
+            }
+
+            var st = new Stock("SBER", 100);
+            var alert = new AlertService();
+            EventHandler<PriceChangedEventArgs> log = (s, e) => Console.WriteLine($"{e.Old} -> {e.New}");
+            st.PriceChanged += log;
+            st.PriceChanged += alert.OnChanged;
+            st.Price = 110;
+            st.PriceChanged -= log;
+            st.Price = 111;
+      - id: cs-05-02
+        title: IEnumerable и yield return
+        minutes: 30
+        xp: 35
+        theory: |
+          `foreach` работает с любым типом, у которого есть `GetEnumerator()`. Обычно это `IEnumerable<T>` — «последовательность, которую можно перебрать».
+
+          ```csharp
+          public interface IEnumerable<out T> { IEnumerator<T> GetEnumerator(); }
+          public interface IEnumerator<out T> : IDisposable
+          {
+              T Current { get; }
+              bool MoveNext();
+          }
+          ```
+
+          ## yield return — итератор без лишнего кода
+
+          ```csharp
+          static IEnumerable<int> Range(int from, int to)
+          {
+              for (int i = from; i <= to; i++)
+                  yield return i;      // вернуть элемент и «заморозиться» до следующего MoveNext
+          }
+
+          static IEnumerable<int> Fibonacci()
+          {
+              int a = 0, b = 1;
+              while (true)              // бесконечная последовательность — нормально!
+              {
+                  yield return a;
+                  (a, b) = (b, a + b);
+              }
+          }
+
+          foreach (var f in Fibonacci().Take(10)) Console.Write(f + " ");
+          ```
+
+          `yield break;` — завершить последовательность.
+
+          ## Ленивость (отложенное выполнение)
+
+          Код итератора **не выполняется** при вызове метода — только при переборе. И выполняется заново при каждом переборе.
+
+          ```csharp
+          IEnumerable<int> Numbers()
+          {
+              Console.WriteLine("старт");
+              yield return 1;
+          }
+          var seq = Numbers();      // ничего не напечатано
+          seq.ToList();             // "старт"
+          seq.ToList();             // "старт" ещё раз
+          ```
+
+          Поэтому проверка аргументов в итераторе срабатывает поздно. Решение — обёртка:
+
+          ```csharp
+          public static IEnumerable<T> Every<T>(IEnumerable<T> src, int n)
+          {
+              ArgumentOutOfRangeException.ThrowIfNegativeOrZero(n); // сразу
+              return Impl();
+              IEnumerable<T> Impl()                                  // локальная функция-итератор
+              {
+                  int i = 0;
+                  foreach (var x in src) if (i++ % n == 0) yield return x;
+              }
+          }
+          ```
+
+          ## IEnumerable vs ICollection vs IList
+
+          `IEnumerable` — только перебор; `ICollection` — + Count, Add; `IList` — + доступ по индексу. Принимайте в параметрах самый общий тип, который вам нужен.
+
+          `IAsyncEnumerable<T>` + `await foreach` — асинхронные потоки данных.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              static IEnumerable<int> G()
+              {
+                  yield return 1;
+                  yield return 2;
+                  yield break;
+                  yield return 3;
+              }
+              Console.WriteLine(G().Sum());
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              static IEnumerable<int> G()
+              {
+                  Console.Write("S");
+                  yield return 1;
+              }
+              var g = G();
+              Console.Write("A");
+              foreach (var x in g) Console.Write(x);
+            answer: AS1
+          - type: fill
+            q: Верните элемент из итератора
+            code: |
+              static IEnumerable<string> Words() { ___ "a"; ___ "b"; }
+            answers: ["yield return", "yield return"]
+          - type: choice
+            q: Что произойдёт при `Fibonacci().ToList()` для бесконечного итератора?
+            options: ["Вернётся пустой список", "Бесконечный цикл / нехватка памяти", "Исключение сразу", "Вернётся первый элемент"]
+            answer: 1
+        homework:
+          task: |
+            Напишите итераторы: `ReadLinesWithNumbers(path)` (возвращает `(int No, string Text)`), `Primes()` (бесконечные простые), `Window<T>(IEnumerable<T>, int size)` (скользящее окно: [1,2,3],[2,3,4]...). Покажите, что `Primes().Skip(100).First()` работает без генерации лишнего.
+          checklist:
+            - Все методы используют yield return
+            - Проверка аргументов срабатывает сразу
+            - Window использует Queue<T>
+          solution: |
+            static IEnumerable<(int No, string Text)> ReadLinesWithNumbers(string path)
+            {
+                int n = 0;
+                foreach (var line in File.ReadLines(path)) yield return (++n, line);
+            }
+
+            static IEnumerable<int> Primes()
+            {
+                for (int n = 2; ; n++)
+                {
+                    bool prime = true;
+                    for (int d = 2; d * d <= n; d++) if (n % d == 0) { prime = false; break; }
+                    if (prime) yield return n;
+                }
+            }
+
+            static IEnumerable<T[]> Window<T>(IEnumerable<T> src, int size)
+            {
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
+                return Impl();
+                IEnumerable<T[]> Impl()
+                {
+                    var q = new Queue<T>();
+                    foreach (var x in src)
+                    {
+                        q.Enqueue(x);
+                        if (q.Count > size) q.Dequeue();
+                        if (q.Count == size) yield return q.ToArray();
+                    }
+                }
+            }
+
+            Console.WriteLine(Primes().Skip(100).First()); // 547
+      - id: cs-05-03
+        title: Pattern matching
+        minutes: 30
+        xp: 35
+        theory: |
+          Сопоставление с образцом позволяет проверять форму данных декларативно.
+
+          ## Паттерны типа и свойств
+
+          ```csharp
+          if (obj is string s && s.Length > 0) Console.WriteLine(s);
+
+          if (order is { Status: OrderStatus.Paid, Total: > 1000 })
+              ApplyDiscount(order);
+
+          if (user is { Address.City: "Москва" }) { }   // вложенные свойства (C# 10)
+          ```
+
+          ## switch-выражение
+
+          ```csharp
+          string Describe(object o) => o switch
+          {
+              null                  => "пусто",
+              int n when n < 0      => "отрицательное",
+              int n                 => $"число {n}",
+              string { Length: 0 }  => "пустая строка",
+              string s              => $"строка {s}",
+              IEnumerable<int> list => $"коллекция",
+              _                     => "что-то другое"     // discard — всё остальное
+          };
+          ```
+
+          ## Реляционные и логические паттерны
+
+          ```csharp
+          string Grade(int score) => score switch
+          {
+              >= 90           => "A",
+              >= 75 and < 90  => "B",
+              >= 50           => "C",
+              < 0 or > 100    => throw new ArgumentOutOfRangeException(nameof(score)),
+              _               => "F"
+          };
+
+          bool IsLetter(char c) => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z');
+          if (x is not null) { }
+          ```
+
+          ## Позиционные и кортежные паттерны
+
+          ```csharp
+          record Point(int X, int Y);
+
+          string Quadrant(Point p) => p switch
+          {
+              (0, 0)                 => "центр",
+              ( > 0, > 0)            => "I",
+              ( < 0, > 0)            => "II",
+              _                      => "другое"
+          };
+
+          string Rps(string a, string b) => (a, b) switch
+          {
+              ("камень", "ножницы") or ("ножницы", "бумага") or ("бумага", "камень") => "победа",
+              _ when a == b => "ничья",
+              _ => "поражение"
+          };
+          ```
+
+          ## Списочные паттерны (C# 11)
+
+          ```csharp
+          int[] arr = [1, 2, 3, 4];
+          var r = arr switch
+          {
+              []            => "пусто",
+              [var single]  => $"один: {single}",
+              [1, .., var last] => $"начинается с 1, последний {last}",
+              _ => "иначе"
+          };
+          ```
+
+          > 💡 Компилятор предупреждает, если switch-выражение не покрывает все варианты, — это ловит ошибки при добавлении новых значений enum.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              object o = 42;
+              var r = o switch
+              {
+                  string => "str",
+                  int n when n > 40 => "big",
+                  int => "int",
+                  _ => "?"
+              };
+              Console.WriteLine(r);
+            answer: big
+          - type: fill
+            q: Проверьте, что число от 1 до 10 включительно
+            code: |
+              bool ok = x is >= 1 ___ <= 10;
+            answers: ["and"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              int[] a = [5, 6, 7];
+              Console.WriteLine(a is [5, .., var z] ? z : -1);
+            answer: "7"
+          - type: choice
+            q: Что означает `_` в switch-выражении?
+            options: ["Пустую строку", "Любое значение (default-ветка)", "null", "Ошибку"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              record P(int X, int Y);
+              var p = new P(0, 3);
+              Console.WriteLine(p switch { (0, _) => "на оси Y", (_, 0) => "на оси X", _ => "нигде" });
+            answer: на оси Y
+        homework:
+          task: |
+            Калькулятор скидок через pattern matching: `record Customer(string Type, int Years)`, `record Order(Customer C, decimal Sum, string[] Items)`. Правила: VIP со стажем ≥ 3 → 20%; VIP → 15%; сумма > 10000 → 10%; в заказе ровно один товар "подарок" → 0%; пустой заказ → исключение; иначе 0. Реализуйте одним switch-выражением.
+          checklist:
+            - Используются property, relational и list patterns
+            - Пустой заказ → throw в ветке switch
+            - Порядок веток учитывает приоритет
+          solution: |
+            record Customer(string Type, int Years);
+            record Order(Customer C, decimal Sum, string[] Items);
+
+            static decimal Discount(Order o) => o switch
+            {
+                { Items: [] } => throw new ArgumentException("Пустой заказ"),
+                { Items: ["подарок"] } => 0m,
+                { C: { Type: "VIP", Years: >= 3 } } => 0.20m,
+                { C.Type: "VIP" } => 0.15m,
+                { Sum: > 10000 } => 0.10m,
+                _ => 0m
+            };
+
+            Console.WriteLine(Discount(new(new("VIP", 5), 500, ["чай"])));      // 0.20
+            Console.WriteLine(Discount(new(new("Обычный", 1), 20000, ["ТВ"]))); // 0.10
+      - id: cs-05-04
+        title: Span<T> и работа с памятью
+        minutes: 30
+        xp: 40
+        theory: |
+          `Span<T>` — «окно» на непрерывный участок памяти (массив, часть строки, стек, неуправляемая память) **без копирования**. Ключевой инструмент высокопроизводительного .NET.
+
+          ```csharp
+          int[] arr = { 1, 2, 3, 4, 5 };
+          Span<int> mid = arr.AsSpan(1, 3);   // [2, 3, 4] — не копия!
+          mid[0] = 20;
+          Console.WriteLine(arr[1]);           // 20 — изменился исходный массив
+
+          Span<byte> buf = stackalloc byte[256]; // память на стеке, без GC
+          ```
+
+          ## ReadOnlySpan<char> — разбор строк без аллокаций
+
+          ```csharp
+          string line = "2024-05-17";
+          ReadOnlySpan<char> s = line;
+          int year  = int.Parse(s[..4]);        // без Substring → без новой строки
+          int month = int.Parse(s.Slice(5, 2));
+          ```
+
+          `Substring` создаёт новую строку в куче, а срез span — нет. На миллионах операций это огромная экономия.
+
+          ## Ограничения Span<T>
+
+          `Span<T>` — `ref struct`: живёт только на стеке. Нельзя:
+          - хранить в поле обычного класса;
+          - использовать в `async`-методах между `await` и в лямбдах-замыканиях;
+          - класть в коллекции и боксить.
+
+          Для этих случаев есть **`Memory<T>`** / `ReadOnlyMemory<T>` — можно хранить в полях и передавать в async, а `.Span` получить в момент работы.
+
+          ## ArrayPool — переиспользование буферов
+
+          ```csharp
+          byte[] rented = ArrayPool<byte>.Shared.Rent(4096);
+          try
+          {
+              int n = stream.Read(rented, 0, rented.Length);
+              Process(rented.AsSpan(0, n));
+          }
+          finally
+          {
+              ArrayPool<byte>.Shared.Return(rented);
+          }
+          ```
+
+          `Rent` может вернуть массив **больше** запрошенного — используйте реальную длину.
+
+          ## Где это встречается
+
+          Kestrel, System.Text.Json, парсеры — всё на Span. Многие API имеют перегрузки: `int.TryParse(ReadOnlySpan<char>)`, `string.Create`, `MemoryExtensions.Split`.
+
+          > 💡 Не оптимизируйте заранее: используйте Span там, где профилировщик показал много аллокаций.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int[] a = { 1, 2, 3, 4 };
+              var s = a.AsSpan(2);
+              s[0] = 9;
+              Console.WriteLine(string.Join(",", a));
+            answer: 1,2,9,4
+          - type: choice
+            q: Почему `Span<T>` нельзя хранить в поле класса?
+            options: ["Он слишком большой", "Это ref struct, который может жить только на стеке", "Он не сериализуется", "Можно, ограничений нет"]
+            answer: 1
+          - type: fill
+            q: Выделите буфер на стеке
+            code: |
+              Span<byte> buffer = ___ byte[128];
+            answers: ["stackalloc"]
+          - type: choice
+            q: Что использовать, если нужен буфер в async-методе и в поле класса?
+            options: ["Span<T>", "Memory<T>", "stackalloc", "ref struct"]
+            answer: 1
+        homework:
+          task: |
+            Напишите парсер CSV-строки вида `"id;name;price"` без аллокаций строк для числовых полей: метод `static (int Id, decimal Price) ParseLine(ReadOnlySpan<char> line)` использует `IndexOf(';')` и срезы. Сравните по количеству аллокаций с версией на `Split` (через `GC.GetAllocatedBytesForCurrentThread()`) на 1 000 000 строк.
+          checklist:
+            - Нет Split и Substring в быстрой версии
+            - int.Parse/decimal.Parse получают ReadOnlySpan<char>
+            - Выведена разница в байтах
+          solution: |
+            static (int Id, decimal Price) ParseFast(ReadOnlySpan<char> line)
+            {
+                int p1 = line.IndexOf(';');
+                int id = int.Parse(line[..p1]);
+                var rest = line[(p1 + 1)..];
+                int p2 = rest.IndexOf(';');
+                decimal price = decimal.Parse(rest[(p2 + 1)..], System.Globalization.CultureInfo.InvariantCulture);
+                return (id, price);
+            }
+
+            static (int, decimal) ParseSlow(string line)
+            {
+                var parts = line.Split(';');
+                return (int.Parse(parts[0]), decimal.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            const string row = "12345;Чайник;1999.90";
+            long b0 = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1_000_000; i++) ParseSlow(row);
+            long b1 = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1_000_000; i++) ParseFast(row);
+            long b2 = GC.GetAllocatedBytesForCurrentThread();
+            Console.WriteLine($"Split: {(b1 - b0) / 1024} КБ, Span: {(b2 - b1) / 1024} КБ");
+      - id: cs-05-05
+        title: Рефлексия и атрибуты
+        minutes: 30
+        xp: 35
+        theory: |
+          **Рефлексия** — исследование и использование типов во время выполнения: какие у класса свойства, методы, атрибуты. На ней работают сериализаторы, ORM, DI-контейнеры, тест-фреймворки.
+
+          ```csharp
+          Type t = typeof(User);            // или obj.GetType()
+          Console.WriteLine(t.Name);         // User
+          foreach (PropertyInfo p in t.GetProperties())
+              Console.WriteLine($"{p.Name}: {p.PropertyType.Name}");
+
+          var u = new User { Name = "Аня" };
+          var prop = t.GetProperty("Name")!;
+          Console.WriteLine(prop.GetValue(u));   // Аня
+          prop.SetValue(u, "Боб");
+
+          MethodInfo m = t.GetMethod("Greet")!;
+          m.Invoke(u, new object[] { "Привет" });
+
+          object obj = Activator.CreateInstance(t)!;   // создать объект по типу
+          ```
+
+          ## Атрибуты — метаданные
+
+          ```csharp
+          [AttributeUsage(AttributeTargets.Property)]
+          public class MaxLengthAttribute(int max) : Attribute
+          {
+              public int Max { get; } = max;
+          }
+
+          public class User
+          {
+              [MaxLength(10)] public string Name { get; set; } = "";
+              [Obsolete("Используйте Name")] public string Login { get; set; } = "";
+          }
+          ```
+
+          Атрибут сам ничего не делает — его кто-то должен прочитать:
+
+          ```csharp
+          static List<string> Validate(object o)
+          {
+              var errors = new List<string>();
+              foreach (var p in o.GetType().GetProperties())
+              {
+                  var attr = p.GetCustomAttribute<MaxLengthAttribute>();
+                  if (attr != null && p.GetValue(o) is string s && s.Length > attr.Max)
+                      errors.Add($"{p.Name} длиннее {attr.Max}");
+              }
+              return errors;
+          }
+          ```
+
+          Встроенные: `[Serializable]`, `[Obsolete]`, `[Required]`, `[JsonPropertyName]`, `[HttpGet]`, `[Fact]`.
+
+          ## Цена рефлексии
+
+          - **Медленно** (в десятки раз медленнее прямого вызова) — кешируйте `PropertyInfo`, используйте скомпилированные выражения или `Delegate.CreateDelegate`.
+          - Ломается при trimming/Native AOT.
+          - Современная альтернатива — **Source Generators**: код генерируется при компиляции (так работает `System.Text.Json` в AOT-режиме, `[LoggerMessage]`, `[GeneratedRegex]`).
+
+          > 💡 `nameof(User.Name)` — получить имя члена без рефлексии и без «магических строк».
+        practice:
+          - type: fill
+            q: Получите объект Type для класса
+            code: |
+              Type t = ___(Order);
+            answers: ["typeof"]
+          - type: choice
+            q: Что произойдёт с атрибутом, если его никто не читает через рефлексию?
+            options: ["Он сам выполнит проверку", "Ничего — это просто метаданные", "Ошибка компиляции", "Он вызовется при создании объекта"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A { public int X { get; set; } public int Y { get; set; } }
+              Console.WriteLine(typeof(A).GetProperties().Length);
+            answer: "2"
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Order { public int Total { get; set; } }
+              Console.WriteLine(nameof(Order.Total));
+            answer: Total
+          - type: choice
+            q: Какая современная альтернатива рефлексии работает с Native AOT?
+            options: ["dynamic", "Source Generators", "Activator", "Expression trees"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте мини-валидатор: атрибуты `[Required]`, `[Range(min, max)]`, `[MaxLength(n)]` и метод `Validator.Validate(object)` → список ошибок. Кешируйте свойства типов в `ConcurrentDictionary<Type, PropertyInfo[]>`. Дополнительно: `ToDictionary(object)` → `Dictionary<string, object?>` всех публичных свойств.
+          checklist:
+            - Атрибуты имеют AttributeUsage
+            - PropertyInfo кешируются
+            - Валидатор работает для любого класса
+          solution: |
+            using System.Collections.Concurrent;
+            using System.Reflection;
+
+            [AttributeUsage(AttributeTargets.Property)] class RequiredAttribute : Attribute { }
+            [AttributeUsage(AttributeTargets.Property)] class RangeAttribute(int min, int max) : Attribute
+            { public int Min = min, Max = max; }
+            [AttributeUsage(AttributeTargets.Property)] class MaxLengthAttribute(int n) : Attribute { public int N = n; }
+
+            static class Validator
+            {
+                static readonly ConcurrentDictionary<Type, PropertyInfo[]> cache = new();
+
+                public static List<string> Validate(object o)
+                {
+                    var errs = new List<string>();
+                    foreach (var p in cache.GetOrAdd(o.GetType(), t => t.GetProperties()))
+                    {
+                        var v = p.GetValue(o);
+                        if (p.IsDefined(typeof(RequiredAttribute)) && (v is null || v is string { Length: 0 }))
+                            errs.Add($"{p.Name}: обязательно");
+                        if (p.GetCustomAttribute<RangeAttribute>() is { } r && v is int i && (i < r.Min || i > r.Max))
+                            errs.Add($"{p.Name}: вне [{r.Min};{r.Max}]");
+                        if (p.GetCustomAttribute<MaxLengthAttribute>() is { } m && v is string s && s.Length > m.N)
+                            errs.Add($"{p.Name}: длиннее {m.N}");
+                    }
+                    return errs;
+                }
+
+                public static Dictionary<string, object?> ToDictionary(object o) =>
+                    cache.GetOrAdd(o.GetType(), t => t.GetProperties()).ToDictionary(p => p.Name, p => p.GetValue(o));
+            }

@@ -1,0 +1,805 @@
+id: csharp
+modules:
+  - id: cs-m9
+    title: ASP.NET Core
+    level: Middle
+    lessons:
+      - id: cs-09-01
+        title: HTTP и REST
+        minutes: 25
+        xp: 35
+        theory: |
+          ## HTTP за 2 минуты
+
+          Клиент отправляет **запрос**, сервер возвращает **ответ**.
+
+          ```
+          POST /api/orders HTTP/1.1
+          Host: shop.ru
+          Content-Type: application/json
+          Authorization: Bearer eyJhbGc...
+
+          {"productId": 5, "qty": 2}
+          ```
+
+          ```
+          HTTP/1.1 201 Created
+          Location: /api/orders/42
+          Content-Type: application/json
+
+          {"id": 42, "status": "new"}
+          ```
+
+          ## Методы
+
+          | Метод | Назначение | Идемпотентен | Безопасен |
+          |---|---|---|---|
+          | GET | получить | да | да |
+          | POST | создать / действие | нет | нет |
+          | PUT | заменить целиком | да | нет |
+          | PATCH | изменить частично | нет* | нет |
+          | DELETE | удалить | да | нет |
+
+          **Идемпотентность** — повторный запрос не меняет результат (важно для ретраев).
+
+          ## Коды ответов
+
+          - **2xx** успех: `200 OK`, `201 Created`, `204 No Content`
+          - **3xx** перенаправление: `301`, `302`, `304 Not Modified`
+          - **4xx** ошибка клиента: `400 Bad Request`, `401 Unauthorized` (не аутентифицирован), `403 Forbidden` (нет прав), `404 Not Found`, `409 Conflict`, `422 Unprocessable Entity`, `429 Too Many Requests`
+          - **5xx** ошибка сервера: `500`, `502 Bad Gateway`, `503 Service Unavailable`
+
+          ## REST — стиль проектирования API
+
+          - Ресурсы — существительные во множественном числе: `/api/products`, `/api/products/5/reviews`.
+          - Действие задаёт метод, а не URL: ❌ `/getProducts`, `/deleteProduct?id=5` → ✅ `GET /products`, `DELETE /products/5`.
+          - Фильтры, сортировка, пагинация — в query: `/products?category=tea&sort=-price&page=2&size=20`.
+          - Stateless: каждый запрос содержит всё нужное (токен), сервер не хранит сессию.
+          - Версионирование: `/api/v1/...` или заголовок.
+          - Ошибки — единым форматом **ProblemDetails** (RFC 7807):
+
+          ```json
+          { "type": "...", "title": "Validation failed", "status": 400, "errors": { "Name": ["Обязательно"] } }
+          ```
+
+          ## Заголовки, которые надо знать
+
+          `Content-Type`, `Accept`, `Authorization`, `Cache-Control`, `ETag`/`If-None-Match`, `Location`, CORS-заголовки `Access-Control-Allow-*`.
+
+          > 💡 Тестируйте API через `.http`-файлы в Visual Studio/Rider, Postman или `curl -i`.
+        practice:
+          - type: choice
+            q: Какой код вернуть после успешного создания ресурса?
+            options: ["200 OK", "201 Created", "204 No Content", "302 Found"]
+            answer: 1
+          - type: choice
+            q: Пользователь авторизован, но не имеет прав на ресурс. Код?
+            options: ["400", "401", "403", "404"]
+            answer: 2
+          - type: choice
+            q: Какой URL соответствует REST?
+            options: ["GET /api/getUserById?id=5", "POST /api/deleteUser/5", "DELETE /api/users/5", "GET /api/users/delete/5"]
+            answer: 2
+          - type: choice
+            q: Какие методы идемпотентны? (выберите все)
+            options: ["GET", "POST", "PUT", "DELETE"]
+            answer: [0, 2, 3]
+          - type: fill
+            q: Заголовок для передачи JWT
+            code: |
+              ___: Bearer eyJhbGciOi...
+            answers: ["Authorization"]
+        homework:
+          task: |
+            Спроектируйте REST API для сервиса «Задачи» (проекты, задачи, комментарии, пользователи): таблица эндпоинтов (метод, URL, тело, коды ответов), формат пагинации и ошибок. Выполните 5 запросов к публичному API (например, jsonplaceholder.typicode.com) через `curl -i` и разберите заголовки ответа.
+          checklist:
+            - Ресурсы во множественном числе, вложенность не глубже 2 уровней
+            - Для каждого эндпоинта указаны коды ошибок
+            - Есть пагинация и фильтрация
+          solution: |
+            GET    /api/v1/projects?page=1&size=20          200
+            POST   /api/v1/projects                          201 + Location, 400
+            GET    /api/v1/projects/{id}                     200, 404
+            PUT    /api/v1/projects/{id}                     204, 400, 404
+            DELETE /api/v1/projects/{id}                     204, 404, 409 (есть задачи)
+            GET    /api/v1/projects/{id}/tasks?status=open&assignee=7&sort=-dueDate   200
+            POST   /api/v1/projects/{id}/tasks               201, 400, 404
+            PATCH  /api/v1/tasks/{id}                        200, 400, 404, 409
+            GET    /api/v1/tasks/{id}/comments               200
+            POST   /api/v1/tasks/{id}/comments               201, 400, 401
+
+            Пагинация: { "items": [...], "page": 1, "size": 20, "total": 134 }
+            Ошибки: application/problem+json (ProblemDetails)
+
+            curl -i https://jsonplaceholder.typicode.com/posts/1
+            curl -i -X POST -H "Content-Type: application/json" -d '{"title":"x"}' https://jsonplaceholder.typicode.com/posts
+      - id: cs-09-02
+        title: Minimal API и контроллеры
+        minutes: 35
+        xp: 40
+        theory: |
+          ```bash
+          dotnet new webapi -n Shop.Api        # шаблон с OpenAPI/Swagger
+          dotnet run                           # https://localhost:5001/swagger
+          ```
+
+          ## Minimal API
+
+          ```csharp
+          var builder = WebApplication.CreateBuilder(args);
+          builder.Services.AddSingleton<IProductStore, InMemoryProductStore>();
+          builder.Services.AddEndpointsApiExplorer();
+          builder.Services.AddSwaggerGen();
+          var app = builder.Build();
+
+          if (app.Environment.IsDevelopment()) { app.UseSwagger(); app.UseSwaggerUI(); }
+
+          var products = app.MapGroup("/api/products").WithTags("Products");
+
+          products.MapGet("/", (IProductStore s, int page = 1) => s.GetPage(page));
+
+          products.MapGet("/{id:int}", (int id, IProductStore s) =>
+              s.Find(id) is { } p ? Results.Ok(p) : Results.NotFound());
+
+          products.MapPost("/", (CreateProductDto dto, IProductStore s) =>
+          {
+              var p = s.Add(dto);
+              return Results.Created($"/api/products/{p.Id}", p);
+          });
+
+          products.MapDelete("/{id:int}", (int id, IProductStore s) =>
+              s.Remove(id) ? Results.NoContent() : Results.NotFound());
+
+          app.Run();
+
+          public record CreateProductDto(string Name, decimal Price);
+          ```
+
+          Параметры привязываются автоматически: из маршрута (`{id}`), query (`?page=2`), тела (JSON для сложных типов), сервисов DI, а также `[FromHeader]`, `HttpContext`, `CancellationToken`.
+
+          `TypedResults.Ok(p)` вместо `Results.Ok` даёт точные типы для OpenAPI и тестов.
+
+          ## Контроллеры
+
+          ```csharp
+          builder.Services.AddControllers();
+          app.MapControllers();
+
+          [ApiController]
+          [Route("api/[controller]")]
+          public class OrdersController(IOrderService orders) : ControllerBase
+          {
+              [HttpGet("{id:int}")]
+              [ProducesResponseType<OrderDto>(200)]
+              [ProducesResponseType(404)]
+              public async Task<ActionResult<OrderDto>> Get(int id, CancellationToken ct)
+              {
+                  var o = await orders.FindAsync(id, ct);
+                  return o is null ? NotFound() : Ok(o);
+              }
+
+              [HttpPost]
+              public async Task<IActionResult> Create(CreateOrderDto dto, CancellationToken ct)
+              {
+                  var id = await orders.CreateAsync(dto, ct);
+                  return CreatedAtAction(nameof(Get), new { id }, null);
+              }
+          }
+          ```
+
+          `[ApiController]` включает автоматическую валидацию модели (400 с ProblemDetails) и привязку тела из JSON.
+
+          ## Что выбрать
+
+          Minimal API — меньше кода, быстрее, отлично для микросервисов. Контроллеры — привычная структура для больших проектов с фильтрами. Обе модели можно смешивать.
+
+          > 💡 Никогда не отдавайте наружу сущности EF напрямую — используйте **DTO** (record). Иначе утекут лишние поля и появятся циклы при сериализации.
+        practice:
+          - type: fill
+            q: Зарегистрируйте GET-эндпоинт
+            code: |
+              app.___("/api/ping", () => "pong");
+            answers: ["MapGet"]
+          - type: fill
+            q: Верните 404 из minimal API
+            code: |
+              return Results.___();
+            answers: ["NotFound"]
+          - type: choice
+            q: Что даёт атрибут [ApiController]?
+            options: ["Авторизацию", "Автовалидацию модели и привязку тела из JSON", "Кеширование", "Логирование"]
+            answer: 1
+          - type: choice
+            q: Откуда будет взят параметр `int id` в `MapGet("/items/{id}", (int id) => ...)`?
+            options: ["Из тела запроса", "Из маршрута", "Из заголовка", "Из cookie"]
+            answer: 1
+          - type: choice
+            q: Почему не стоит возвращать сущности EF из API напрямую?
+            options: ["Это медленно компилируется", "Утечка лишних полей и циклические ссылки", "JSON не поддерживает классы", "Так нельзя по синтаксису"]
+            answer: 1
+        homework:
+          task: |
+            Создайте Minimal API «Заметки» (in-memory хранилище в ConcurrentDictionary): CRUD `/api/notes` с группой маршрутов, пагинацией и поиском `?q=`, корректные коды (201 + Location, 204, 404), DTO для создания/обновления, Swagger. Затем перепишите `GET /{id}` и `POST` на контроллер и сравните.
+          checklist:
+            - Используется MapGroup
+            - Хранилище зарегистрировано в DI
+            - Коды ответов соответствуют REST
+          solution: |
+            using System.Collections.Concurrent;
+
+            var b = WebApplication.CreateBuilder(args);
+            b.Services.AddSingleton<NoteStore>();
+            b.Services.AddEndpointsApiExplorer().AddSwaggerGen();
+            var app = b.Build();
+            app.UseSwagger(); app.UseSwaggerUI();
+
+            var g = app.MapGroup("/api/notes");
+            g.MapGet("/", (NoteStore s, string? q, int page = 1, int size = 10) =>
+                s.All.Where(n => q == null || n.Text.Contains(q, StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(n => n.Id).Skip((page - 1) * size).Take(size));
+            g.MapGet("/{id:int}", (int id, NoteStore s) => s.Items.TryGetValue(id, out var n) ? Results.Ok(n) : Results.NotFound());
+            g.MapPost("/", (NoteDto dto, NoteStore s) => { var n = s.Add(dto.Text); return Results.Created($"/api/notes/{n.Id}", n); });
+            g.MapPut("/{id:int}", (int id, NoteDto dto, NoteStore s) =>
+            {
+                if (!s.Items.ContainsKey(id)) return Results.NotFound();
+                s.Items[id] = new Note(id, dto.Text);
+                return Results.NoContent();
+            });
+            g.MapDelete("/{id:int}", (int id, NoteStore s) => s.Items.TryRemove(id, out _) ? Results.NoContent() : Results.NotFound());
+            app.Run();
+
+            public record Note(int Id, string Text);
+            public record NoteDto(string Text);
+            public class NoteStore
+            {
+                private int last;
+                public ConcurrentDictionary<int, Note> Items { get; } = new();
+                public IEnumerable<Note> All => Items.Values;
+                public Note Add(string text) { var n = new Note(Interlocked.Increment(ref last), text); Items[n.Id] = n; return n; }
+            }
+      - id: cs-09-03
+        title: Внедрение зависимостей (DI)
+        minutes: 30
+        xp: 40
+        theory: |
+          **Dependency Injection** — класс не создаёт свои зависимости сам (`new`), а получает их извне, обычно через конструктор. Это даёт слабую связанность и возможность подменять реализации в тестах.
+
+          ```csharp
+          // ❌ жёсткая связь
+          public class OrderService { private readonly SmtpSender sender = new(); }
+
+          // ✅ зависимость от абстракции, внедрение через конструктор
+          public class OrderService(IEmailSender sender, IOrderRepository repo, ILogger<OrderService> log)
+          {
+              public async Task PlaceAsync(Order o)
+              {
+                  await repo.AddAsync(o);
+                  await sender.SendAsync(o.Email, "Заказ принят");
+                  log.LogInformation("Заказ {Id} создан", o.Id);
+              }
+          }
+          ```
+
+          ## Регистрация в контейнере
+
+          ```csharp
+          builder.Services.AddSingleton<IClock, SystemClock>();
+          builder.Services.AddScoped<IOrderRepository, EfOrderRepository>();
+          builder.Services.AddTransient<IEmailSender, SmtpEmailSender>();
+          builder.Services.AddDbContext<ShopContext>(...);      // Scoped
+          builder.Services.AddHttpClient<IWeatherApi, WeatherApi>(c => c.BaseAddress = new("https://api.weather"));
+          ```
+
+          ## Время жизни
+
+          | Lifetime | Экземпляр | Пример |
+          |---|---|---|
+          | Singleton | один на всё приложение | кеш, конфиг, `HttpClient`-фабрика |
+          | Scoped | один на HTTP-запрос | `DbContext`, unit of work |
+          | Transient | новый при каждом запросе из контейнера | лёгкие сервисы без состояния |
+
+          **Captive dependency**: Singleton не должен зависеть от Scoped — scoped-объект «застрянет» навсегда (DbContext на всё приложение = беда). В Development ASP.NET Core проверяет это и бросает исключение.
+
+          Если Singleton/фоновому сервису нужен scoped-сервис:
+
+          ```csharp
+          public class Cleaner(IServiceScopeFactory f) : BackgroundService
+          {
+              protected override async Task ExecuteAsync(CancellationToken ct)
+              {
+                  using var scope = f.CreateScope();
+                  var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+                  // ...
+              }
+          }
+          ```
+
+          ## Полезное
+
+          - Несколько реализаций: `IEnumerable<INotifier>` в конструкторе получит все.
+          - Keyed services (.NET 8): `AddKeyedSingleton<ICache, RedisCache>("redis")` + `[FromKeyedServices("redis")]`.
+          - Options pattern: `builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"))` → `IOptions<SmtpOptions>`.
+          - Избегайте **Service Locator** (`provider.GetService` внутри бизнес-кода) — зависимости становятся неявными.
+          - Слишком много параметров в конструкторе (>5) — сигнал, что класс делает слишком много.
+        practice:
+          - type: choice
+            q: Какое время жизни у DbContext при AddDbContext?
+            options: ["Singleton", "Scoped", "Transient", "Static"]
+            answer: 1
+          - type: choice
+            q: Что такое captive dependency?
+            options: ["Singleton зависит от Scoped/Transient и удерживает его навсегда", "Циклическая зависимость", "Зависимость без интерфейса", "Ошибка в Program.cs"]
+            answer: 0
+          - type: fill
+            q: Зарегистрируйте сервис с временем жизни на запрос
+            code: |
+              builder.Services.___<ICartService, CartService>();
+            answers: ["AddScoped"]
+          - type: choice
+            q: Как получить scoped-сервис в BackgroundService?
+            options: ["Внедрить в конструктор напрямую", "Через IServiceScopeFactory.CreateScope()", "new ShopContext()", "Сделать его static"]
+            answer: 1
+          - type: bug
+            q: Какая регистрация приведёт к ошибке captive dependency?
+            code: |
+              builder.Services.AddDbContext<AppDb>(o => o.UseSqlite(cs));
+              builder.Services.AddScoped<IUserRepo, UserRepo>();      // зависит от AppDb
+              builder.Services.AddSingleton<IUserCache, UserCache>(); // зависит от IUserRepo
+              builder.Services.AddTransient<IMailer, Mailer>();
+            bugLine: 3
+            explain: Singleton UserCache захватит scoped UserRepo (и DbContext) на всё время жизни приложения.
+        homework:
+          task: |
+            Приложение «Уведомления»: интерфейсы `IClock`, `INotificationSender` (Email, Telegram — две реализации), `INotificationService`. Зарегистрируйте с правильными lifetime, внедрите `IEnumerable<INotificationSender>`, настройки через Options pattern (`appsettings.json` секция `Notifications`), эндпоинт `POST /notify`. Напишите unit-тест сервиса с фейковыми зависимостями без контейнера.
+          checklist:
+            - Нет new зависимостей внутри сервисов
+            - Нет captive dependency
+            - Тест не использует ASP.NET
+          solution: |
+            builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection("Notifications"));
+            builder.Services.AddSingleton<IClock, SystemClock>();
+            builder.Services.AddScoped<INotificationSender, EmailSender>();
+            builder.Services.AddScoped<INotificationSender, TelegramSender>();
+            builder.Services.AddScoped<INotificationService, NotificationService>();
+
+            app.MapPost("/notify", async (NotifyDto dto, INotificationService s, CancellationToken ct) =>
+            {
+                await s.NotifyAsync(dto.To, dto.Text, ct);
+                return Results.Accepted();
+            });
+
+            public class NotificationService(IEnumerable<INotificationSender> senders, IClock clock, IOptions<NotificationOptions> opt)
+                : INotificationService
+            {
+                public async Task NotifyAsync(string to, string text, CancellationToken ct)
+                {
+                    var msg = $"[{clock.Now:t}] {opt.Value.Prefix} {text}";
+                    foreach (var s in senders) await s.SendAsync(to, msg, ct);
+                }
+            }
+
+            // тест
+            var fake = new FakeSender();
+            var svc = new NotificationService([fake], new FixedClock(new DateTime(2024, 1, 1, 9, 0, 0)),
+                Options.Create(new NotificationOptions { Prefix = "Shop:" }));
+            await svc.NotifyAsync("a", "hi", default);
+            Assert.Equal("[09:00] Shop: hi", fake.Last);
+      - id: cs-09-04
+        title: Middleware и конфигурация
+        minutes: 30
+        xp: 40
+        theory: |
+          ## Конвейер middleware
+
+          Каждый HTTP-запрос проходит через цепочку компонентов (middleware). Каждый может обработать запрос, изменить его, передать дальше (`next`) или прервать цепочку.
+
+          ```csharp
+          app.UseExceptionHandler();     // ловит исключения всех следующих
+          app.UseHttpsRedirection();
+          app.UseStaticFiles();
+          app.UseCors();
+          app.UseAuthentication();       // кто ты?
+          app.UseAuthorization();        // что тебе можно?
+          app.UseRateLimiter();
+          app.MapControllers();          // эндпоинты
+          ```
+
+          **Порядок важен!** Например, `UseAuthentication` должен быть раньше `UseAuthorization`, обработчик исключений — первым.
+
+          ## Свой middleware
+
+          ```csharp
+          // inline
+          app.Use(async (ctx, next) =>
+          {
+              var sw = Stopwatch.StartNew();
+              await next(ctx);                                   // остальная цепочка
+              app.Logger.LogInformation("{Path} {Status} {Ms}мс", ctx.Request.Path, ctx.Response.StatusCode, sw.ElapsedMilliseconds);
+          });
+
+          // классом
+          public class CorrelationIdMiddleware(RequestDelegate next)
+          {
+              public async Task InvokeAsync(HttpContext ctx)
+              {
+                  var id = ctx.Request.Headers["X-Correlation-Id"].FirstOrDefault() ?? Guid.NewGuid().ToString();
+                  ctx.Response.Headers["X-Correlation-Id"] = id;
+                  await next(ctx);
+              }
+          }
+          app.UseMiddleware<CorrelationIdMiddleware>();
+          ```
+
+          Middleware — Singleton; scoped-сервисы принимайте параметром `InvokeAsync(HttpContext ctx, AppDb db)`.
+
+          ## Конфигурация
+
+          Источники (каждый следующий переопределяет предыдущий):
+          `appsettings.json` → `appsettings.{Environment}.json` → **User Secrets** (Development) → переменные окружения → аргументы командной строки.
+
+          ```json
+          {
+            "ConnectionStrings": { "Default": "Host=localhost;Database=shop" },
+            "Smtp": { "Host": "smtp.mail.ru", "Port": 587 }
+          }
+          ```
+
+          ```csharp
+          var cs = builder.Configuration.GetConnectionString("Default");
+          int port = builder.Configuration.GetValue<int>("Smtp:Port");
+
+          builder.Services.AddOptions<SmtpOptions>()
+              .Bind(builder.Configuration.GetSection("Smtp"))
+              .ValidateDataAnnotations()
+              .ValidateOnStart();                  // упасть при старте, если конфиг неверный
+          ```
+
+          Переменная окружения для вложенного ключа: `Smtp__Port=2525`. Окружение задаёт `ASPNETCORE_ENVIRONMENT` (Development/Staging/Production).
+
+          `IOptions<T>` — значение при старте; `IOptionsSnapshot<T>` — перечитывается на каждый запрос; `IOptionsMonitor<T>` — с уведомлением об изменениях.
+
+          > ⚠️ Секреты (пароли, ключи) — **не в appsettings.json в Git**: `dotnet user-secrets set "Smtp:Password" "..."` локально, переменные окружения/Vault в проде.
+        practice:
+          - type: order
+            q: Расставьте middleware в правильном порядке
+            lines:
+              - app.UseExceptionHandler();
+              - app.UseHttpsRedirection();
+              - app.UseAuthentication();
+              - app.UseAuthorization();
+              - app.MapControllers();
+          - type: fill
+            q: Передайте запрос следующему middleware
+            code: |
+              app.Use(async (ctx, next) => { Log(ctx); await ___(ctx); });
+            answers: ["next"]
+          - type: choice
+            q: Как задать `Smtp:Port` через переменную окружения?
+            options: ["SMTP.PORT", "Smtp__Port", "Smtp:Port нельзя", "smtp-port"]
+            answer: 1
+          - type: choice
+            q: Где хранить пароль к БД при локальной разработке?
+            options: ["appsettings.json в Git", "User Secrets", "В коде константой", "В README"]
+            answer: 1
+          - type: output
+            q: Что вернёт сервер на любой запрос?
+            code: |
+              app.Use(async (ctx, next) =>
+              {
+                  await ctx.Response.WriteAsync("A");
+              });
+              app.MapGet("/", () => "B");
+            answer: A
+            explain: Middleware не вызвал next — цепочка прервана.
+        homework:
+          task: |
+            Добавьте в API: (1) middleware замера времени запроса с логированием медленных (>500 мс) как Warning, (2) CorrelationId middleware, (3) `SmtpOptions` с валидацией `[Required]`, `[Range]` и `ValidateOnStart`, (4) разные уровни логов для Development и Production через appsettings.{env}.json, (5) пароль — через user-secrets.
+          checklist:
+            - Middleware зарегистрированы в правильном порядке
+            - Приложение не стартует при неверном конфиге
+            - Секрет не попал в Git
+          solution: |
+            public class SmtpOptions
+            {
+                [Required] public string Host { get; set; } = "";
+                [Range(1, 65535)] public int Port { get; set; }
+                [Required] public string Password { get; set; } = "";
+            }
+
+            builder.Services.AddOptions<SmtpOptions>().BindConfiguration("Smtp").ValidateDataAnnotations().ValidateOnStart();
+            var app = builder.Build();
+
+            app.UseExceptionHandler("/error");
+            app.UseMiddleware<CorrelationIdMiddleware>();
+            app.Use(async (ctx, next) =>
+            {
+                var sw = Stopwatch.StartNew();
+                await next(ctx);
+                var level = sw.ElapsedMilliseconds > 500 ? LogLevel.Warning : LogLevel.Information;
+                app.Logger.Log(level, "{Method} {Path} -> {Status} за {Ms} мс",
+                    ctx.Request.Method, ctx.Request.Path, ctx.Response.StatusCode, sw.ElapsedMilliseconds);
+            });
+
+            // appsettings.Development.json: { "Logging": { "LogLevel": { "Default": "Debug" } } }
+            // appsettings.Production.json:  { "Logging": { "LogLevel": { "Default": "Warning" } } }
+            // dotnet user-secrets init && dotnet user-secrets set "Smtp:Password" "secret"
+      - id: cs-09-05
+        title: Валидация и обработка ошибок
+        minutes: 30
+        xp: 40
+        theory: |
+          ## Валидация входных данных
+
+          **Data Annotations** — быстро и встроенно:
+
+          ```csharp
+          public record CreateUserDto(
+              [Required, StringLength(50, MinimumLength = 2)] string Name,
+              [Required, EmailAddress] string Email,
+              [Range(18, 120)] int Age);
+          ```
+
+          С `[ApiController]` невалидная модель автоматически даёт `400` с `ValidationProblemDetails`. В Minimal API (.NET 8) — используйте фильтр или FluentValidation; в .NET 10 появилась встроенная `AddValidation()`.
+
+          **FluentValidation** — гибкие правила в отдельном классе:
+
+          ```csharp
+          public class CreateUserValidator : AbstractValidator<CreateUserDto>
+          {
+              public CreateUserValidator(IUserRepo repo)
+              {
+                  RuleFor(x => x.Name).NotEmpty().Length(2, 50);
+                  RuleFor(x => x.Email).NotEmpty().EmailAddress()
+                      .MustAsync(async (e, ct) => !await repo.EmailExistsAsync(e, ct)).WithMessage("Email занят");
+                  RuleFor(x => x.Age).InclusiveBetween(18, 120);
+              }
+          }
+
+          app.MapPost("/users", async (CreateUserDto dto, IValidator<CreateUserDto> v) =>
+          {
+              var r = await v.ValidateAsync(dto);
+              if (!r.IsValid) return Results.ValidationProblem(r.ToDictionary());
+              // ...
+              return Results.Created();
+          });
+          ```
+
+          ## Глобальная обработка ошибок
+
+          Не пишите try/catch в каждом эндпоинте. Используйте `IExceptionHandler` (.NET 8) + ProblemDetails:
+
+          ```csharp
+          public class NotFoundException(string msg) : Exception(msg);
+
+          public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log) : IExceptionHandler
+          {
+              public async ValueTask<bool> TryHandleAsync(HttpContext ctx, Exception ex, CancellationToken ct)
+              {
+                  var (status, title) = ex switch
+                  {
+                      NotFoundException => (404, "Не найдено"),
+                      ValidationException => (400, "Ошибка валидации"),
+                      _ => (500, "Внутренняя ошибка")
+                  };
+                  if (status == 500) log.LogError(ex, "Необработанная ошибка");
+
+                  ctx.Response.StatusCode = status;
+                  await ctx.Response.WriteAsJsonAsync(new ProblemDetails
+                  {
+                      Status = status, Title = title,
+                      Detail = status == 500 ? null : ex.Message,     // не раскрываем внутренности
+                      Instance = ctx.Request.Path
+                  }, ct);
+                  return true;
+              }
+          }
+
+          builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+          builder.Services.AddProblemDetails();
+          app.UseExceptionHandler();
+          ```
+
+          ## Принципы
+
+          - Валидируйте **на границе** (DTO), инварианты — в доменной модели.
+          - Клиенту — понятное сообщение без стектрейса; в лог — полную информацию.
+          - Ожидаемые бизнес-ошибки можно возвращать через Result-тип (`Result<T>`/OneOf) вместо исключений.
+          - 400 — неверный формат, 404 — нет ресурса, 409 — конфликт состояния, 422 — бизнес-правило нарушено.
+        practice:
+          - type: fill
+            q: Сделайте поле обязательным и не длиннее 100 символов
+            code: |
+              [___, StringLength(100)] public string Title { get; set; }
+            answers: ["Required"]
+          - type: choice
+            q: Что вернёт контроллер с [ApiController] при невалидной модели?
+            options: ["500", "400 с ValidationProblemDetails", "200 с ошибкой в теле", "Ничего, вызовется метод"]
+            answer: 1
+          - type: fill
+            q: Зарегистрируйте глобальный обработчик исключений
+            code: |
+              builder.Services.___<GlobalExceptionHandler>();
+            answers: ["AddExceptionHandler"]
+          - type: choice
+            q: Что нельзя отдавать клиенту при 500-й ошибке?
+            options: ["Статус", "Стектрейс и внутренние детали", "Заголовок Title", "Путь запроса"]
+            answer: 1
+          - type: choice
+            q: Какое правило FluentValidation проверит диапазон?
+            options: ["NotEmpty()", "InclusiveBetween(1, 10)", "EmailAddress()", "Must(x => x)"]
+            answer: 1
+        homework:
+          task: |
+            В API «Заметки» добавьте: FluentValidation для создания (текст 1–1000 символов, теги ≤ 5, каждый тег ≤ 20 символов, уникальность заголовка через репозиторий), свои исключения `NotFoundException`, `ConflictException`, глобальный `IExceptionHandler`, возвращающий ProblemDetails с traceId. Напишите 3 запроса в `.http`-файле, получающих 400, 404 и 409.
+          checklist:
+            - Валидатор зарегистрирован в DI
+            - Нет try/catch в эндпоинтах
+            - В ответе 500 нет деталей исключения
+          solution: |
+            public class CreateNoteValidator : AbstractValidator<CreateNoteDto>
+            {
+                public CreateNoteValidator(INoteRepo repo)
+                {
+                    RuleFor(x => x.Text).NotEmpty().MaximumLength(1000);
+                    RuleFor(x => x.Tags).Must(t => t.Count <= 5).WithMessage("Не более 5 тегов");
+                    RuleForEach(x => x.Tags).MaximumLength(20);
+                    RuleFor(x => x.Title).MustAsync(async (t, ct) => !await repo.TitleExistsAsync(t, ct))
+                        .WithMessage("Заголовок уже существует");
+                }
+            }
+
+            builder.Services.AddValidatorsFromAssemblyContaining<CreateNoteValidator>();
+            builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+            builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = c =>
+                c.ProblemDetails.Extensions["traceId"] = c.HttpContext.TraceIdentifier);
+
+            // GlobalExceptionHandler: NotFoundException -> 404, ConflictException -> 409, иначе 500 без Detail
+
+            ### notes.http
+            POST {{host}}/api/notes
+            Content-Type: application/json
+
+            { "title": "", "text": "" }
+
+            ###
+            GET {{host}}/api/notes/99999
+      - id: cs-09-06
+        title: Аутентификация JWT
+        minutes: 35
+        xp: 45
+        theory: |
+          **Аутентификация** — кто вы (логин). **Авторизация** — что вам можно (роли, политики).
+
+          ## JWT
+
+          JSON Web Token — строка `header.payload.signature` (Base64Url). Payload содержит **claims**: `sub` (id), `name`, `role`, `exp` (срок). Подпись (HMAC/RSA) гарантирует, что токен не подделан. Payload **не зашифрован** — не кладите туда секреты.
+
+          Поток: клиент шлёт логин/пароль → сервер проверяет и выдаёт токен → клиент шлёт `Authorization: Bearer <token>` в каждом запросе → сервер проверяет подпись и срок без обращения к БД.
+
+          ## Настройка
+
+          ```bash
+          dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+          ```
+
+          ```csharp
+          var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)); // ≥ 32 байт
+
+          builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+              .AddJwtBearer(o => o.TokenValidationParameters = new()
+              {
+                  ValidateIssuer = true,   ValidIssuer = "shop-api",
+                  ValidateAudience = true, ValidAudience = "shop-client",
+                  ValidateLifetime = true, ClockSkew = TimeSpan.FromSeconds(30),
+                  IssuerSigningKey = key
+              });
+          builder.Services.AddAuthorization(o =>
+              o.AddPolicy("Adult", p => p.RequireClaim("age_verified", "true")));
+
+          app.UseAuthentication();
+          app.UseAuthorization();
+          ```
+
+          ## Выдача токена
+
+          ```csharp
+          app.MapPost("/auth/login", async (LoginDto dto, IUserService users) =>
+          {
+              var user = await users.CheckPasswordAsync(dto.Login, dto.Password);  // хеш BCrypt/PBKDF2!
+              if (user is null) return Results.Unauthorized();
+
+              Claim[] claims = [
+                  new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                  new(ClaimTypes.Name, user.Login),
+                  new(ClaimTypes.Role, user.Role)
+              ];
+              var token = new JwtSecurityToken("shop-api", "shop-client", claims,
+                  expires: DateTime.UtcNow.AddMinutes(15),
+                  signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
+              return Results.Ok(new { access_token = new JwtSecurityTokenHandler().WriteToken(token) });
+          });
+          ```
+
+          ## Защита эндпоинтов
+
+          ```csharp
+          app.MapGet("/me", (ClaimsPrincipal u) => u.Identity!.Name).RequireAuthorization();
+          app.MapDelete("/products/{id}", ...).RequireAuthorization(p => p.RequireRole("Admin"));
+
+          [Authorize(Roles = "Admin")] public class AdminController : ControllerBase { }
+          [AllowAnonymous] public IActionResult Health() => Ok();
+          ```
+
+          ## Безопасность
+
+          - Короткий access token (5–15 мин) + **refresh token** (долгий, хранится в БД, одноразовый, можно отозвать).
+          - Пароли — только хеш с солью (`PasswordHasher<T>`, BCrypt), никогда в открытом виде.
+          - Ключ подписи — в секретах. HTTPS обязателен.
+          - Для крупных систем — готовый Identity Provider (Keycloak, Auth0, Duende IdentityServer) и OpenID Connect.
+        practice:
+          - type: choice
+            q: Зашифрован ли payload JWT?
+            options: ["Да, всегда", "Нет, только подписан — прочитать может любой", "Только claim role", "Зависит от браузера"]
+            answer: 1
+          - type: order
+            q: Расставьте шаги JWT-аутентификации
+            lines:
+              - Клиент отправляет логин и пароль
+              - Сервер проверяет хеш пароля и выдаёт токен
+              - Клиент сохраняет токен
+              - Клиент шлёт Authorization Bearer в запросах
+              - Сервер проверяет подпись и срок
+          - type: fill
+            q: Защитите эндпоинт
+            code: |
+              app.MapGet("/orders", GetOrders).___();
+            answers: ["RequireAuthorization"]
+          - type: choice
+            q: Какой код вернуть, если токен отсутствует или просрочен?
+            options: ["400", "401", "403", "404"]
+            answer: 1
+          - type: bug
+            q: Какая строка — серьёзная уязвимость?
+            code: |
+              var user = await db.Users.FirstOrDefaultAsync(u => u.Login == dto.Login);
+              if (user is null) return Results.Unauthorized();
+              if (user.Password != dto.Password) return Results.Unauthorized();
+              return Results.Ok(CreateToken(user));
+            bugLine: 3
+            fix: if (!hasher.Verify(dto.Password, user.PasswordHash)) ...
+            explain: Пароли хранятся в открытом виде. Нужно хранить и сравнивать хеш (BCrypt/PBKDF2).
+        homework:
+          task: |
+            Добавьте в API: регистрацию (`PasswordHasher<User>`), логин с выдачей access (15 мин) и refresh (7 дней, хранится в БД) токенов, эндпоинт `/auth/refresh` (ротация: старый refresh становится недействительным), `/me`, политику «только Admin» на удаление. Ключ — через user-secrets. Проверьте сценарии в .http-файле.
+          checklist:
+            - Пароль хранится только как хеш
+            - Refresh-токен одноразовый
+            - Удаление доступно только Admin (403 для остальных)
+          solution: |
+            app.MapPost("/auth/register", async (RegisterDto d, AppDb db, IPasswordHasher<User> h) =>
+            {
+                var u = new User { Login = d.Login, Role = "User" };
+                u.PasswordHash = h.HashPassword(u, d.Password);
+                db.Users.Add(u); await db.SaveChangesAsync();
+                return Results.Created($"/users/{u.Id}", null);
+            });
+
+            app.MapPost("/auth/login", async (LoginDto d, AppDb db, IPasswordHasher<User> h, TokenService t) =>
+            {
+                var u = await db.Users.SingleOrDefaultAsync(x => x.Login == d.Login);
+                if (u is null || h.VerifyHashedPassword(u, u.PasswordHash, d.Password) == PasswordVerificationResult.Failed)
+                    return Results.Unauthorized();
+                return Results.Ok(await t.IssueAsync(u));   // access + refresh (refresh сохранён в db.RefreshTokens)
+            });
+
+            app.MapPost("/auth/refresh", async (RefreshDto d, AppDb db, TokenService t) =>
+            {
+                var rt = await db.RefreshTokens.Include(r => r.User)
+                    .SingleOrDefaultAsync(r => r.Token == d.RefreshToken && !r.Used && r.Expires > DateTime.UtcNow);
+                if (rt is null) return Results.Unauthorized();
+                rt.Used = true;
+                return Results.Ok(await t.IssueAsync(rt.User));
+            });
+
+            app.MapGet("/me", (ClaimsPrincipal p) => new { p.Identity!.Name }).RequireAuthorization();
+            app.MapDelete("/notes/{id}", DeleteNote).RequireAuthorization(p => p.RequireRole("Admin"));

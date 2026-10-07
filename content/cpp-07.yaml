@@ -1,0 +1,685 @@
+id: cpp
+modules:
+  - id: cpp-m7
+    title: Сборка и инструменты
+    level: Middle
+    lessons:
+      - id: cpp-07-01
+        title: CMake
+        minutes: 35
+        xp: 40
+        theory: |
+          **CMake** — стандарт де-факто для сборки C++. Он не собирает сам, а **генерирует** проекты для Ninja, Make, Visual Studio, Xcode.
+
+          ## Как устроена сборка C++
+
+          1. **Препроцессор** — подставляет `#include`, раскрывает макросы.
+          2. **Компиляция** — каждый `.cpp` (единица трансляции) → объектный файл `.o/.obj`.
+          3. **Линковка** — объектные файлы + библиотеки → исполняемый файл. Ошибка `undefined reference` — это этап линковки (функция объявлена, но не определена/не подключена библиотека).
+
+          ## Минимальный CMakeLists.txt
+
+          ```cmake
+          cmake_minimum_required(VERSION 3.20)
+          project(Shop VERSION 1.0 LANGUAGES CXX)
+
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+          set(CMAKE_EXPORT_COMPILE_COMMANDS ON)   # для clangd/clang-tidy
+
+          add_executable(shop src/main.cpp)
+          ```
+
+          ```bash
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+          ./build/shop
+          ```
+
+          Сборка всегда **вне исходников** (out-of-source) в папке `build/`.
+
+          ## Современный CMake — цели и свойства
+
+          ```cmake
+          add_library(core
+              src/core/order.cpp
+              src/core/cart.cpp)
+          target_include_directories(core PUBLIC include)        # PUBLIC — видно тем, кто линкует core
+          target_compile_features(core PUBLIC cxx_std_20)
+          target_compile_options(core PRIVATE
+              $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Werror>
+              $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>)
+
+          add_executable(shop src/main.cpp)
+          target_link_libraries(shop PRIVATE core)               # include-пути и флаги core придут сами
+
+          find_package(fmt CONFIG REQUIRED)
+          target_link_libraries(core PUBLIC fmt::fmt)
+
+          enable_testing()
+          add_subdirectory(tests)
+          ```
+
+          | Видимость | Смысл |
+          |---|---|
+          | `PRIVATE` | нужно только для сборки самой цели |
+          | `PUBLIC` | нужно и цели, и её потребителям |
+          | `INTERFACE` | только потребителям (header-only библиотеки) |
+
+          ❌ Устаревший стиль: глобальные `include_directories()`, `add_definitions()`, `CMAKE_CXX_FLAGS` вручную.
+
+          ## Типы сборки
+
+          `Debug` (-O0 -g), `Release` (-O3 -DNDEBUG), `RelWithDebInfo`, `MinSizeRel`.
+
+          ## CMakePresets.json
+
+          Общие настройки конфигурации для команды и CI: `cmake --preset release`.
+
+          ## Статические и динамические библиотеки
+
+          `add_library(x STATIC ...)` — `.a/.lib`, код копируется в исполняемый файл. `SHARED` — `.so/.dll`, загружается при запуске.
+        practice:
+          - type: choice
+            q: Ошибка `undefined reference to Foo::bar()` возникает на этапе…
+            options: ["Препроцессора", "Компиляции", "Линковки", "Запуска"]
+            answer: 2
+          - type: fill
+            q: Подключите библиотеку core к исполняемому файлу
+            code: |
+              ___(app PRIVATE core)
+            answers: ["target_link_libraries"]
+          - type: choice
+            q: Что значит PUBLIC в target_include_directories(core PUBLIC include)?
+            options: ["Папка видна только core", "Папка видна core и всем, кто линкует core", "Папка публикуется в интернет", "Папка только для тестов"]
+            answer: 1
+          - type: order
+            q: Расставьте команды сборки CMake-проекта
+            lines:
+              - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+              - cmake --build build -j
+              - ./build/app
+          - type: choice
+            q: Какой стиль CMake считается устаревшим?
+            options: ["target_link_libraries", "Глобальные include_directories и CMAKE_CXX_FLAGS", "add_library", "target_compile_features"]
+            answer: 1
+        homework:
+          task: |
+            Организуйте проект `inventory`: библиотека `core` (src/, include/inventory/), исполняемый файл `app`, папка tests (пока с одним исполняемым тестом и `add_test`). Включите C++20, строгие предупреждения как ошибки, compile_commands.json, CMakePresets.json с пресетами debug и release. Соберите оба варианта и запустите `ctest`.
+          checklist:
+            - Только target_* команды
+            - Сборка out-of-source
+            - ctest проходит
+          solution: |
+            # CMakeLists.txt
+            cmake_minimum_required(VERSION 3.21)
+            project(inventory VERSION 0.1 LANGUAGES CXX)
+            set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+            add_library(core src/stock.cpp)
+            target_include_directories(core PUBLIC include)
+            target_compile_features(core PUBLIC cxx_std_20)
+            target_compile_options(core PRIVATE
+                $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic -Werror>
+                $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>)
+
+            add_executable(app src/main.cpp)
+            target_link_libraries(app PRIVATE core)
+
+            enable_testing()
+            add_executable(core_tests tests/stock_test.cpp)
+            target_link_libraries(core_tests PRIVATE core)
+            add_test(NAME core_tests COMMAND core_tests)
+
+            # CMakePresets.json
+            {
+              "version": 3,
+              "configurePresets": [
+                { "name": "debug",   "binaryDir": "build/debug",   "generator": "Ninja", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
+                { "name": "release", "binaryDir": "build/release", "generator": "Ninja", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
+              ]
+            }
+
+            # cmake --preset debug && cmake --build build/debug && ctest --test-dir build/debug
+      - id: cpp-07-02
+        title: Менеджеры пакетов vcpkg и Conan
+        minutes: 25
+        xp: 35
+        theory: |
+          В C++ долго не было стандартного менеджера пакетов. Сегодня два популярных: **vcpkg** (Microsoft) и **Conan** (JFrog).
+
+          ## vcpkg (manifest mode)
+
+          ```bash
+          git clone https://github.com/microsoft/vcpkg
+          ./vcpkg/bootstrap-vcpkg.sh        # .bat на Windows
+          ```
+
+          `vcpkg.json` в корне проекта:
+
+          ```json
+          {
+            "name": "shop",
+            "version": "1.0.0",
+            "dependencies": ["fmt", "spdlog", "nlohmann-json", "gtest"]
+          }
+          ```
+
+          ```bash
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake
+          ```
+
+          CMake сам установит зависимости при конфигурации. Дальше обычный `find_package`:
+
+          ```cmake
+          find_package(fmt CONFIG REQUIRED)
+          find_package(spdlog CONFIG REQUIRED)
+          find_package(nlohmann_json CONFIG REQUIRED)
+          target_link_libraries(app PRIVATE fmt::fmt spdlog::spdlog nlohmann_json::nlohmann_json)
+          ```
+
+          Фиксация версий — `builtin-baseline` (коммит реестра) и `overrides` в vcpkg.json.
+
+          ## Conan 2
+
+          ```bash
+          pip install conan
+          conan profile detect
+          ```
+
+          `conanfile.txt`:
+
+          ```ini
+          [requires]
+          fmt/10.2.1
+          spdlog/1.13.0
+
+          [generators]
+          CMakeDeps
+          CMakeToolchain
+
+          [layout]
+          cmake_layout
+          ```
+
+          ```bash
+          conan install . --build=missing
+          cmake --preset conan-release
+          cmake --build --preset conan-release
+          ```
+
+          Conan хранит **бинарные** пакеты под разные профили (компилятор, ОС, тип сборки) и поддерживает свои серверы (Artifactory) — популярен в больших компаниях.
+
+          ## Другие способы
+
+          - **CMake FetchContent** — скачать исходники зависимости при конфигурации:
+
+          ```cmake
+          include(FetchContent)
+          FetchContent_Declare(googletest URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip)
+          FetchContent_MakeAvailable(googletest)
+          ```
+
+          - Системные пакеты (`apt install libfmt-dev`) — версии зависят от дистрибутива.
+          - Git submodules — ручное управление.
+
+          ## Must-know библиотеки
+
+          `fmt` (форматирование, стало `std::format`), `spdlog` (логи), `nlohmann/json`, `Boost` (Asio, Beast...), `GoogleTest`/`Catch2`, `abseil`, `range-v3`, `CLI11` (аргументы командной строки), `Qt` (GUI).
+        practice:
+          - type: choice
+            q: Где перечисляются зависимости в vcpkg manifest mode?
+            options: ["CMakeLists.txt", "vcpkg.json", "package.json", "conanfile.txt"]
+            answer: 1
+          - type: fill
+            q: Подключите toolchain vcpkg
+            code: |
+              cmake -B build -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/___.cmake
+            answers: ["vcpkg"]
+          - type: fill
+            q: Найдите пакет в CMake после установки менеджером
+            code: |
+              ___(fmt CONFIG REQUIRED)
+            answers: ["find_package"]
+          - type: choice
+            q: Что делает FetchContent?
+            options: ["Скачивает и подключает исходники зависимости при конфигурации CMake", "Устанавливает компилятор", "Публикует пакет", "Обновляет CMake"]
+            answer: 0
+        homework:
+          task: |
+            Подключите к проекту `inventory` через vcpkg (manifest + baseline): fmt, spdlog, nlohmann-json, CLI11. Сделайте CLI-утилиту: `app add --name Чай --qty 10`, `app list --json` — хранит склад в `stock.json`, логирует действия через spdlog. Повторите сборку тех же зависимостей через Conan в отдельной ветке и сравните опыт.
+          checklist:
+            - Зависимости ставятся автоматически при cmake
+            - Версии зафиксированы
+            - Работают команды add и list
+          solution: |
+            // vcpkg.json
+            { "name": "inventory", "version": "0.1.0",
+              "builtin-baseline": "<commit-sha>",
+              "dependencies": ["fmt", "spdlog", "nlohmann-json", "cli11"] }
+
+            # CMakeLists.txt
+            find_package(spdlog CONFIG REQUIRED)
+            find_package(nlohmann_json CONFIG REQUIRED)
+            find_package(CLI11 CONFIG REQUIRED)
+            target_link_libraries(app PRIVATE core spdlog::spdlog nlohmann_json::nlohmann_json CLI11::CLI11)
+
+            // main.cpp
+            #include <CLI/CLI.hpp>
+            #include <nlohmann/json.hpp>
+            #include <spdlog/spdlog.h>
+            #include <fstream>
+
+            int main(int argc, char** argv) {
+                CLI::App cli{"inventory"};
+                std::string name; int qty = 0; bool json = false;
+                auto add = cli.add_subcommand("add");
+                add->add_option("--name", name)->required();
+                add->add_option("--qty", qty)->required();
+                auto list = cli.add_subcommand("list");
+                list->add_flag("--json", json);
+                CLI11_PARSE(cli, argc, argv);
+
+                nlohmann::json db = nlohmann::json::object();
+                if (std::ifstream in("stock.json"); in) in >> db;
+                if (*add) { db[name] = db.value(name, 0) + qty; spdlog::info("Добавлено {} x{}", name, qty); }
+                if (*list) {
+                    if (json) std::cout << db.dump(2) << "\n";
+                    else for (auto& [k, v] : db.items()) std::cout << k << ": " << v << "\n";
+                }
+                std::ofstream("stock.json") << db.dump(2);
+            }
+      - id: cpp-07-03
+        title: Отладка gdb/lldb
+        minutes: 30
+        xp: 35
+        theory: |
+          Отладчик позволяет остановить программу, посмотреть переменные и пройти код по шагам. В IDE (VS, CLion, VS Code) это кнопки, но понимать командный режим полезно — например, на сервере без GUI или для анализа core dump.
+
+          Собирайте с отладочной информацией: `-g` (или `CMAKE_BUILD_TYPE=Debug`). С `-O2` переменные могут быть «optimized out».
+
+          ## gdb: основные команды
+
+          ```bash
+          g++ -g -O0 main.cpp -o app
+          gdb ./app
+          ```
+
+          | Команда | Действие |
+          |---|---|
+          | `run arg1 arg2` (`r`) | запустить |
+          | `break main.cpp:42` (`b`) | точка останова на строке |
+          | `break Order::total` | на функции |
+          | `break 42 if i == 100` | условная |
+          | `next` (`n`) | следующая строка (не заходя в функции) |
+          | `step` (`s`) | зайти в функцию |
+          | `finish` | выполнить до выхода из функции |
+          | `continue` (`c`) | продолжить до следующей точки |
+          | `print x` (`p`), `p v.size()`, `p *ptr` | значение |
+          | `display x` | печатать при каждой остановке |
+          | `watch total` | остановиться, когда переменная изменится |
+          | `backtrace` (`bt`) | стек вызовов |
+          | `frame 2`, `up`, `down` | перейти к кадру стека |
+          | `info locals`, `info threads`, `thread 3` | локальные переменные, потоки |
+
+          lldb (macOS, Clang): похожие команды — `b main.cpp:42`, `r`, `n`, `s`, `p x`, `bt`, `frame variable`.
+
+          ## Разбор падения
+
+          ```bash
+          $ ./app
+          Segmentation fault (core dumped)
+          $ gdb ./app
+          (gdb) run
+          Program received signal SIGSEGV
+          (gdb) bt
+          #0  Order::total (this=0x0) at order.cpp:17
+          #1  main () at main.cpp:9
+          ```
+
+          `this=0x0` — вызов метода через nullptr. `bt` сразу показывает место.
+
+          **Core dump** — снимок памяти упавшего процесса: `ulimit -c unlimited`, затем `gdb ./app core`.
+
+          ## Приёмы
+
+          - Воспроизведите баг минимальным примером.
+          - Двоичный поиск: точки останова «до» и «после», сужайте область.
+          - `watch` — найти, кто портит переменную.
+          - Для гонок отладчик почти бесполезен (меняет тайминги) — используйте TSan и логи.
+          - `assert(cond)` и `static_assert` ловят ошибки ближе к причине.
+
+          ## VS Code
+
+          Расширение C/C++ или CodeLLDB + `launch.json` (`"program": "${workspaceFolder}/build/app"`) — графическая отладка поверх gdb/lldb. В Visual Studio — F9 (точка), F5 (запуск), F10/F11 (шаги).
+        practice:
+          - type: choice
+            q: Какая команда gdb покажет стек вызовов?
+            options: ["print", "backtrace", "next", "list"]
+            answer: 1
+          - type: fill
+            q: Поставьте точку останова на строке 42 файла main.cpp
+            code: |
+              (gdb) ___ main.cpp:42
+            answers: [["break", "b"]]
+          - type: choice
+            q: Чем step отличается от next?
+            options: ["Ничем", "step заходит внутрь вызываемой функции, next — нет", "next заходит в функцию", "step запускает программу"]
+            answer: 1
+          - type: choice
+            q: Как найти место, где неожиданно меняется переменная total?
+            options: ["print total", "watch total", "bt", "run"]
+            answer: 1
+          - type: choice
+            q: Какой флаг нужен компилятору для отладочной информации?
+            options: ["-O3", "-g", "-s", "-DNDEBUG"]
+            answer: 1
+        homework:
+          task: |
+            Напишите программу с тремя намеренными багами: (1) обращение к nullptr в глубине вызовов, (2) переменная портится в цикле (запись за границу массива меняет соседнюю переменную), (3) бесконечный цикл при определённом входе. Найдите каждый только средствами gdb/lldb (bt, watch, условные breakpoints, Ctrl+C + bt) и запишите последовательность команд.
+          checklist:
+            - Для каждого бага записаны команды отладчика
+            - Использованы bt, watch, условная точка
+            - Баги исправлены
+          solution: |
+            # 1. nullptr
+            (gdb) run
+            Program received signal SIGSEGV
+            (gdb) bt                      # → Customer::name (this=0x0) at order.cpp:12, вызвано из Order::print
+            (gdb) frame 1
+            (gdb) p order.customer        # = 0x0
+
+            # 2. порча переменной
+            (gdb) break main
+            (gdb) run
+            (gdb) watch limit
+            (gdb) continue                # Hardware watchpoint: limit Old=10 New=7 at main.cpp:20: arr[i] = 7; (i == 5 при размере 5)
+
+            # 3. бесконечный цикл
+            (gdb) run 17
+            ^C
+            (gdb) bt                      # → collatz at main.cpp:30
+            (gdb) info locals             # n = -4 (переполнение int)
+            (gdb) break 30 if n < 0
+      - id: cpp-07-04
+        title: Санитайзеры и Valgrind
+        minutes: 30
+        xp: 40
+        theory: |
+          Многие ошибки C++ (UB) не проявляются сразу. **Санитайзеры** — инструментирование кода компилятором: программа сама сообщает о проблеме в момент её возникновения, с указанием строки и стека.
+
+          | Санитайзер | Флаг | Находит |
+          |---|---|---|
+          | AddressSanitizer (ASan) | `-fsanitize=address` | выход за границы (heap/stack/global), use-after-free, double free, утечки (LeakSanitizer) |
+          | UndefinedBehaviorSanitizer (UBSan) | `-fsanitize=undefined` | переполнение signed, сдвиги, деление на 0, невыровненный доступ, неверный enum/bool |
+          | ThreadSanitizer (TSan) | `-fsanitize=thread` | гонки данных, deadlock-и |
+          | MemorySanitizer (MSan, Clang) | `-fsanitize=memory` | чтение неинициализированной памяти |
+
+          ```bash
+          clang++ -g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined main.cpp -o app
+          ./app
+          ```
+
+          ```
+          ==4242==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000014
+          WRITE of size 4 at 0x602000000014 thread T0
+              #0 0x4f8a3c in fill(int*, int) main.cpp:5
+              #1 0x4f8b10 in main main.cpp:11
+          ```
+
+          TSan нельзя совмещать с ASan — запускайте отдельной сборкой. Замедление: ASan ~2×, TSan ~5–15×.
+
+          В CMake удобно сделать опцию:
+
+          ```cmake
+          option(ENABLE_ASAN "Build with ASan+UBSan" OFF)
+          if(ENABLE_ASAN)
+            target_compile_options(app PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+            target_link_options(app PRIVATE -fsanitize=address,undefined)
+          endif()
+          ```
+
+          MSVC поддерживает `/fsanitize=address`.
+
+          ## Valgrind
+
+          Работает без перекомпиляции (эмулирует процессор), но медленнее (×20–50), только Linux/macOS (x86).
+
+          ```bash
+          valgrind --leak-check=full --show-leak-kinds=all ./app
+          ```
+
+          ```
+          ==123== 40 bytes in 1 blocks are definitely lost
+          ==123==    at operator new[](unsigned long)
+          ==123==    by load() (main.cpp:8)
+          ```
+
+          Другие инструменты Valgrind: `callgrind` (профилирование вызовов), `massif` (профиль кучи), `helgrind` (гонки).
+
+          ## Статический анализ
+
+          Находит ошибки **без запуска**:
+          - `clang-tidy` (`-checks=bugprone-*,modernize-*,performance-*,cppcoreguidelines-*`);
+          - `cppcheck`, PVS-Studio, анализатор MSVC (`/analyze`);
+          - предупреждения компилятора `-Wall -Wextra -Wshadow -Wconversion` — бесплатный первый уровень.
+
+          ## Практика команды
+
+          В CI: обычная сборка + сборка с ASan/UBSan, прогон тестов; ночная сборка с TSan; clang-tidy на изменённых файлах. Санитайзеры на тестах ловят большинство ошибок памяти ещё до ревью.
+        practice:
+          - type: choice
+            q: Какой санитайзер найдёт гонку данных?
+            options: ["ASan", "UBSan", "TSan", "LeakSanitizer"]
+            answer: 2
+          - type: choice
+            q: Какой санитайзер сообщит о переполнении signed int?
+            options: ["UBSan", "TSan", "ASan", "Valgrind memcheck"]
+            answer: 0
+          - type: fill
+            q: Включите ASan и UBSan одной опцией
+            code: |
+              clang++ -g -fsanitize=address,___ main.cpp
+            answers: ["undefined"]
+          - type: choice
+            q: Главное преимущество Valgrind перед ASan?
+            options: ["Быстрее", "Не требует перекомпиляции", "Находит гонки лучше", "Работает на Windows"]
+            answer: 1
+          - type: choice
+            q: Можно ли совместить TSan и ASan в одной сборке?
+            options: ["Да", "Нет, нужны отдельные сборки", "Только на Windows", "Только с -O3"]
+            answer: 1
+        homework:
+          task: |
+            Добавьте в CMake-проект опции `ENABLE_ASAN` и `ENABLE_TSAN`, пресеты `asan` и `tsan`, и цель `tidy` для clang-tidy. Напишите 4 маленьких программы-«ловушки» (heap overflow, use-after-free, signed overflow, data race), убедитесь, что каждый инструмент ловит свою, и сохраните фрагменты отчётов. Прогоните Valgrind на программе с утечкой.
+          checklist:
+            - Опции санитайзеров в CMake
+            - Каждая ловушка поймана нужным инструментом
+            - clang-tidy запускается одной командой
+          solution: |
+            option(ENABLE_ASAN "ASan+UBSan" OFF)
+            option(ENABLE_TSAN "TSan" OFF)
+            if(ENABLE_ASAN AND ENABLE_TSAN)
+              message(FATAL_ERROR "ASan и TSan несовместимы")
+            endif()
+            function(apply_sanitizers tgt)
+              if(ENABLE_ASAN)
+                target_compile_options(${tgt} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+                target_link_options(${tgt} PRIVATE -fsanitize=address,undefined)
+              elseif(ENABLE_TSAN)
+                target_compile_options(${tgt} PRIVATE -fsanitize=thread)
+                target_link_options(${tgt} PRIVATE -fsanitize=thread)
+              endif()
+            endfunction()
+            apply_sanitizers(app)
+
+            find_program(CLANG_TIDY clang-tidy)
+            add_custom_target(tidy COMMAND ${CLANG_TIDY} -p ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/src/*.cpp)
+
+            // ловушки
+            int* a = new int[4]; a[4] = 1;                 // ASan: heap-buffer-overflow
+            int* p = new int; delete p; *p = 2;             // ASan: heap-use-after-free
+            int x = INT_MAX; x += 1;                        // UBSan: signed integer overflow
+            int c = 0; std::jthread t1([&]{ ++c; }), t2([&]{ ++c; });  // TSan: data race
+
+            # valgrind --leak-check=full ./leak  → definitely lost: 400 bytes
+      - id: cpp-07-05
+        title: Тестирование GoogleTest
+        minutes: 30
+        xp: 40
+        theory: |
+          **GoogleTest** — самый распространённый фреймворк unit-тестов для C++ (альтернативы: Catch2, doctest, Boost.Test).
+
+          ## Подключение через CMake
+
+          ```cmake
+          include(FetchContent)
+          FetchContent_Declare(googletest
+            URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip)
+          FetchContent_MakeAvailable(googletest)
+
+          enable_testing()
+          add_executable(core_tests tests/cart_test.cpp)
+          target_link_libraries(core_tests PRIVATE core GTest::gtest_main GTest::gmock)
+          include(GoogleTest)
+          gtest_discover_tests(core_tests)
+          ```
+
+          ```bash
+          cmake --build build && ctest --test-dir build --output-on-failure
+          ```
+
+          ## Тесты
+
+          ```cpp
+          #include <gtest/gtest.h>
+          #include "cart.h"
+
+          TEST(CartTest, EmptyCartHasZeroTotal) {
+              Cart cart;
+              EXPECT_EQ(cart.total(), 0);
+          }
+
+          TEST(CartTest, AddingItemIncreasesTotal) {
+              Cart cart;
+              cart.add({"Чай", 150}, 2);
+              EXPECT_EQ(cart.total(), 300);
+              EXPECT_EQ(cart.size(), 1u);
+          }
+
+          TEST(CartTest, NegativeQuantityThrows) {
+              Cart cart;
+              EXPECT_THROW(cart.add({"Чай", 150}, -1), std::invalid_argument);
+          }
+          ```
+
+          - `EXPECT_*` — при неудаче тест продолжается; `ASSERT_*` — прерывается (для предусловий: `ASSERT_NE(ptr, nullptr)`).
+          - `EXPECT_EQ`, `NE`, `LT`, `LE`, `GT`, `GE`, `TRUE`, `FALSE`, `DOUBLE_EQ`, `NEAR(a, b, eps)`, `STREQ`, `THROW`, `NO_THROW`, `DEATH`.
+
+          ## Фикстуры
+
+          ```cpp
+          class InventoryTest : public ::testing::Test {
+          protected:
+              void SetUp() override { inv.add("Чай", 10); }
+              Inventory inv;
+          };
+
+          TEST_F(InventoryTest, RemoveDecreasesStock) {
+              inv.remove("Чай", 3);
+              EXPECT_EQ(inv.stock("Чай"), 7);
+          }
+          ```
+
+          ## Параметризованные тесты
+
+          ```cpp
+          class IsPrimeTest : public ::testing::TestWithParam<std::pair<int, bool>> {};
+          TEST_P(IsPrimeTest, Works) {
+              auto [n, expected] = GetParam();
+              EXPECT_EQ(isPrime(n), expected);
+          }
+          INSTANTIATE_TEST_SUITE_P(Numbers, IsPrimeTest,
+              ::testing::Values(std::pair{2, true}, std::pair{4, false}, std::pair{17, true}));
+          ```
+
+          ## GoogleMock
+
+          ```cpp
+          class MockPayment : public IPayment {
+          public:
+              MOCK_METHOD(bool, charge, (int userId, long amount), (override));
+          };
+
+          TEST(OrderServiceTest, ChargesUser) {
+              MockPayment pay;
+              EXPECT_CALL(pay, charge(7, 300)).WillOnce(::testing::Return(true));
+              OrderService svc(pay);
+              EXPECT_TRUE(svc.checkout(7, 300));
+          }
+          ```
+
+          Запуск отдельных тестов: `./core_tests --gtest_filter=CartTest.*`. Покрытие: `--coverage` (gcov/lcov) или `llvm-cov`.
+        practice:
+          - type: choice
+            q: Чем ASSERT_EQ отличается от EXPECT_EQ?
+            options: ["Ничем", "ASSERT прерывает тест при неудаче, EXPECT — продолжает", "EXPECT работает только с числами", "ASSERT только для исключений"]
+            answer: 1
+          - type: fill
+            q: Проверьте, что вызов бросает исключение
+            code: |
+              ___(parse("abc"), std::invalid_argument);
+            answers: ["EXPECT_THROW"]
+          - type: fill
+            q: Тест, использующий фикстуру
+            code: |
+              ___(AccountTest, WithdrawReducesBalance) { ... }
+            answers: ["TEST_F"]
+          - type: choice
+            q: Как сравнить два double с допуском?
+            options: ["EXPECT_EQ", "EXPECT_NEAR(a, b, 1e-9)", "EXPECT_TRUE(a == b)", "EXPECT_STREQ"]
+            answer: 1
+          - type: fill
+            q: Объявите мок-метод
+            code: |
+              ___(bool, send, (const std::string& to), (override));
+            answers: ["MOCK_METHOD"]
+        homework:
+          task: |
+            Покройте библиотеку `core` проекта `inventory` тестами GoogleTest: фикстура склада, параметризованный тест валидации названий товаров, тест исключений, мок `INotifier` (уведомление при остатке < 5) через GoogleMock. Подключите `gtest_discover_tests`, соберите с ASan и получите отчёт покрытия (gcovr/lcov) ≥ 80%.
+          checklist:
+            - Есть TEST_F, TEST_P и EXPECT_CALL
+            - Тесты проходят под ASan
+            - Покрытие ≥ 80%
+          solution: |
+            class MockNotifier : public INotifier {
+            public:
+                MOCK_METHOD(void, lowStock, (const std::string& item, int left), (override));
+            };
+
+            class StockTest : public ::testing::Test {
+            protected:
+                MockNotifier notifier;
+                Stock stock{notifier};
+                void SetUp() override { stock.add("Чай", 10); }
+            };
+
+            TEST_F(StockTest, RemoveBelowThresholdNotifies) {
+                EXPECT_CALL(notifier, lowStock("Чай", 4)).Times(1);
+                stock.remove("Чай", 6);
+            }
+
+            TEST_F(StockTest, RemoveMoreThanAvailableThrows) {
+                EXPECT_THROW(stock.remove("Чай", 100), std::out_of_range);
+            }
+
+            class NameTest : public ::testing::TestWithParam<std::pair<std::string, bool>> {};
+            TEST_P(NameTest, Validates) {
+                auto [name, ok] = GetParam();
+                EXPECT_EQ(isValidName(name), ok);
+            }
+            INSTANTIATE_TEST_SUITE_P(Names, NameTest, ::testing::Values(
+                std::pair{std::string("Чай"), true}, std::pair{std::string(""), false}, std::pair{std::string(300, 'x'), false}));
+
+            # cmake -DENABLE_ASAN=ON -DCMAKE_CXX_FLAGS=--coverage ...
+            # ctest && gcovr -r .. --html-details coverage.html

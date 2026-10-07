@@ -1,0 +1,865 @@
+id: cpp
+modules:
+  - id: cpp-m5
+    title: Шаблоны и современный C++
+    level: Junior+
+    lessons:
+      - id: cpp-05-01
+        title: Шаблоны функций и классов
+        minutes: 35
+        xp: 40
+        theory: |
+          **Шаблон** — «рецепт», по которому компилятор генерирует код для конкретных типов (инстанцирование). Это статический полиморфизм без накладных расходов во время выполнения.
+
+          ## Шаблон функции
+
+          ```cpp
+          template <typename T>
+          T maxOf(T a, T b) { return a > b ? a : b; }
+
+          maxOf(3, 7);            // T = int (выведен автоматически)
+          maxOf(2.5, 1.0);        // T = double
+          maxOf<double>(3, 2.5);  // явно
+          // maxOf(3, 2.5);       // ❌ T не выводится однозначно
+
+          // C++20: сокращённый синтаксис
+          auto add(auto a, auto b) { return a + b; }
+          ```
+
+          ## Шаблон класса
+
+          ```cpp
+          template <typename T, std::size_t N>
+          class StaticStack {
+              std::array<T, N> data_{};
+              std::size_t size_ = 0;
+          public:
+              void push(const T& v) {
+                  if (size_ == N) throw std::overflow_error("full");
+                  data_[size_++] = v;
+              }
+              T pop() { return data_[--size_]; }
+              bool empty() const { return size_ == 0; }
+          };
+
+          StaticStack<int, 16> s;
+          std::pair p{1, "a"};          // CTAD (C++17): тип выведен из аргументов
+          ```
+
+          Параметры шаблона: типы (`typename T`), значения (`std::size_t N`), шаблоны.
+
+          ## Специализация
+
+          ```cpp
+          template <typename T> std::string describe(T) { return "что-то"; }
+          template <> std::string describe<bool>(bool b) { return b ? "да" : "нет"; }   // полная
+
+          template <typename T> struct Box { T v; };
+          template <typename T> struct Box<T*> { T* v; bool isNull() const { return !v; } };  // частичная
+          ```
+
+          ## Где писать код шаблонов
+
+          Шаблоны определяются **в заголовочных файлах** целиком — компилятор должен видеть тело при инстанцировании в каждом .cpp.
+
+          ## Вариативные шаблоны
+
+          ```cpp
+          template <typename... Args>
+          void print(const Args&... args) {
+              ((std::cout << args << ' '), ...);   // fold expression (C++17)
+              std::cout << '\n';
+          }
+          print(1, "два", 3.0);
+
+          template <typename... Ts>
+          auto sum(Ts... xs) { return (xs + ... + 0); }
+          ```
+
+          ## if constexpr
+
+          ```cpp
+          template <typename T>
+          std::string toString(const T& v) {
+              if constexpr (std::is_arithmetic_v<T>) return std::to_string(v);
+              else return std::string(v);          // ветка не компилируется для чисел
+          }
+          ```
+
+          Ошибки в шаблонах исторически ужасно длинные — концепты C++20 (урок 5) это исправляют.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              template <typename T>
+              T twice(T x) { return x + x; }
+              int main() {
+                  std::cout << twice(21) << " " << twice(std::string("ab"));
+              }
+            answer: 42 abab
+          - type: output
+            q: Что выведет код?
+            code: |
+              template <typename... Ts>
+              auto sum(Ts... xs) { return (xs + ... + 0); }
+              int main() { std::cout << sum(1, 2, 3, 4); }
+            answer: "10"
+          - type: fill
+            q: Объявите шаблон с параметром-значением
+            code: |
+              template <typename T, std::size_t ___>
+              struct Array { T data[N]; };
+            answers: ["N"]
+          - type: choice
+            q: Где обычно размещают определение шаблона?
+            options: ["В .cpp файле", "Целиком в заголовочном файле", "В отдельной библиотеке", "Не важно"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              template <typename T> int kind(T) { return 1; }
+              template <> int kind<char>(char) { return 2; }
+              int main() { std::cout << kind(5) << kind('x'); }
+            answer: "12"
+        homework:
+          task: |
+            Реализуйте шаблонный класс `RingBuffer<T, N>` (кольцевой буфер фиксированного размера на std::array): `push` (перезаписывает самый старый при переполнении), `pop` → `std::optional<T>`, `size`, `full`, итерация от старого к новому через метод `forEach(F f)`. Плюс вариативная функция `log(const Args&...)` с разделителем через fold expression.
+          checklist:
+            - N — параметр-значение шаблона
+            - Работает с int и std::string
+            - Fold expression в log
+          solution: |
+            #include <array>
+            #include <iostream>
+            #include <optional>
+            #include <string>
+
+            template <typename T, std::size_t N>
+            class RingBuffer {
+                std::array<T, N> d_{};
+                std::size_t head_ = 0, size_ = 0;
+            public:
+                void push(T v) {
+                    d_[(head_ + size_) % N] = std::move(v);
+                    if (size_ == N) head_ = (head_ + 1) % N; else ++size_;
+                }
+                std::optional<T> pop() {
+                    if (size_ == 0) return std::nullopt;
+                    T v = std::move(d_[head_]);
+                    head_ = (head_ + 1) % N; --size_;
+                    return v;
+                }
+                std::size_t size() const { return size_; }
+                bool full() const { return size_ == N; }
+                template <typename F> void forEach(F f) const { for (std::size_t i = 0; i < size_; ++i) f(d_[(head_ + i) % N]); }
+            };
+
+            template <typename... Args>
+            void log(const Args&... a) { std::size_t i = 0; ((std::cout << (i++ ? " | " : "") << a), ...); std::cout << '\n'; }
+
+            int main() {
+                RingBuffer<int, 3> rb;
+                for (int i = 1; i <= 5; ++i) rb.push(i);
+                rb.forEach([](int x) { std::cout << x << ' '; });   // 3 4 5
+                log("итог", rb.size(), rb.full());
+            }
+      - id: cpp-05-02
+        title: Move-семантика
+        minutes: 35
+        xp: 45
+        theory: |
+          До C++11 возврат и передача больших объектов означали копирование. **Перемещение** позволяет «забрать» ресурсы у объекта, который больше не нужен, за O(1).
+
+          ## lvalue и rvalue
+
+          - **lvalue** — у выражения есть имя/адрес: `x`, `v[0]`, `*p`.
+          - **rvalue** — временное значение: `42`, `a + b`, `std::string("tmp")`, результат функции по значению.
+
+          `T&&` — rvalue-ссылка, привязывается к временным объектам.
+
+          ```cpp
+          void f(std::string& s);    // принимает lvalue
+          void f(std::string&& s);   // принимает rvalue — можно «украсть» содержимое
+
+          std::string a = "hello";
+          f(a);                      // lvalue-версия
+          f(a + "!");                // rvalue-версия
+          f(std::move(a));           // rvalue-версия: мы разрешили забрать a
+          ```
+
+          ## std::move ничего не перемещает
+
+          `std::move(x)` — это просто **приведение** к `T&&` («можно забрать»). Само перемещение делает конструктор/оператор перемещения.
+
+          После перемещения объект в **валидном, но неуказанном состоянии**: его можно уничтожить или присвоить новое значение, но не стоит полагаться на содержимое.
+
+          ```cpp
+          std::vector<std::string> names;
+          std::string name = "очень длинное имя ...";
+          names.push_back(std::move(name));      // без копирования буфера
+          // name теперь (скорее всего) пуст — не используйте его
+
+          std::vector<int> big(1'000'000);
+          auto other = std::move(big);           // O(1): переставили 3 указателя
+          ```
+
+          ## Когда move не нужен
+
+          ```cpp
+          std::vector<int> make() {
+              std::vector<int> v(1000);
+              return v;            // ✅ RVO/NRVO или неявный move
+              // return std::move(v);  // ❌ мешает RVO (copy elision)
+          }
+          ```
+
+          Не используйте `std::move` для `const`-объектов (тихо будет копирование) и для простых типов (`int`).
+
+          ## Передача «по значению + move»
+
+          ```cpp
+          class User {
+              std::string name_;
+          public:
+              explicit User(std::string name) : name_(std::move(name)) {}   // одна идиома для lvalue и rvalue
+          };
+          User u1("Аня");             // строка создаётся и перемещается
+          std::string n = "Боб";
+          User u2(n);                 // копия в параметр + move в поле
+          ```
+
+          ## Только перемещаемые типы
+
+          `std::unique_ptr`, `std::thread`, `std::fstream`, `std::jthread` — копировать нельзя, перемещать можно.
+
+          ## emplace_back
+
+          ```cpp
+          v.emplace_back("Аня", 25);   // объект конструируется прямо в векторе, без временного
+          ```
+        practice:
+          - type: choice
+            q: Что делает std::move?
+            options: ["Перемещает объект в другую память", "Приводит выражение к rvalue-ссылке, разрешая перемещение", "Удаляет объект", "Копирует объект быстрее"]
+            answer: 1
+          - type: choice
+            q: Какое выражение — rvalue?
+            options: ["x", "v[0]", "a + b", "*ptr"]
+            answer: 2
+          - type: bug
+            q: Какая строка мешает компилятору оптимизировать возврат (RVO)?
+            code: |
+              std::vector<int> build() {
+                  std::vector<int> result;
+                  result.push_back(1);
+                  return std::move(result);
+              }
+            bugLine: 4
+            fix: return result;
+            explain: std::move в return отключает copy elision. Возвращайте локальную переменную просто по имени.
+          - type: fill
+            q: Переместите строку в вектор без копирования
+            code: |
+              names.push_back(std::___(name));
+            answers: ["move"]
+          - type: choice
+            q: Что произойдёт при std::move(constObj) в конструктор?
+            options: ["Перемещение", "Ошибка компиляции", "Тихое копирование", "UB"]
+            answer: 2
+        homework:
+          task: |
+            Создайте класс `Image` (ширина, высота, `std::unique_ptr<uint8_t[]>` пикселей) с правилом пяти: глубокое копирование и noexcept-перемещение, счётчики копий/перемещений. Сравните время `std::vector<Image>` из 1000 изображений 1000×1000 при: push_back(img) — копия, push_back(std::move(img)), emplace_back(w, h). Объясните результаты.
+          checklist:
+            - Перемещение noexcept
+            - Замеры через std::chrono
+            - Объяснение разницы
+          solution: |
+            #include <chrono>
+            #include <cstdint>
+            #include <cstring>
+            #include <iostream>
+            #include <memory>
+            #include <utility>
+            #include <vector>
+
+            class Image {
+                int w_ = 0, h_ = 0;
+                std::unique_ptr<std::uint8_t[]> px_;
+            public:
+                static inline int copies = 0, moves = 0;
+                Image(int w, int h) : w_(w), h_(h), px_(new std::uint8_t[std::size_t(w) * h]{}) {}
+                Image(const Image& o) : w_(o.w_), h_(o.h_), px_(new std::uint8_t[std::size_t(w_) * h_]) {
+                    std::memcpy(px_.get(), o.px_.get(), std::size_t(w_) * h_); ++copies;
+                }
+                Image(Image&& o) noexcept : w_(std::exchange(o.w_, 0)), h_(std::exchange(o.h_, 0)), px_(std::move(o.px_)) { ++moves; }
+                Image& operator=(Image o) noexcept { std::swap(w_, o.w_); std::swap(h_, o.h_); std::swap(px_, o.px_); return *this; }
+                ~Image() = default;
+            };
+
+            template <class F> long long ms(F f) {
+                auto t = std::chrono::steady_clock::now(); f();
+                return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t).count();
+            }
+
+            int main() {
+                std::cout << "copy: " << ms([] { std::vector<Image> v; v.reserve(1000); for (int i = 0; i < 1000; ++i) { Image im(1000, 1000); v.push_back(im); } }) << "\n";
+                std::cout << "move: " << ms([] { std::vector<Image> v; v.reserve(1000); for (int i = 0; i < 1000; ++i) { Image im(1000, 1000); v.push_back(std::move(im)); } }) << "\n";
+                std::cout << "emplace: " << ms([] { std::vector<Image> v; v.reserve(1000); for (int i = 0; i < 1000; ++i) v.emplace_back(1000, 1000); }) << "\n";
+                std::cout << Image::copies << " copies, " << Image::moves << " moves\n";
+            }
+      - id: cpp-05-03
+        title: Perfect forwarding
+        minutes: 30
+        xp: 40
+        theory: |
+          Задача: написать обёртку, которая передаёт аргументы дальше **ровно в том виде**, в каком их получила (lvalue остаётся lvalue, rvalue — rvalue). Так работают `std::make_unique`, `emplace_back`, `std::thread`.
+
+          ## Forwarding (universal) reference
+
+          `T&&` в **шаблоне с выводом типа** — это не rvalue-ссылка, а «пересылающая ссылка»: она привязывается к чему угодно.
+
+          ```cpp
+          template <typename T>
+          void wrapper(T&& arg) {          // T&& + вывод T = forwarding reference
+              target(std::forward<T>(arg));
+          }
+          ```
+
+          Правила сворачивания ссылок: передали lvalue типа `X` → `T = X&`, `T&& = X&`; передали rvalue → `T = X`, `T&& = X&&`.
+
+          ## Почему нужен std::forward
+
+          Внутри функции у параметра **есть имя**, значит он всегда lvalue — даже если объявлен как `&&`. `std::forward<T>(arg)` возвращает ему исходную категорию: rvalue для rvalue, lvalue для lvalue. (`std::move` превращал бы всё в rvalue — и мы бы «украли» у вызывающего его lvalue.)
+
+          ```cpp
+          void process(const std::string&) { std::cout << "lvalue\n"; }
+          void process(std::string&&)      { std::cout << "rvalue\n"; }
+
+          template <typename T>
+          void relay(T&& x) { process(std::forward<T>(x)); }
+
+          std::string s = "a";
+          relay(s);                 // lvalue
+          relay(std::string("b"));  // rvalue
+          ```
+
+          ## Своя фабрика
+
+          ```cpp
+          template <typename T, typename... Args>
+          std::unique_ptr<T> make(Args&&... args) {
+              return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+          }
+
+          auto u = make<User>("Аня", 25);
+          ```
+
+          ## Где это НЕ forwarding reference
+
+          ```cpp
+          void f(std::string&& s);                  // обычная rvalue-ссылка (нет вывода)
+          template <typename T> void g(std::vector<T>&& v);  // rvalue-ссылка на vector
+          template <typename T> struct W { void h(T&& x); }; // T уже известен из класса — rvalue-ссылка
+          auto&& x = expr;                          // forwarding (как в range-for: for (auto&& e : range))
+          ```
+
+          ## Подводные камни
+
+          - Не используйте аргумент после `std::forward` — он мог быть перемещён.
+          - Перегрузка функции с forwarding reference «жадно» перехватывает почти все вызовы (в т.ч. неконстантные lvalue, предпочтя их копирующему конструктору). Ограничивайте концептами.
+        practice:
+          - type: choice
+            q: В каком случае `T&&` — forwarding reference?
+            options: ["void f(std::string&& s)", "template <class T> void f(T&& x)", "template <class T> void f(std::vector<T>&& v)", "Всегда"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              void p(int&) { std::cout << "L"; }
+              void p(int&&) { std::cout << "R"; }
+              template <class T> void relay(T&& x) { p(std::forward<T>(x)); }
+              int main() {
+                  int a = 1;
+                  relay(a);
+                  relay(2);
+              }
+            answer: LR
+          - type: output
+            q: Что выведет код (forward не используется)?
+            code: |
+              void p(int&) { std::cout << "L"; }
+              void p(int&&) { std::cout << "R"; }
+              template <class T> void relay(T&& x) { p(x); }
+              int main() { relay(5); }
+            answer: L
+            explain: Именованный параметр — всегда lvalue.
+          - type: fill
+            q: Передайте все аргументы дальше без потери категории
+            code: |
+              return T(std::forward<___>(args)...);
+            answers: ["Args"]
+        homework:
+          task: |
+            Напишите: (1) `template <class F, class... Args> auto timed(F&& f, Args&&... args)` — вызывает f с идеальной передачей аргументов, печатает время и возвращает результат (`decltype(auto)`); (2) свою `emplace`-подобную функцию для `std::vector<T>` → `T& emplaceTo(std::vector<T>&, Args&&...)`; (3) тест с классом, у которого счётчики копий/перемещений, доказывающий отсутствие лишних копий.
+          checklist:
+            - Используется std::forward
+            - Возврат через decltype(auto) или auto
+            - Тест показывает 0 лишних копий
+          solution: |
+            #include <chrono>
+            #include <iostream>
+            #include <string>
+            #include <utility>
+            #include <vector>
+
+            template <class F, class... Args>
+            decltype(auto) timed(F&& f, Args&&... args) {
+                auto t = std::chrono::steady_clock::now();
+                struct Report { std::chrono::steady_clock::time_point t;
+                    ~Report() { std::cout << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t).count() << " ms\n"; } } r{t};
+                return std::forward<F>(f)(std::forward<Args>(args)...);
+            }
+
+            template <class T, class... Args>
+            T& emplaceTo(std::vector<T>& v, Args&&... args) { return v.emplace_back(std::forward<Args>(args)...); }
+
+            struct Tracked {
+                static inline int copies = 0, moves = 0;
+                std::string s;
+                explicit Tracked(std::string x) : s(std::move(x)) {}
+                Tracked(const Tracked& o) : s(o.s) { ++copies; }
+                Tracked(Tracked&& o) noexcept : s(std::move(o.s)) { ++moves; }
+            };
+
+            int main() {
+                std::vector<Tracked> v; v.reserve(10);
+                emplaceTo(v, std::string("abc"));
+                auto len = timed([](const Tracked& t) { return t.s.size(); }, v[0]);
+                std::cout << len << " copies=" << Tracked::copies << "\n";   // copies=0
+            }
+      - id: cpp-05-04
+        title: constexpr и вычисления на этапе компиляции
+        minutes: 30
+        xp: 40
+        theory: |
+          `constexpr` позволяет выполнять код **во время компиляции**. Результат «зашивается» в бинарник: нулевые затраты во время выполнения и проверка ошибок компилятором.
+
+          ## constexpr-переменные и функции
+
+          ```cpp
+          constexpr int square(int x) { return x * x; }
+
+          constexpr int N = square(12);        // 144 — вычислено компилятором
+          std::array<int, square(4)> arr;      // размер массива из функции
+          static_assert(square(3) == 9);       // проверка на этапе компиляции
+
+          int n; std::cin >> n;
+          int r = square(n);                   // та же функция работает и в рантайме
+          ```
+
+          С C++14/20 в constexpr-функциях можно использовать циклы, `if`, локальные переменные, `std::vector`/`std::string` (C++20, если память освобождается внутри вычисления), виртуальные функции, try (без throw во время константного вычисления).
+
+          ```cpp
+          constexpr unsigned long long factorial(int n) {
+              unsigned long long r = 1;
+              for (int i = 2; i <= n; ++i) r *= i;
+              return r;
+          }
+          static_assert(factorial(20) == 2432902008176640000ULL);
+
+          constexpr auto makeTable() {
+              std::array<int, 10> t{};
+              for (int i = 0; i < 10; ++i) t[i] = i * i;
+              return t;
+          }
+          constexpr auto kSquares = makeTable();   // таблица готова до запуска программы
+          ```
+
+          ## consteval и constinit (C++20)
+
+          - `consteval` — функция **обязана** вычисляться на этапе компиляции (immediate function).
+          - `constinit` — переменная инициализируется на этапе компиляции, но потом может изменяться (решает «static initialization order fiasco»).
+
+          ```cpp
+          consteval int compileTimeOnly(int x) { return x * 2; }
+          constinit int counter = compileTimeOnly(21);
+          ```
+
+          ## if constexpr
+
+          Ветка выбирается при компиляции, «лишняя» ветка даже не инстанцируется:
+
+          ```cpp
+          template <typename T>
+          auto len(const T& v) {
+              if constexpr (requires { v.size(); }) return v.size();
+              else return sizeof(T);
+          }
+          ```
+
+          ## const vs constexpr
+
+          `const` — «не изменю», значение может быть известно только в рантайме (`const int x = readInput();`). `constexpr` — значение известно компилятору.
+
+          ## Практика
+
+          Используйте для: констант и таблиц (CRC, синусы), проверок `static_assert` (размеры структур, параметры шаблонов), парсинга форматов на этапе компиляции (`std::format` проверяет строку формата так), устранения «магических чисел».
+        practice:
+          - type: fill
+            q: Проверьте условие на этапе компиляции
+            code: |
+              ___(sizeof(int) == 4, "нужен 32-битный int");
+            answers: ["static_assert"]
+          - type: choice
+            q: Можно ли вызвать constexpr-функцию с аргументом, введённым пользователем?
+            options: ["Нет, ошибка компиляции", "Да, она выполнится во время работы программы", "Только в Debug", "Только с consteval"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              constexpr int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+              int main() {
+                  constexpr int f = fib(10);
+                  std::cout << f;
+              }
+            answer: "55"
+          - type: choice
+            q: Чем consteval отличается от constexpr?
+            options: ["Ничем", "consteval-функция обязана вычисляться только при компиляции", "consteval быстрее в рантайме", "consteval только для классов"]
+            answer: 1
+          - type: choice
+            q: Что верно для `const int x = readInput();`?
+            options: ["x — constexpr", "x нельзя изменить, но значение известно только во время выполнения", "Ошибка компиляции", "x можно использовать как размер std::array"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте на constexpr: (1) таблицу CRC32 из 256 элементов, вычисляемую при компиляции, и функцию `crc32(std::string_view)` (тоже constexpr) с `static_assert(crc32("hello") == 0x3610A686)`; (2) `consteval`-функцию проверки, что строка-литерал — допустимый идентификатор; (3) `constexpr` функцию `isPrime` и массив первых 100 простых.
+          checklist:
+            - Таблица вычислена в compile-time (constexpr переменная)
+            - static_assert проходит
+            - consteval выдаёт ошибку компиляции на неверный идентификатор
+          solution: |
+            #include <array>
+            #include <cstdint>
+            #include <string_view>
+
+            constexpr auto makeCrcTable() {
+                std::array<std::uint32_t, 256> t{};
+                for (std::uint32_t i = 0; i < 256; ++i) {
+                    std::uint32_t c = i;
+                    for (int k = 0; k < 8; ++k) c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+                    t[i] = c;
+                }
+                return t;
+            }
+            constexpr auto kCrc = makeCrcTable();
+
+            constexpr std::uint32_t crc32(std::string_view s) {
+                std::uint32_t c = 0xFFFFFFFFu;
+                for (char ch : s) c = kCrc[(c ^ static_cast<unsigned char>(ch)) & 0xFF] ^ (c >> 8);
+                return c ^ 0xFFFFFFFFu;
+            }
+            static_assert(crc32("hello") == 0x3610A686u);
+
+            consteval bool validIdent(std::string_view s) {
+                if (s.empty() || (s[0] >= '0' && s[0] <= '9')) throw "bad identifier";   // throw → ошибка компиляции
+                for (char c : s) if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) throw "bad identifier";
+                return true;
+            }
+            static_assert(validIdent("user_id"));
+
+            constexpr bool isPrime(int n) { if (n < 2) return false; for (int d = 2; d * d <= n; ++d) if (n % d == 0) return false; return true; }
+            constexpr auto kPrimes = [] { std::array<int, 100> p{}; for (int n = 2, i = 0; i < 100; ++n) if (isPrime(n)) p[i++] = n; return p; }();
+            static_assert(kPrimes[99] == 541);
+      - id: cpp-05-05
+        title: Концепты C++20
+        minutes: 30
+        xp: 40
+        theory: |
+          **Концепт** — именованное требование к параметру шаблона. Делает шаблоны читаемыми, а ошибки — понятными («тип не удовлетворяет `Sortable`» вместо 200 строк).
+
+          ## Использование стандартных концептов
+
+          ```cpp
+          #include <concepts>
+
+          template <std::integral T>              // только целые типы
+          T gcd(T a, T b) { return b == 0 ? a : gcd(b, a % b); }
+
+          gcd(12, 18);      // ok
+          // gcd(1.5, 2.0); // ошибка: double не удовлетворяет std::integral
+
+          // три эквивалентных формы
+          template <typename T> requires std::floating_point<T> T half(T x) { return x / 2; }
+          template <std::floating_point T> T half2(T x) { return x / 2; }
+          auto half3(std::floating_point auto x) { return x / 2; }
+          ```
+
+          Популярные: `std::integral`, `std::floating_point`, `std::same_as<T, U>`, `std::convertible_to`, `std::derived_from<D, B>`, `std::invocable<F, Args...>`, `std::predicate`, `std::totally_ordered`, `std::copyable`, `std::movable`, `std::ranges::range`, `std::ranges::random_access_range`.
+
+          ## Свой концепт
+
+          ```cpp
+          template <typename T>
+          concept Shape = requires(const T& s) {
+              { s.area() } -> std::convertible_to<double>;     // выражение валидно и тип подходит
+              { s.name() } -> std::convertible_to<std::string>;
+          };
+
+          template <typename T>
+          concept Numeric = std::integral<T> || std::floating_point<T>;
+
+          template <typename T>
+          concept Container = requires(T c) {
+              typename T::value_type;                          // есть вложенный тип
+              c.begin(); c.end(); c.size();
+          };
+
+          double totalArea(const std::vector<Circle>& v) requires Shape<Circle>;
+
+          template <Shape S>
+          void print(const S& s) { std::cout << s.name() << ": " << s.area() << "\n"; }
+          ```
+
+          Утиная типизация на этапе компиляции: `Circle` не наследует никакой интерфейс, ему достаточно иметь методы.
+
+          ## Перегрузка по концептам
+
+          ```cpp
+          void describe(std::integral auto x)       { std::cout << "целое\n"; }
+          void describe(std::floating_point auto x) { std::cout << "дробное\n"; }
+          void describe(const Container auto& c)    { std::cout << "контейнер из " << c.size() << "\n"; }
+          ```
+
+          Компилятор выбирает самую «узкую» подходящую перегрузку (subsumption).
+
+          ## requires-выражение в if constexpr
+
+          ```cpp
+          template <typename T>
+          void save(const T& v) {
+              if constexpr (requires { v.serialize(); }) v.serialize();
+              else std::cout << v;
+          }
+          ```
+
+          Концепты — замена старому SFINAE (`std::enable_if_t<...>`), которое вы ещё встретите в легаси-коде.
+        practice:
+          - type: fill
+            q: Ограничьте шаблон целыми типами
+            code: |
+              template <std::___ T>
+              T mod(T a, T b) { return a % b; }
+            answers: ["integral"]
+          - type: fill
+            q: Объявите свой концепт
+            code: |
+              template <typename T>
+              ___ Printable = requires(T x) { std::cout << x; };
+            answers: ["concept"]
+          - type: choice
+            q: Главная польза концептов?
+            options: ["Ускорение работы программы", "Понятные требования и сообщения об ошибках в шаблонах", "Динамический полиморфизм", "Сборка мусора"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              void f(std::integral auto) { std::cout << "I"; }
+              void f(std::floating_point auto) { std::cout << "F"; }
+              int main() { f(1); f(2.0); f('c'); }
+            answer: IFI
+            explain: char — целочисленный тип.
+          - type: choice
+            q: Что заменяют концепты из старого C++?
+            options: ["Макросы", "SFINAE и std::enable_if", "Виртуальные функции", "Исключения"]
+            answer: 1
+        homework:
+          task: |
+            Определите концепты `Drawable` (метод `draw(std::ostream&) const`), `HasId` (поле/метод `id()` → целое), `Repository<R, T>` (методы `add(T)`, `find(int) -> std::optional<T>`). Напишите шаблонные функции `renderAll(const std::vector<T>&) requires Drawable<T>` и `InMemoryRepository<T> requires HasId<T>`. Убедитесь (static_assert), что ваш репозиторий удовлетворяет `Repository`, а тип без `id()` даёт понятную ошибку.
+          checklist:
+            - 3 своих концепта
+            - static_assert(Repository<InMemoryRepository<User>, User>)
+            - Перегрузка или ограничение по концепту
+          solution: |
+            #include <concepts>
+            #include <iostream>
+            #include <optional>
+            #include <ostream>
+            #include <unordered_map>
+            #include <vector>
+
+            template <class T> concept Drawable = requires(const T& t, std::ostream& os) { t.draw(os); };
+            template <class T> concept HasId = requires(const T& t) { { t.id() } -> std::integral; };
+            template <class R, class T> concept Repository = requires(R r, T t, int id) {
+                r.add(t);
+                { r.find(id) } -> std::same_as<std::optional<T>>;
+            };
+
+            template <Drawable T>
+            void renderAll(const std::vector<T>& v) { for (const auto& x : v) x.draw(std::cout); }
+
+            template <HasId T>
+            class InMemoryRepository {
+                std::unordered_map<int, T> items_;
+            public:
+                void add(T t) { auto id = static_cast<int>(t.id()); items_.insert_or_assign(id, std::move(t)); }
+                std::optional<T> find(int id) const {
+                    if (auto it = items_.find(id); it != items_.end()) return it->second;
+                    return std::nullopt;
+                }
+            };
+
+            struct User {
+                int id_; std::string name;
+                int id() const { return id_; }
+                void draw(std::ostream& os) const { os << "User " << name << "\n"; }
+            };
+
+            static_assert(Repository<InMemoryRepository<User>, User>);
+            static_assert(Drawable<User>);
+            static_assert(!HasId<int>);
+      - id: cpp-05-06
+        title: Ranges C++20
+        minutes: 30
+        xp: 40
+        theory: |
+          **Ranges** — новое поколение алгоритмов STL: принимают контейнер целиком (без пары итераторов) и позволяют строить **ленивые конвейеры** через `|`.
+
+          ## Алгоритмы ranges
+
+          ```cpp
+          #include <algorithm>
+          #include <ranges>
+
+          std::vector<int> v{5, 3, 8, 1};
+          std::ranges::sort(v);                                   // вместо sort(v.begin(), v.end())
+          auto it = std::ranges::find(v, 8);
+          bool any = std::ranges::any_of(v, [](int x) { return x > 7; });
+
+          struct User { std::string name; int age; };
+          std::vector<User> users = ...;
+          std::ranges::sort(users, {}, &User::age);              // проекция: сортировать по полю!
+          auto oldest = std::ranges::max(users, {}, &User::age);
+          ```
+
+          ## Views — ленивые представления
+
+          ```cpp
+          namespace views = std::views;
+
+          auto evensSquared = v
+              | views::filter([](int x) { return x % 2 == 0; })
+              | views::transform([](int x) { return x * x; });
+
+          for (int x : evensSquared) std::cout << x << " ";      // вычисляется при обходе
+          ```
+
+          Views не копируют данные и не создают промежуточных контейнеров: каждый элемент проходит весь конвейер по требованию.
+
+          ## Полезные views
+
+          ```cpp
+          views::iota(1, 11)                 // 1..10
+          views::iota(1) | views::take(5)    // бесконечная последовательность, взять 5
+          views::reverse                     // обратный порядок
+          views::drop(2), views::take_while(pred), views::drop_while(pred)
+          views::keys, views::values         // для map и пар
+          views::split(' ')                  // разбить строку
+          views::join                        // склеить вложенные диапазоны
+          views::enumerate, views::zip, views::chunk(3), views::slide(2)   // C++23
+          ```
+
+          ```cpp
+          std::map<std::string, int> m{{"a", 1}, {"b", 2}};
+          for (const auto& k : m | views::keys) std::cout << k;
+
+          // первые 5 простых чисел
+          auto primes = views::iota(2) | views::filter(isPrime) | views::take(5);
+          ```
+
+          ## Материализация
+
+          ```cpp
+          auto vec = v | views::filter(pred) | std::ranges::to<std::vector>();   // C++23
+          // C++20: std::vector<int> vec(r.begin(), r.end());   (для common_range)
+          ```
+
+          ## Подводные камни
+
+          - View может ссылаться на контейнер — не возвращайте view на локальный вектор (висячая ссылка).
+          - `filter` кеширует begin(), поэтому некоторые views нельзя итерировать через `const&`.
+          - Ленивость: лямбда в `transform` вызывается при каждом обходе — не кладите туда побочные эффекты.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              auto r = std::views::iota(1, 8)
+                     | std::views::filter([](int x) { return x % 2 == 1; })
+                     | std::views::transform([](int x) { return x * 10; });
+              for (int x : r) std::cout << x << " ";
+            answer: 10 30 50 70
+          - type: output
+            q: Что выведет код?
+            code: |
+              std::vector<int> v{1, 2, 3, 4, 5};
+              for (int x : v | std::views::reverse | std::views::take(2)) std::cout << x;
+            answer: "54"
+          - type: fill
+            q: Отсортируйте пользователей по полю age с помощью проекции
+            code: |
+              std::ranges::sort(users, {}, &User::___);
+            answers: ["age"]
+          - type: choice
+            q: Что значит «views ленивые»?
+            options: ["Работают медленно", "Элементы вычисляются только при обходе, без промежуточных контейнеров", "Работают в отдельном потоке", "Копируют данные заранее"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              auto r = std::views::iota(1) | std::views::take_while([](int x) { return x * x < 30; });
+              int s = 0;
+              for (int x : r) s += x;
+              std::cout << s;
+            answer: "15"
+        homework:
+          task: |
+            Перепишите задачу «статистика сотрудников» из урока про алгоритмы на ranges: сортировка по проекциям, конвейеры views (имена IT-отдела в верхнем регистре, зарплаты выше средней, первые 3 по возрасту). Дополнительно: разбейте строку CSV через `views::split` и сложите числа; сгенерируйте таблицу умножения 1..9 через `views::iota` и вложенный transform.
+          checklist:
+            - Нет ручных циклов для фильтрации/преобразований
+            - Используются проекции
+            - Нет висячих view
+          solution: |
+            #include <algorithm>
+            #include <cctype>
+            #include <iostream>
+            #include <numeric>
+            #include <ranges>
+            #include <string>
+            #include <string_view>
+            #include <vector>
+
+            struct Employee { std::string name, dept; double salary; int age; };
+            namespace views = std::views;
+
+            int main() {
+                std::vector<Employee> e{{"anya", "IT", 250000, 28}, {"bob", "HR", 90000, 45}, {"vika", "IT", 310000, 35}};
+                std::ranges::sort(e, std::ranges::greater{}, &Employee::salary);
+
+                auto upper = [](std::string s) { for (auto& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c))); return s; };
+                for (const auto& n : e | views::filter([](const auto& x) { return x.dept == "IT"; })
+                                       | views::transform(&Employee::name) | views::transform(upper))
+                    std::cout << n << " ";
+
+                double avg = std::accumulate(e.begin(), e.end(), 0.0, [](double s, const auto& x) { return s + x.salary; }) / e.size();
+                for (const auto& x : e | views::filter([avg](const auto& x) { return x.salary > avg; })) std::cout << "\n" << x.name;
+
+                std::string_view csv = "10,20,30,40";
+                int sum = 0;
+                for (auto part : csv | views::split(',')) sum += std::stoi(std::string(part.begin(), part.end()));
+                std::cout << "\n" << sum << "\n";
+
+                for (int i : views::iota(1, 10)) {
+                    for (int p : views::iota(1, 10) | views::transform([i](int j) { return i * j; })) std::cout << p << '\t';
+                    std::cout << '\n';
+                }
+            }

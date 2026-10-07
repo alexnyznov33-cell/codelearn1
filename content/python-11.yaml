@@ -1,0 +1,735 @@
+id: python
+modules:
+  - id: py-m11
+    title: Веб-разработка
+    level: Middle
+    lessons:
+      - id: py-11-01
+        title: HTTP, REST и JSON
+        minutes: 25
+        xp: 30
+        theory: |
+          **HTTP** — протокол «запрос → ответ» между клиентом и сервером.
+
+          ## Запрос
+
+          ```
+          POST /api/orders HTTP/1.1
+          Host: shop.ru
+          Content-Type: application/json
+          Authorization: Bearer eyJhbGc...
+
+          {"product_id": 7, "qty": 2}
+          ```
+
+          Метод, путь, заголовки, тело.
+
+          ## Методы
+
+          | Метод | Назначение | Идемпотентен |
+          |---|---|---|
+          | GET | получить ресурс | да |
+          | POST | создать | нет |
+          | PUT | заменить целиком | да |
+          | PATCH | частично изменить | обычно нет |
+          | DELETE | удалить | да |
+
+          **Идемпотентность** — повторный запрос даёт тот же результат (важно для повторов при сбоях сети).
+
+          ## Коды ответа
+
+          - `2xx` успех: 200 OK, 201 Created, 204 No Content;
+          - `3xx` перенаправление: 301, 304 Not Modified;
+          - `4xx` ошибка клиента: 400 Bad Request, 401 Unauthorized (не аутентифицирован), 403 Forbidden (нет прав), 404 Not Found, 409 Conflict, 422 Unprocessable Entity (ошибка валидации), 429 Too Many Requests;
+          - `5xx` ошибка сервера: 500, 502, 503.
+
+          ## REST
+
+          Стиль API, где URL — это **ресурсы** (существительные), а действие задаёт метод:
+
+          ```
+          GET    /users           список
+          POST   /users           создать
+          GET    /users/42        один
+          PATCH  /users/42        изменить
+          DELETE /users/42        удалить
+          GET    /users/42/orders вложенный ресурс
+          GET    /orders?status=paid&page=2&limit=20   фильтры и пагинация
+          ```
+
+          ❌ Плохо: `/getUsers`, `/deleteUser?id=42`. Сервер в REST **не хранит состояние** клиента между запросами (stateless) — всё нужное передаётся в запросе (например, токен).
+        practice:
+          - type: choice
+            q: Какой код вернуть после успешного создания ресурса?
+            options: ["200", "201", "204", "302"]
+            answer: 1
+          - type: choice
+            q: Пользователь не вошёл в систему. Какой код?
+            options: ["401", "403", "404", "500"]
+            answer: 0
+          - type: choice
+            q: Какой URL соответствует REST?
+            options: ["`POST /createOrder`", "`GET /orders/15`", "`GET /deleteOrder?id=15`", "`POST /orders/get`"]
+            answer: 1
+          - type: choice
+            q: Какие методы идемпотентны?
+            options: ["GET", "POST", "PUT", "DELETE"]
+            answer: [0, 2, 3]
+          - type: choice
+            q: Данные в запросе не прошли валидацию. Какой код типично возвращает API?
+            options: ["200", "422", "500", "301"]
+            answer: 1
+        homework:
+          task: |
+            Спроектируйте REST API для сервиса «Список задач с проектами»: ресурсы, URL, методы, коды ответов для успеха и ошибок, формат JSON запросов и ответов, пагинация и фильтры. Оформите как таблицу в Markdown.
+          checklist:
+            - Только существительные в URL
+            - Для каждого эндпоинта указаны коды ошибок
+          solution: |
+            | Метод | URL | Описание | Успех | Ошибки |
+            |---|---|---|---|---|
+            | GET | /projects | список проектов | 200 | 401 |
+            | POST | /projects | создать | 201 | 401, 422 |
+            | GET | /projects/{id} | проект | 200 | 404 |
+            | DELETE | /projects/{id} | удалить | 204 | 403, 404 |
+            | GET | /projects/{id}/tasks?status=done&page=1&limit=20 | задачи | 200 | 404 |
+            | POST | /projects/{id}/tasks | создать задачу | 201 | 404, 422 |
+            | PATCH | /tasks/{id} | изменить статус | 200 | 404, 409, 422 |
+
+      - id: py-11-02
+        title: Библиотека requests
+        minutes: 20
+        xp: 25
+        theory: |
+          `requests` — стандарт де-факто для HTTP-запросов в синхронном коде.
+
+          ```python
+          import requests
+
+          r = requests.get(
+              "https://api.github.com/search/repositories",
+              params={"q": "language:python", "sort": "stars"},    # ?q=...&sort=...
+              headers={"Accept": "application/vnd.github+json"},
+              timeout=10,                                          # ВСЕГДА указывайте
+          )
+          r.status_code          # 200
+          r.raise_for_status()   # исключение для 4xx/5xx
+          data = r.json()
+          r.headers["Content-Type"]
+          ```
+
+          ## Отправка данных
+
+          ```python
+          requests.post(url, json={"name": "Аня"})            # JSON-тело
+          requests.post(url, data={"login": "a"})             # форма
+          requests.post(url, files={"file": open("a.png", "rb")})
+          requests.put(url, json=...); requests.delete(url)
+          ```
+
+          ## Session
+
+          ```python
+          with requests.Session() as s:
+              s.headers["Authorization"] = f"Bearer {token}"
+              s.get(url1)    # заголовки, cookies и TCP-соединения переиспользуются
+              s.get(url2)
+          ```
+
+          ## Обработка ошибок
+
+          ```python
+          try:
+              r = requests.get(url, timeout=5)
+              r.raise_for_status()
+          except requests.Timeout:
+              ...
+          except requests.HTTPError as e:
+              print(e.response.status_code)
+          except requests.RequestException:      # базовый класс всех ошибок requests
+              ...
+          ```
+
+          ## Повторы
+
+          ```python
+          from requests.adapters import HTTPAdapter
+          from urllib3.util.retry import Retry
+          s.mount("https://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=0.5,
+                                                            status_forcelist=[502, 503, 504])))
+          ```
+
+          Секреты (токены API) храните в переменных окружения: `os.environ["API_TOKEN"]`, а не в коде.
+        practice:
+          - type: choice
+            q: Почему важно передавать `timeout`?
+            options: ["Ускоряет запрос", "Без него запрос может зависнуть навсегда", "Обязательный аргумент", "Для кэширования"]
+            answer: 1
+          - type: fill
+            q: Отправьте JSON и проверьте статус
+            code: |
+              r = requests.post(url, ___={"title": "Задача"}, timeout=5)
+              r.___()
+            answers: [json, raise_for_status]
+          - type: choice
+            q: "Во что превратится `params={\"q\": \"кот\", \"page\": 2}`?"
+            options: ["Тело запроса JSON", "Строка запроса ?q=кот&page=2 (URL-кодированная)", "Заголовки", "Cookies"]
+            answer: 1
+          - type: choice
+            q: Где хранить токен API?
+            options: ["В коде", "В переменной окружения или менеджере секретов", "В README", "В комментарии"]
+            answer: 1
+        homework:
+          task: |
+            Напишите клиент `GitHubClient` на `requests.Session`: методы `get_user(login)`, `list_repos(login)` с поддержкой пагинации (параметр `page`, пока не вернётся пустой список), `top_languages(login)`. Токен — из переменной окружения `GITHUB_TOKEN` (опционально). Обработайте 404 и rate limit (403/429).
+          checklist:
+            - Одна Session на клиент
+            - Пагинация работает
+          solution: |
+            import os
+            from collections import Counter
+            import requests
+
+            class GitHubClient:
+                BASE = "https://api.github.com"
+                def __init__(self):
+                    self.s = requests.Session()
+                    if token := os.getenv("GITHUB_TOKEN"):
+                        self.s.headers["Authorization"] = f"Bearer {token}"
+                def _get(self, path, **params):
+                    r = self.s.get(self.BASE + path, params=params, timeout=10)
+                    if r.status_code == 404:
+                        raise LookupError(path)
+                    if r.status_code in (403, 429):
+                        raise RuntimeError("Rate limit")
+                    r.raise_for_status()
+                    return r.json()
+                def get_user(self, login):
+                    return self._get(f"/users/{login}")
+                def list_repos(self, login):
+                    page, repos = 1, []
+                    while batch := self._get(f"/users/{login}/repos", per_page=100, page=page):
+                        repos += batch; page += 1
+                    return repos
+                def top_languages(self, login):
+                    return Counter(r["language"] for r in self.list_repos(login) if r["language"]).most_common(3)
+
+            print(GitHubClient().top_languages("gvanrossum"))
+
+      - id: py-11-03
+        title: FastAPI — первое API
+        minutes: 30
+        xp: 35
+        theory: |
+          **FastAPI** — современный асинхронный фреймворк: высокая скорость, валидация через Pydantic, автоматическая документация Swagger.
+
+          ```
+          pip install "fastapi[standard]"
+          ```
+
+          ```python
+          # main.py
+          from fastapi import FastAPI, HTTPException, status
+          from pydantic import BaseModel
+
+          app = FastAPI(title="Tasks API")
+
+          class TaskIn(BaseModel):
+              title: str
+              done: bool = False
+
+          class Task(TaskIn):
+              id: int
+
+          tasks: dict[int, Task] = {}
+
+          @app.get("/tasks")
+          def list_tasks(done: bool | None = None, limit: int = 20) -> list[Task]:   # query-параметры
+              items = [t for t in tasks.values() if done is None or t.done == done]
+              return items[:limit]
+
+          @app.get("/tasks/{task_id}")
+          def get_task(task_id: int) -> Task:                 # path-параметр, автоматически int
+              if task_id not in tasks:
+                  raise HTTPException(status_code=404, detail="Задача не найдена")
+              return tasks[task_id]
+
+          @app.post("/tasks", status_code=status.HTTP_201_CREATED)
+          def create_task(data: TaskIn) -> Task:              # тело запроса валидируется моделью
+              task = Task(id=len(tasks) + 1, **data.model_dump())
+              tasks[task.id] = task
+              return task
+
+          @app.delete("/tasks/{task_id}", status_code=204)
+          def delete_task(task_id: int) -> None:
+              tasks.pop(task_id, None)
+          ```
+
+          Запуск: `fastapi dev main.py` → документация на `http://127.0.0.1:8000/docs`.
+
+          ## Dependency Injection
+
+          ```python
+          from fastapi import Depends
+
+          def get_db():
+              db = SessionLocal()
+              try:
+                  yield db
+              finally:
+                  db.close()
+
+          @app.get("/users/{uid}")
+          def get_user(uid: int, db: Session = Depends(get_db)): ...
+          ```
+
+          Обработчики могут быть `async def` — тогда внутри используйте только асинхронные библиотеки.
+        practice:
+          - type: fill
+            q: Объявите эндпоинт получения задачи по id
+            code: |
+              @app.___("/tasks/{task_id}")
+              def get_task(task_id: ___):
+                  ...
+            answers: [get, int]
+          - type: choice
+            q: "Что вернёт FastAPI, если в POST прислать `{\"title\": 123, \"done\": \"maybe\"}` для модели TaskIn?"
+            options: ["500", "422 с описанием ошибок валидации", "200", "404"]
+            answer: 1
+          - type: choice
+            q: Где FastAPI автоматически генерирует документацию?
+            options: ["`/admin`", "`/docs`", "`/help`", "Нигде"]
+            answer: 1
+          - type: choice
+            q: Как вернуть 404 из обработчика?
+            options: ["`return 404`", "`raise HTTPException(status_code=404)`", "`print(404)`", "`abort()`"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте на FastAPI API «Заметки»: CRUD (`GET /notes`, `GET /notes/{id}`, `POST`, `PATCH`, `DELETE`), фильтр по тегу и поиск по тексту (`?q=`), пагинация (`skip`, `limit`). Хранение — в памяти. Проверьте все эндпоинты через `/docs`.
+          checklist:
+            - Правильные коды ответа (201, 204, 404)
+            - PATCH обновляет только переданные поля
+          solution: |
+            from fastapi import FastAPI, HTTPException
+            from pydantic import BaseModel
+
+            app = FastAPI()
+
+            class NoteIn(BaseModel):
+                text: str
+                tags: list[str] = []
+
+            class NotePatch(BaseModel):
+                text: str | None = None
+                tags: list[str] | None = None
+
+            class Note(NoteIn):
+                id: int
+
+            notes: dict[int, Note] = {}
+            counter = 0
+
+            @app.get("/notes")
+            def list_notes(tag: str | None = None, q: str | None = None, skip: int = 0, limit: int = 20) -> list[Note]:
+                res = [n for n in notes.values()
+                       if (tag is None or tag in n.tags) and (q is None or q.lower() in n.text.lower())]
+                return res[skip:skip + limit]
+
+            @app.post("/notes", status_code=201)
+            def create(data: NoteIn) -> Note:
+                global counter
+                counter += 1
+                notes[counter] = Note(id=counter, **data.model_dump())
+                return notes[counter]
+
+            @app.patch("/notes/{nid}")
+            def update(nid: int, data: NotePatch) -> Note:
+                if nid not in notes:
+                    raise HTTPException(404, "Not found")
+                notes[nid] = notes[nid].model_copy(update=data.model_dump(exclude_unset=True))
+                return notes[nid]
+
+            @app.delete("/notes/{nid}", status_code=204)
+            def delete(nid: int) -> None:
+                if notes.pop(nid, None) is None:
+                    raise HTTPException(404, "Not found")
+
+      - id: py-11-04
+        title: Pydantic и валидация
+        minutes: 25
+        xp: 30
+        theory: |
+          **Pydantic v2** — валидация и сериализация данных на основе аннотаций типов. Основа FastAPI, но полезен и сам по себе: конфиги, парсинг JSON из внешних API.
+
+          ```python
+          from datetime import date
+          from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
+          class UserCreate(BaseModel):
+              name: str = Field(min_length=2, max_length=50)
+              email: EmailStr                               # pip install "pydantic[email]"
+              age: int = Field(ge=14, le=120)
+              tags: list[str] = []
+              birthday: date | None = None
+
+              @field_validator("name")
+              @classmethod
+              def strip_name(cls, v: str) -> str:
+                  return v.strip().title()
+
+          class PasswordChange(BaseModel):
+              password: str
+              confirm: str
+
+              @model_validator(mode="after")
+              def passwords_match(self):
+                  if self.password != self.confirm:
+                      raise ValueError("Пароли не совпадают")
+                  return self
+          ```
+
+          ## Использование
+
+          ```python
+          u = UserCreate(name=" анна ", email="a@x.ru", age="25")   # "25" → 25 (приведение)
+          u.name                       # 'Анна'
+          u.model_dump()               # → dict
+          u.model_dump_json()          # → JSON-строка
+          UserCreate.model_validate({"name": "Bob", ...})   # из словаря
+          UserCreate.model_validate_json('{"name": ...}')   # из JSON
+
+          from pydantic import ValidationError
+          try:
+              UserCreate(name="A", email="bad", age=5)
+          except ValidationError as e:
+              print(e.errors())        # список всех ошибок с путями к полям
+          ```
+
+          ## Разделение схем
+
+          Хорошая практика — отдельные модели для входа и выхода: `UserCreate` (с паролем), `UserUpdate` (все поля необязательные), `UserOut` (без пароля). В FastAPI: `response_model=UserOut`. Для чтения из ORM: `model_config = ConfigDict(from_attributes=True)`.
+
+          ## Настройки приложения
+
+          ```python
+          from pydantic_settings import BaseSettings
+          class Settings(BaseSettings):
+              database_url: str
+              debug: bool = False
+          settings = Settings()    # читает переменные окружения и .env
+          ```
+        practice:
+          - type: choice
+            q: Что произойдёт при `UserCreate(age="25", ...)`, где age — int?
+            options: ["ValidationError", "Строка приведётся к 25", "age останется строкой", "TypeError"]
+            answer: 1
+          - type: fill
+            q: Ограничьте возраст диапазоном 18–100
+            code: |
+              age: int = Field(___=18, ___=100)
+            answers: [ge, le]
+          - type: choice
+            q: Как получить словарь из модели в Pydantic v2?
+            options: ["`.dict()`", "`.model_dump()`", "`.to_dict()`", "`dict(model)` всегда"]
+            answer: 1
+          - type: choice
+            q: Зачем отдельная модель UserOut?
+            options: ["Для скорости", "Чтобы не вернуть клиенту лишние поля, например хеш пароля", "Обязательно в Pydantic", "Для миграций"]
+            answer: 1
+        homework:
+          task: |
+            Опишите модели для регистрации: `RegisterIn` (email, пароль ≥ 8 символов с цифрой и буквой, подтверждение, телефон в формате +7XXXXXXXXXX, дата рождения — старше 14 лет), `UserOut` (без пароля). Добавьте `Settings` на pydantic-settings с `DATABASE_URL` и `SECRET_KEY` из `.env`.
+          checklist:
+            - field_validator и model_validator
+            - Понятные сообщения ошибок
+          solution: |
+            import re
+            from datetime import date
+            from pydantic import BaseModel, EmailStr, field_validator, model_validator
+            from pydantic_settings import BaseSettings, SettingsConfigDict
+
+            class RegisterIn(BaseModel):
+                email: EmailStr
+                password: str
+                confirm: str
+                phone: str
+                birthday: date
+
+                @field_validator("password")
+                @classmethod
+                def strong(cls, v):
+                    if len(v) < 8 or not re.search(r"\d", v) or not re.search(r"[A-Za-zА-Яа-я]", v):
+                        raise ValueError("Минимум 8 символов, буквы и цифры")
+                    return v
+
+                @field_validator("phone")
+                @classmethod
+                def phone_fmt(cls, v):
+                    if not re.fullmatch(r"\+7\d{10}", v):
+                        raise ValueError("Формат +7XXXXXXXXXX")
+                    return v
+
+                @model_validator(mode="after")
+                def check(self):
+                    if self.password != self.confirm:
+                        raise ValueError("Пароли не совпадают")
+                    if (date.today() - self.birthday).days < 14 * 365.25:
+                        raise ValueError("Нужно быть старше 14 лет")
+                    return self
+
+            class UserOut(BaseModel):
+                id: int
+                email: EmailStr
+                phone: str
+
+            class Settings(BaseSettings):
+                model_config = SettingsConfigDict(env_file=".env")
+                database_url: str
+                secret_key: str
+
+      - id: py-11-05
+        title: Аутентификация JWT
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Аутентификация и авторизация
+
+          - **Аутентификация** — кто ты? (логин и пароль → токен);
+          - **Авторизация** — что тебе можно? (роли, права).
+
+          ## Хранение паролей
+
+          Пароли **никогда** не хранят открыто и не шифруют обратимо — только хеш с солью медленным алгоритмом (bcrypt, argon2):
+
+          ```python
+          from passlib.context import CryptContext
+          pwd = CryptContext(schemes=["bcrypt"])
+          hashed = pwd.hash("secret123")
+          pwd.verify("secret123", hashed)   # True
+          ```
+
+          ## JWT (JSON Web Token)
+
+          Строка из трёх частей `header.payload.signature` в base64. Payload **не зашифрован** (виден всем), но подписан секретным ключом — подделать нельзя.
+
+          ```python
+          from datetime import datetime, timedelta, timezone
+          import jwt                                   # pip install pyjwt
+
+          SECRET = "из переменной окружения"
+
+          def create_token(user_id: int) -> str:
+              payload = {"sub": str(user_id), "exp": datetime.now(timezone.utc) + timedelta(minutes=30)}
+              return jwt.encode(payload, SECRET, algorithm="HS256")
+
+          def decode_token(token: str) -> int:
+              data = jwt.decode(token, SECRET, algorithms=["HS256"])   # проверит подпись и срок
+              return int(data["sub"])
+          ```
+
+          ## В FastAPI
+
+          ```python
+          from fastapi import Depends, HTTPException
+          from fastapi.security import OAuth2PasswordBearer
+
+          oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+          def current_user(token: str = Depends(oauth2), db=Depends(get_db)) -> User:
+              try:
+                  user_id = decode_token(token)
+              except jwt.PyJWTError:
+                  raise HTTPException(401, "Invalid token", headers={"WWW-Authenticate": "Bearer"})
+              return db.get(User, user_id)
+
+          @app.get("/me")
+          def me(user: User = Depends(current_user)):
+              return user
+          ```
+
+          Клиент передаёт заголовок `Authorization: Bearer <token>`. Обычно выдают короткий **access**-токен (15–30 мин) и долгий **refresh**-токен для его обновления. Никогда не кладите в payload пароли и секреты.
+        practice:
+          - type: choice
+            q: Как правильно хранить пароли?
+            options: ["Открытым текстом", "Зашифровать AES", "Хеш bcrypt/argon2 с солью", "MD5"]
+            answer: 2
+          - type: choice
+            q: Можно ли прочитать payload JWT без секретного ключа?
+            options: ["Нет, он зашифрован", "Да, он только подписан, не зашифрован", "Только сервер", "Только с паролем"]
+            answer: 1
+          - type: choice
+            q: Чем отличаются 401 и 403?
+            options: ["Ничем", "401 — не аутентифицирован, 403 — аутентифицирован, но нет прав", "403 — не найдено", "401 — ошибка сервера"]
+            answer: 1
+          - type: fill
+            q: Заголовок для передачи токена
+            code: |
+              Authorization: ___ eyJhbGciOiJIUzI1NiJ9...
+            answers: [Bearer]
+        homework:
+          task: |
+            Добавьте в API «Заметки» регистрацию (`POST /auth/register`), вход (`POST /auth/login`, возвращает JWT), эндпоинт `/me` и сделайте так, чтобы каждый пользователь видел и менял только свои заметки. Пароли хешируются bcrypt, секрет — из переменной окружения.
+          checklist:
+            - Без токена — 401, чужая заметка — 404 или 403
+            - Токен имеет срок жизни
+          solution: |
+            from fastapi import Depends, FastAPI, HTTPException
+            from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+            from passlib.context import CryptContext
+            import jwt, os
+            from datetime import datetime, timedelta, timezone
+
+            app = FastAPI()
+            SECRET = os.environ.get("SECRET_KEY", "dev-secret")
+            pwd = CryptContext(schemes=["bcrypt"])
+            oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login")
+            users: dict[str, str] = {}               # username -> hash
+            notes: list[dict] = []
+
+            @app.post("/auth/register", status_code=201)
+            def register(form: OAuth2PasswordRequestForm = Depends()):
+                if form.username in users:
+                    raise HTTPException(409, "Уже существует")
+                users[form.username] = pwd.hash(form.password)
+
+            @app.post("/auth/login")
+            def login(form: OAuth2PasswordRequestForm = Depends()):
+                h = users.get(form.username)
+                if not h or not pwd.verify(form.password, h):
+                    raise HTTPException(401, "Неверные данные")
+                exp = datetime.now(timezone.utc) + timedelta(minutes=30)
+                return {"access_token": jwt.encode({"sub": form.username, "exp": exp}, SECRET, "HS256"),
+                        "token_type": "bearer"}
+
+            def current_user(token: str = Depends(oauth2)) -> str:
+                try:
+                    return jwt.decode(token, SECRET, algorithms=["HS256"])["sub"]
+                except jwt.PyJWTError:
+                    raise HTTPException(401, "Invalid token")
+
+            @app.get("/notes")
+            def my_notes(user: str = Depends(current_user)):
+                return [n for n in notes if n["owner"] == user]
+
+      - id: py-11-06
+        title: Django — обзор и ORM
+        minutes: 30
+        xp: 35
+        theory: |
+          **Django** — «фреймворк с батарейками»: ORM, миграции, админка, аутентификация, формы, шаблоны — всё из коробки. Отлично подходит для контентных сайтов, CRM, админ-панелей.
+
+          ## Старт
+
+          ```
+          pip install django
+          django-admin startproject config .
+          python manage.py startapp shop
+          python manage.py runserver
+          ```
+
+          Проект состоит из **приложений** (apps). Архитектура MTV: **M**odel — данные, **T**emplate — HTML, **V**iew — обработчик запроса.
+
+          ## Модели и ORM
+
+          ```python
+          # shop/models.py
+          from django.db import models
+
+          class Category(models.Model):
+              name = models.CharField(max_length=100)
+
+          class Product(models.Model):
+              name = models.CharField(max_length=200)
+              price = models.DecimalField(max_digits=10, decimal_places=2)
+              category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="products")
+              created = models.DateTimeField(auto_now_add=True)
+
+              def __str__(self):
+                  return self.name
+          ```
+
+          ```
+          python manage.py makemigrations
+          python manage.py migrate
+          ```
+
+          ## Запросы
+
+          ```python
+          Product.objects.create(name="Мышь", price=990, category=cat)
+          Product.objects.filter(price__lt=1000, name__icontains="мыш").order_by("-price")
+          Product.objects.get(pk=1)
+          Product.objects.exclude(category__name="Архив").count()
+          from django.db.models import Avg, Count
+          Category.objects.annotate(n=Count("products")).filter(n__gt=5)
+          Product.objects.select_related("category")        # JOIN — против N+1 для FK
+          Category.objects.prefetch_related("products")     # отдельный запрос для обратных связей
+          ```
+
+          QuerySet ленивый — запрос выполняется при переборе, срезе или `list()`.
+
+          ## Админка
+
+          ```python
+          # shop/admin.py
+          from django.contrib import admin
+          admin.site.register(Product)
+          ```
+
+          `python manage.py createsuperuser` → готовая админ-панель на `/admin`. Для API используют **Django REST Framework**.
+        practice:
+          - type: fill
+            q: Найдите товары дешевле 500
+            code: |
+              Product.objects.___(price___lt=500)
+            answers: [filter, "__"]
+          - type: choice
+            q: Какие команды создают и применяют миграции в Django?
+            options: ["`migrate` и `upgrade`", "`makemigrations` и `migrate`", "`alembic upgrade`", "`createdb`"]
+            answer: 1
+          - type: choice
+            q: Как избежать N+1 при доступе к `product.category` в цикле?
+            options: ["`select_related(\"category\")`", "`.all()`", "`.count()`", "Ничего не делать"]
+            answer: 0
+          - type: choice
+            q: Когда выполняется SQL-запрос QuerySet?
+            options: ["Сразу при вызове filter()", "При переборе/вычислении результата (лениво)", "Никогда", "При импорте модели"]
+            answer: 1
+        homework:
+          task: |
+            Создайте Django-проект «Блог»: модели `Post` (заголовок, текст, автор — `User`, дата, опубликован) и `Comment`. Зарегистрируйте их в админке с поиском и фильтрами (`ModelAdmin`). Сделайте view со списком опубликованных постов (с количеством комментариев через annotate) и шаблон.
+          checklist:
+            - Миграции созданы и применены
+            - В списке постов нет N+1
+          solution: |
+            # blog/models.py
+            from django.conf import settings
+            from django.db import models
+
+            class Post(models.Model):
+                title = models.CharField(max_length=200)
+                text = models.TextField()
+                author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+                created = models.DateTimeField(auto_now_add=True)
+                published = models.BooleanField(default=False)
+
+            class Comment(models.Model):
+                post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
+                text = models.TextField()
+
+            # blog/admin.py
+            from django.contrib import admin
+            @admin.register(Post)
+            class PostAdmin(admin.ModelAdmin):
+                list_display = ("title", "author", "published", "created")
+                list_filter = ("published",)
+                search_fields = ("title", "text")
+
+            # blog/views.py
+            from django.db.models import Count
+            from django.shortcuts import render
+            def post_list(request):
+                posts = (Post.objects.filter(published=True).select_related("author")
+                         .annotate(n_comments=Count("comments")).order_by("-created"))
+                return render(request, "blog/list.html", {"posts": posts})

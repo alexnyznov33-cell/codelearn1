@@ -1,0 +1,1015 @@
+id: java
+modules:
+  - id: java-m2
+    title: ООП в Java
+    level: Junior
+    lessons:
+      - id: java-02-01
+        title: Классы и объекты, конструкторы
+        minutes: 25
+        xp: 30
+        theory: |
+          В Java весь код живёт внутри классов. **Класс** описывает состояние (поля) и поведение (методы), **объект** создаётся через `new` и живёт в куче; переменная хранит ссылку.
+
+          ```java
+          public class Dog {
+              String name;          // поля
+              int age;
+
+              public Dog(String name, int age) {   // конструктор
+                  this.name = name;                // this — текущий объект
+                  this.age = age;
+              }
+
+              public Dog(String name) {
+                  this(name, 1);                   // вызов другого конструктора — первой строкой
+              }
+
+              void bark() {
+                  System.out.println(name + ": Гав!");
+              }
+          }
+
+          Dog rex = new Dog("Рекс", 3);
+          Dog puppy = new Dog("Бим");
+          rex.bark();
+          var d = new Dog("Шарик");    // var — вывод типа (Java 10+)
+          ```
+
+          ## Правила
+
+          - Если не объявлен ни один конструктор, компилятор создаёт пустой конструктор по умолчанию. Если объявлен хотя бы один — конструктора без параметров больше нет.
+          - Поля по умолчанию: `0`, `false`, `null`. Локальные переменные — **не** инициализируются (ошибка компиляции при чтении).
+          - Один публичный класс на файл, имя файла = имя класса (`Dog.java`).
+          - Имена классов — `PascalCase`, методы и поля — `camelCase`, константы — `UPPER_SNAKE_CASE`.
+
+          ## Ссылки
+
+          ```java
+          Dog a = new Dog("A", 1);
+          Dog b = a;            // копируется ссылка
+          b.age = 10;
+          System.out.println(a.age);   // 10 — это один объект
+          Dog c = null;
+          c.bark();             // NullPointerException
+          ```
+
+          ## Передача параметров
+
+          В Java всё передаётся **по значению**. Для объектов по значению передаётся ссылка: метод может изменить поля объекта, но не может заставить переменную вызывающего указывать на другой объект.
+
+          ```java
+          static void rename(Dog d) { d.name = "Новое"; }    // изменит объект
+          static void replace(Dog d) { d = new Dog("X"); }   // снаружи ничего не изменится
+          ```
+
+          ## Блоки инициализации и порядок
+
+          Поля с инициализаторами и блоки `{ ... }` выполняются перед телом конструктора. Статические блоки `static { ... }` — один раз при загрузке класса.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class Box { int v; }
+              Box a = new Box();
+              Box b = a;
+              b.v = 7;
+              System.out.println(a.v);
+            answer: "7"
+          - type: fill
+            q: Вызовите другой конструктор этого же класса
+            code: |
+              public Point() {
+                  ___(0, 0);
+              }
+            answers: ["this"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              class C { int n; boolean f; String s; }
+              C c = new C();
+              System.out.println(c.n + " " + c.f + " " + c.s);
+            answer: 0 false null
+          - type: output
+            q: Что выведет код?
+            code: |
+              static void change(int[] arr, int x) { arr[0] = 9; x = 9; }
+              int[] a = {1};
+              int x = 1;
+              change(a, x);
+              System.out.println(a[0] + " " + x);
+            answer: 9 1
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              class User {
+                  String name;
+                  User(String name) { this.name = name; }
+              }
+              User u = new User();
+            bugLine: 5
+            explain: Объявлен конструктор с параметром, поэтому конструктора без параметров нет.
+        homework:
+          task: |
+            Создайте класс `Book` (title, author, year, pages) с тремя конструкторами (полный, без pages → 0, только title → "Неизвестен", текущий год), методами `isOld()` (старше 50 лет) и `info()`. Создайте массив из 5 книг и выведите информацию о старых.
+          checklist:
+            - Конструкторы вызывают друг друга через this(...)
+            - Год берётся из java.time.Year.now()
+            - Используется цикл for-each
+          solution: |
+            import java.time.Year;
+
+            public class Book {
+                String title, author;
+                int year, pages;
+
+                public Book(String title, String author, int year, int pages) {
+                    this.title = title; this.author = author; this.year = year; this.pages = pages;
+                }
+                public Book(String title, String author, int year) { this(title, author, year, 0); }
+                public Book(String title) { this(title, "Неизвестен", Year.now().getValue()); }
+
+                boolean isOld() { return Year.now().getValue() - year > 50; }
+                String info() { return "«" + title + "», " + author + ", " + year + (pages > 0 ? ", " + pages + " стр." : ""); }
+
+                public static void main(String[] args) {
+                    Book[] books = {
+                        new Book("Мастер и Маргарита", "Булгаков", 1967, 480),
+                        new Book("Гарри Поттер", "Роулинг", 1997),
+                        new Book("Черновик"),
+                        new Book("Война и мир", "Толстой", 1869, 1300),
+                        new Book("Чистый код", "Мартин", 2008, 464)
+                    };
+                    for (Book b : books) if (b.isOld()) System.out.println(b.info());
+                }
+            }
+      - id: java-02-02
+        title: Инкапсуляция, геттеры и сеттеры
+        minutes: 25
+        xp: 30
+        theory: |
+          **Инкапсуляция** — скрываем поля (`private`) и даём доступ через методы, которые соблюдают правила (инварианты).
+
+          ```java
+          public class BankAccount {
+              private final String owner;      // final — присваивается один раз
+              private double balance;
+
+              public BankAccount(String owner) {
+                  this.owner = Objects.requireNonNull(owner);
+              }
+
+              public String getOwner() { return owner; }       // геттер
+              public double getBalance() { return balance; }
+              // сеттера для balance нет — менять только через операции
+
+              public void deposit(double sum) {
+                  if (sum <= 0) throw new IllegalArgumentException("Сумма должна быть > 0");
+                  balance += sum;
+              }
+
+              public boolean withdraw(double sum) {
+                  if (sum > balance) return false;
+                  balance -= sum;
+                  return true;
+              }
+          }
+          ```
+
+          ## Модификаторы доступа
+
+          | Модификатор | Класс | Пакет | Наследник | Все |
+          |---|---|---|---|---|
+          | `private` | ✅ | | | |
+          | (нет, package-private) | ✅ | ✅ | | |
+          | `protected` | ✅ | ✅ | ✅ | |
+          | `public` | ✅ | ✅ | ✅ | ✅ |
+
+          ## Соглашения JavaBeans
+
+          `getName()` / `setName(...)`, для boolean — `isActive()`. Многие фреймворки (Spring, Jackson, Hibernate) используют эти имена через рефлексию.
+
+          ## Не генерируйте сеттеры бездумно
+
+          Сеттер на каждое поле = публичное поле с лишним кодом. Давайте методы с бизнес-смыслом: `account.deposit(100)` вместо `account.setBalance(account.getBalance() + 100)`.
+
+          ## Неизменяемые объекты
+
+          ```java
+          public final class Money {
+              private final long amount;
+              private final String currency;
+              public Money(long amount, String currency) { this.amount = amount; this.currency = currency; }
+              public Money add(Money o) { return new Money(amount + o.amount, currency); }  // новый объект
+              public long getAmount() { return amount; }
+          }
+          ```
+
+          Неизменяемые объекты потокобезопасны, их можно спокойно делиться и использовать как ключи `HashMap`. Пример из JDK — `String`, `LocalDate`, `BigDecimal`.
+
+          ## Защитное копирование
+
+          ```java
+          private final List<String> tags;
+          public Post(List<String> tags) { this.tags = List.copyOf(tags); }   // чтобы снаружи не изменили
+          public List<String> getTags() { return tags; }                     // уже неизменяемый
+          ```
+
+          > 💡 Lombok (`@Getter`, `@Setter`, `@Value`) и `record` (урок 6) убирают шаблонный код.
+        practice:
+          - type: choice
+            q: Какой доступ у поля без модификатора?
+            options: ["public", "private", "package-private (внутри пакета)", "protected"]
+            answer: 2
+          - type: fill
+            q: Сделайте поле, которое можно присвоить только один раз
+            code: |
+              private ___ String id;
+            answers: ["final"]
+          - type: choice
+            q: Как по соглашению называется геттер для boolean active?
+            options: ["getActive()", "isActive()", "active()", "hasActive()"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              List<String> src = new ArrayList<>(List.of("a"));
+              List<String> copy = List.copyOf(src);
+              src.add("b");
+              System.out.println(copy.size());
+            answer: "1"
+          - type: bug
+            q: Какая строка нарушает инкапсуляцию (внешний код сможет изменить внутренний список)?
+            code: |
+              public class Team {
+                  private final List<String> members = new ArrayList<>();
+                  public void add(String m) { members.add(m); }
+                  public List<String> getMembers() { return members; }
+              }
+            bugLine: 4
+            fix: return List.copyOf(members); или Collections.unmodifiableList(members)
+        homework:
+          task: |
+            Создайте класс `Student` с приватными полями name, group, список оценок. Валидация: имя не пустое, оценки 1–5. Методы: `addGrade(int)`, `getAverage()`, `getGrades()` (неизменяемая копия), `isExcellent()` (средний ≥ 4.5). Сделайте неизменяемый класс `StudentId` (код + год поступления) и используйте его в Student.
+          checklist:
+            - Все поля private
+            - Невалидные данные → IllegalArgumentException
+            - Список оценок нельзя изменить снаружи
+          solution: |
+            import java.util.*;
+
+            public final class StudentId {
+                private final String code; private final int year;
+                public StudentId(String code, int year) { this.code = Objects.requireNonNull(code); this.year = year; }
+                public String getCode() { return code; }
+                public int getYear() { return year; }
+            }
+
+            public class Student {
+                private final StudentId id;
+                private final String name;
+                private final List<Integer> grades = new ArrayList<>();
+
+                public Student(StudentId id, String name) {
+                    if (name == null || name.isBlank()) throw new IllegalArgumentException("Пустое имя");
+                    this.id = id; this.name = name;
+                }
+                public void addGrade(int g) {
+                    if (g < 1 || g > 5) throw new IllegalArgumentException("Оценка 1–5");
+                    grades.add(g);
+                }
+                public double getAverage() { return grades.stream().mapToInt(Integer::intValue).average().orElse(0); }
+                public List<Integer> getGrades() { return List.copyOf(grades); }
+                public boolean isExcellent() { return getAverage() >= 4.5; }
+                public String getName() { return name; }
+                public StudentId getId() { return id; }
+            }
+      - id: java-02-03
+        title: Наследование и super
+        minutes: 30
+        xp: 35
+        theory: |
+          Наследование: `class Dog extends Animal`. В Java **одиночное** наследование классов (один родитель), все классы неявно наследуют `java.lang.Object`.
+
+          ```java
+          public class Animal {
+              protected String name;
+
+              public Animal(String name) { this.name = name; }
+
+              public String sound() { return "..."; }
+
+              public String describe() { return name + " говорит " + sound(); }
+          }
+
+          public class Dog extends Animal {
+              private final String breed;
+
+              public Dog(String name, String breed) {
+                  super(name);                 // вызов конструктора родителя — первой строкой
+                  this.breed = breed;
+              }
+
+              @Override
+              public String sound() { return "Гав"; }
+
+              @Override
+              public String describe() {
+                  return super.describe() + " (порода " + breed + ")";   // вызов версии родителя
+              }
+          }
+          ```
+
+          ## Что наследуется
+
+          - Все `public` и `protected` члены; package-private — если в том же пакете.
+          - `private`-поля существуют в объекте, но недоступны напрямую.
+          - Конструкторы **не** наследуются. Если родитель не имеет конструктора без параметров, наследник обязан вызвать `super(...)` явно.
+
+          ## Порядок инициализации
+
+          Сначала полностью создаётся родительская часть (конструктор `Object` → ... → `Animal`), потом наследник.
+
+          ## final
+
+          - `final class String` — от него нельзя наследоваться.
+          - `final` метод — нельзя переопределить.
+
+          ## sealed-классы (Java 17)
+
+          Ограничивают, кто может наследоваться:
+
+          ```java
+          public sealed class Shape permits Circle, Square, Triangle { }
+          public final class Circle extends Shape { }
+          public non-sealed class Square extends Shape { }
+          ```
+
+          Полезно для pattern matching в `switch` (компилятор знает все варианты).
+
+          ## Наследование vs композиция
+
+          Наследование — сильная связь («является»). Если нужно лишь переиспользовать поведение — используйте **композицию** («имеет»):
+
+          ```java
+          class Car {
+              private final Engine engine = new Engine();   // композиция
+              void start() { engine.start(); }
+          }
+          ```
+
+          Правило «Effective Java»: предпочитайте композицию наследованию.
+
+          ## instanceof с шаблоном (Java 16)
+
+          ```java
+          if (animal instanceof Dog d) {
+              System.out.println(d.getBreed());
+          }
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A { A() { System.out.print("A"); } }
+              class B extends A { B() { System.out.print("B"); } }
+              class C extends B { C() { System.out.print("C"); } }
+              new C();
+            answer: ABC
+          - type: fill
+            q: Вызовите конструктор родителя
+            code: |
+              public Cat(String name) {
+                  ___(name);
+              }
+            answers: ["super"]
+          - type: choice
+            q: Сколько классов может расширять (extends) класс в Java?
+            options: ["Один", "Два", "Сколько угодно", "Ни одного"]
+            answer: 0
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              class Animal {
+                  Animal(String name) { }
+              }
+              class Fish extends Animal {
+                  Fish() { System.out.println("рыба"); }
+              }
+            bugLine: 5
+            fix: Fish() { super("рыба"); ... }
+            explain: У Animal нет конструктора без параметров, а неявный super() требует его.
+          - type: choice
+            q: Что выбрать, если класс Car должен использовать функциональность Engine?
+            options: ["Car extends Engine", "Композиция: поле Engine внутри Car", "Engine extends Car", "Скопировать код"]
+            answer: 1
+        homework:
+          task: |
+            Иерархия сотрудников: `Employee` (name, baseSalary, `calculateSalary()`), `Manager` (бонус 20% + 5000 за каждого подчинённого, список подчинённых), `Developer` (уровень Junior/Middle/Senior — коэффициент), `final class Intern`. Метод `describe()` в наследниках расширяет родительский через super. Выведите зарплаты всех в списке.
+          checklist:
+            - Все конструкторы вызывают super(...)
+            - Используется @Override
+            - Intern нельзя наследовать
+          solution: |
+            import java.util.*;
+
+            class Employee {
+                protected final String name; protected final double baseSalary;
+                Employee(String name, double baseSalary) { this.name = name; this.baseSalary = baseSalary; }
+                double calculateSalary() { return baseSalary; }
+                String describe() { return name + ": " + calculateSalary(); }
+            }
+            class Manager extends Employee {
+                private final List<Employee> team = new ArrayList<>();
+                Manager(String n, double s) { super(n, s); }
+                void addToTeam(Employee e) { team.add(e); }
+                @Override double calculateSalary() { return baseSalary * 1.2 + team.size() * 5000; }
+                @Override String describe() { return super.describe() + " (команда: " + team.size() + ")"; }
+            }
+            class Developer extends Employee {
+                private final String level;
+                Developer(String n, double s, String level) { super(n, s); this.level = level; }
+                @Override double calculateSalary() {
+                    return baseSalary * switch (level) { case "Senior" -> 1.5; case "Middle" -> 1.2; default -> 1.0; };
+                }
+                @Override String describe() { return super.describe() + " [" + level + "]"; }
+            }
+            final class Intern extends Employee {
+                Intern(String n, double s) { super(n, s); }
+                @Override double calculateSalary() { return baseSalary * 0.5; }
+            }
+      - id: java-02-04
+        title: Полиморфизм и переопределение
+        minutes: 30
+        xp: 35
+        theory: |
+          **Полиморфизм** — один интерфейс, много реализаций. Переменная родительского типа может ссылаться на объект наследника, а вызов метода выберет версию **реального типа объекта** (динамическая диспетчеризация). В Java все нестатические, не-private, не-final методы виртуальные по умолчанию.
+
+          ```java
+          List<Animal> zoo = List.of(new Dog("Рекс"), new Cat("Мурка"), new Animal("?"));
+          for (Animal a : zoo) {
+              System.out.println(a.sound());   // Гав, Мяу, ...
+          }
+          ```
+
+          ## Переопределение (override) — правила
+
+          - Та же сигнатура (имя + параметры).
+          - Возвращаемый тип — тот же или подтип (ковариантный возврат).
+          - Доступ — не уже, чем у родителя (`public` нельзя сделать `protected`).
+          - Нельзя бросать новые/более широкие checked-исключения.
+          - **Всегда** ставьте `@Override` — компилятор проверит, что вы действительно переопределяете.
+
+          ## Перегрузка (overload) — не путать
+
+          Методы с одним именем, но разными параметрами. Выбирается **на этапе компиляции** по статическим типам аргументов.
+
+          ```java
+          void print(Object o) { System.out.println("Object"); }
+          void print(String s) { System.out.println("String"); }
+
+          Object x = "hello";
+          print(x);        // Object — выбор по типу переменной, а не значения!
+          ```
+
+          ## Статические методы не переопределяются
+
+          ```java
+          class A { static String hi() { return "A"; } }
+          class B extends A { static String hi() { return "B"; } }   // это сокрытие (hiding)
+          A obj = new B();
+          obj.hi();        // "A" — вызов по типу переменной
+          ```
+
+          Поля тоже не полиморфны: `obj.field` берётся по типу переменной.
+
+          ## Upcasting и downcasting
+
+          ```java
+          Animal a = new Dog("Рекс");   // upcast — автоматически
+          Dog d = (Dog) a;              // downcast — явно; ClassCastException, если не Dog
+          if (a instanceof Dog dog) dog.fetch();   // безопасно
+          ```
+
+          ## Полиморфизм на практике
+
+          Код, работающий с абстракцией, не меняется при добавлении новых типов:
+
+          ```java
+          double totalArea(List<? extends Shape> shapes) {
+              double sum = 0;
+              for (Shape s : shapes) sum += s.area();
+              return sum;
+          }
+          ```
+
+          > ⚠️ Не вызывайте переопределяемые методы из конструктора: метод наследника выполнится до инициализации его полей.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A { String f() { return "A"; } }
+              class B extends A { @Override String f() { return "B"; } }
+              A x = new B();
+              System.out.println(x.f());
+            answer: B
+          - type: output
+            q: Что выведет код?
+            code: |
+              static String p(Object o) { return "O"; }
+              static String p(String s) { return "S"; }
+              Object v = "text";
+              System.out.println(p(v) + p("text"));
+            answer: OS
+            explain: Перегрузка выбирается по статическому типу на этапе компиляции.
+          - type: output
+            q: Что выведет код?
+            code: |
+              class A { String name = "A"; }
+              class B extends A { String name = "B"; }
+              A x = new B();
+              System.out.println(x.name);
+            answer: A
+            explain: Поля не полиморфны.
+          - type: choice
+            q: Что делает аннотация @Override?
+            options: ["Делает метод виртуальным", "Просит компилятор проверить, что метод действительно переопределяет родительский", "Запрещает переопределение", "Ускоряет вызов"]
+            answer: 1
+          - type: choice
+            q: Можно ли при переопределении сузить доступ с public до protected?
+            options: ["Да", "Нет", "Только для static", "Только в одном пакете"]
+            answer: 1
+        homework:
+          task: |
+            Система оплаты: базовый класс `Payment` (amount, `fee()`, `process()` печатает итог), наследники `CardPayment` (комиссия 2%), `CryptoPayment` (фиксированная 50 + 1%), `CashPayment` (0). Обработайте список платежей полиморфно, посчитайте общую комиссию. Отдельно продемонстрируйте разницу между перегрузкой и переопределением методом `log(Payment)` / `log(CardPayment)`.
+          checklist:
+            - process() не содержит instanceof/switch по типам
+            - Используется @Override
+            - Показан пример выбора перегрузки по статическому типу
+          solution: |
+            import java.util.List;
+
+            abstract class Payment {
+                protected final double amount;
+                Payment(double amount) { this.amount = amount; }
+                abstract double fee();
+                void process() { System.out.printf("%s: %.2f + комиссия %.2f%n", getClass().getSimpleName(), amount, fee()); }
+            }
+            class CardPayment extends Payment { CardPayment(double a) { super(a); } @Override double fee() { return amount * 0.02; } }
+            class CryptoPayment extends Payment { CryptoPayment(double a) { super(a); } @Override double fee() { return 50 + amount * 0.01; } }
+            class CashPayment extends Payment { CashPayment(double a) { super(a); } @Override double fee() { return 0; } }
+
+            public class Main {
+                static void log(Payment p) { System.out.println("общий лог"); }
+                static void log(CardPayment p) { System.out.println("лог карты"); }
+
+                public static void main(String[] args) {
+                    List<Payment> list = List.of(new CardPayment(1000), new CryptoPayment(5000), new CashPayment(300));
+                    double totalFee = 0;
+                    for (Payment p : list) { p.process(); totalFee += p.fee(); }
+                    System.out.println("Комиссия всего: " + totalFee);
+
+                    Payment p = new CardPayment(100);
+                    log(p);                       // "общий лог" — перегрузка по статическому типу
+                    log(new CardPayment(100));    // "лог карты"
+                }
+            }
+      - id: java-02-05
+        title: Абстрактные классы и интерфейсы
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Абстрактный класс
+
+          ```java
+          public abstract class Shape {
+              private final String name;
+              protected Shape(String name) { this.name = name; }
+
+              public abstract double area();              // без тела — обязаны реализовать
+
+              public String describe() {                  // общий код
+                  return name + ": " + String.format("%.2f", area());
+              }
+          }
+
+          public class Circle extends Shape {
+              private final double r;
+              public Circle(double r) { super("Круг"); this.r = r; }
+              @Override public double area() { return Math.PI * r * r; }
+          }
+
+          // new Shape("x");   // ❌ нельзя создать
+          ```
+
+          ## Интерфейс
+
+          Контракт без состояния. Класс может реализовать **много** интерфейсов.
+
+          ```java
+          public interface Payable {
+              double amount();                                  // public abstract по умолчанию
+              default String info() { return "К оплате: " + amount(); }   // метод по умолчанию (Java 8)
+              static Payable of(double a) { return () -> a; }   // статический метод
+              int MAX = 1_000_000;                              // public static final константа
+          }
+
+          public interface Printable { void print(); }
+
+          public class Invoice implements Payable, Printable {
+              private final double sum;
+              public Invoice(double sum) { this.sum = sum; }
+              @Override public double amount() { return sum; }
+              @Override public void print() { System.out.println(info()); }
+          }
+          ```
+
+          Интерфейс с одним абстрактным методом — **функциональный**, его можно реализовать лямбдой (`Payable p = () -> 100;`).
+
+          Если два интерфейса дают `default`-метод с одним именем — класс обязан переопределить его явно (`Payable.super.info()`).
+
+          ## Что выбрать
+
+          | | abstract class | interface |
+          |---|---|---|
+          | Наследование | одно `extends` | много `implements` |
+          | Состояние (поля) | да | только константы |
+          | Конструкторы | да | нет |
+          | Смысл | общая база, «является» | возможность, «умеет» |
+
+          **Программируйте на уровне интерфейсов:**
+
+          ```java
+          List<String> names = new ArrayList<>();   // тип переменной — интерфейс
+          Map<String, Integer> m = new HashMap<>();
+          ```
+
+          Тогда реализацию легко заменить (`LinkedList`, `TreeMap`), а в тестах — подставить мок.
+
+          ## Стандартные интерфейсы
+
+          `Comparable<T>`, `Comparator<T>`, `Iterable<T>`, `AutoCloseable`, `Runnable`, `Callable<V>`, `Serializable` (маркерный — без методов).
+        practice:
+          - type: choice
+            q: Сколько интерфейсов может реализовать класс?
+            options: ["Один", "Два", "Сколько угодно", "Ни одного, если есть extends"]
+            answer: 2
+          - type: fill
+            q: Добавьте в интерфейс метод с реализацией по умолчанию
+            code: |
+              public interface Greeter {
+                  String name();
+                  ___ String greet() { return "Привет, " + name(); }
+              }
+            answers: ["default"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              interface Size { int get(); default int twice() { return get() * 2; } }
+              Size s = () -> 21;
+              System.out.println(s.twice());
+            answer: "42"
+          - type: choice
+            q: Какие модификаторы у поля `int MAX = 10;` в интерфейсе?
+            options: ["private", "public static final", "protected", "Никаких"]
+            answer: 1
+          - type: bug
+            q: Какая строка не скомпилируется?
+            code: |
+              abstract class Vehicle {
+                  abstract int wheels();
+              }
+              class Bike extends Vehicle { int wheels() { return 2; } }
+              Vehicle v1 = new Bike();
+              Vehicle v2 = new Vehicle();
+            bugLine: 6
+            explain: Нельзя создать экземпляр абстрактного класса.
+        homework:
+          task: |
+            Сделайте систему хранения: интерфейс `Storage<T>` (save, findById → Optional, findAll, delete), абстрактный класс `AbstractStorage<T>` с общей логикой (счётчик операций, логирование), реализации `InMemoryStorage` (HashMap) и `FileStorage` (каждый объект — строка в файле). Клиентский класс `UserService` зависит только от интерфейса. Покажите замену реализации одной строкой.
+          checklist:
+            - UserService не знает о конкретной реализации
+            - Общий код — в абстрактном классе
+            - Используется Optional
+          solution: |
+            import java.util.*;
+
+            interface Identifiable { long id(); }
+
+            interface Storage<T extends Identifiable> {
+                void save(T item);
+                Optional<T> findById(long id);
+                List<T> findAll();
+                boolean delete(long id);
+            }
+
+            abstract class AbstractStorage<T extends Identifiable> implements Storage<T> {
+                protected int ops;
+                protected void log(String op) { ops++; System.out.println("[" + getClass().getSimpleName() + "] " + op + " #" + ops); }
+            }
+
+            class InMemoryStorage<T extends Identifiable> extends AbstractStorage<T> {
+                private final Map<Long, T> data = new HashMap<>();
+                public void save(T item) { log("save"); data.put(item.id(), item); }
+                public Optional<T> findById(long id) { log("find"); return Optional.ofNullable(data.get(id)); }
+                public List<T> findAll() { log("findAll"); return List.copyOf(data.values()); }
+                public boolean delete(long id) { log("delete"); return data.remove(id) != null; }
+            }
+
+            record User(long id, String name) implements Identifiable { }
+
+            class UserService {
+                private final Storage<User> storage;
+                UserService(Storage<User> storage) { this.storage = storage; }
+                void register(long id, String name) { storage.save(new User(id, name)); }
+                String nameOf(long id) { return storage.findById(id).map(User::name).orElse("не найден"); }
+            }
+
+            // var service = new UserService(new InMemoryStorage<>());   // или new FileStorage<>("users.txt")
+      - id: java-02-06
+        title: static, final, enum, record
+        minutes: 30
+        xp: 35
+        theory: |
+          ## static
+
+          Статические члены принадлежат классу, а не объекту.
+
+          ```java
+          public class Counter {
+              private static int created = 0;          // общий для всех экземпляров
+              public static final double VAT = 0.2;    // константа
+              public Counter() { created++; }
+              public static int getCreated() { return created; }
+          }
+          Counter.getCreated();
+          Math.max(1, 2);   // утилитные классы
+          ```
+
+          Из static-метода нет доступа к `this` и полям экземпляра. Статический вложенный класс (`static class Node`) не держит ссылку на внешний объект — предпочитайте его обычному вложенному.
+
+          ## final
+
+          - **переменная** — нельзя переприсвоить (`final List<String> l` — сам список менять можно!);
+          - **метод** — нельзя переопределить;
+          - **класс** — нельзя наследовать.
+
+          ## enum
+
+          Перечисление — полноценный класс с фиксированным набором экземпляров.
+
+          ```java
+          public enum Status {
+              NEW("Новый"), PAID("Оплачен"), SHIPPED("Отправлен");
+
+              private final String title;
+              Status(String title) { this.title = title; }
+              public String title() { return title; }
+
+              public Status next() {
+                  return values()[(ordinal() + 1) % values().length];
+              }
+          }
+
+          Status s = Status.valueOf("PAID");
+          System.out.println(s.title() + " " + s.ordinal() + " " + s.name());   // Оплачен 1 PAID
+          switch (s) {
+              case NEW -> System.out.println("ждём оплату");
+              case PAID, SHIPPED -> System.out.println("в работе");
+          }
+          ```
+
+          `EnumMap` и `EnumSet` — очень быстрые коллекции для ключей-enum. Enum сравнивают через `==`.
+
+          ## record (Java 16)
+
+          Неизменяемый класс-носитель данных в одну строку: компилятор генерирует конструктор, геттеры (`name()`, без `get`), `equals`, `hashCode`, `toString`.
+
+          ```java
+          public record Point(int x, int y) {
+              public Point {                                   // компактный конструктор — валидация
+                  if (x < 0 || y < 0) throw new IllegalArgumentException();
+              }
+              public double dist() { return Math.sqrt(x * x + y * y); }
+              public static Point origin() { return new Point(0, 0); }
+          }
+
+          var p = new Point(3, 4);
+          System.out.println(p.x() + " " + p.dist());   // 3 5.0
+          System.out.println(p);                       // Point[x=3, y=4]
+          System.out.println(p.equals(new Point(3, 4))); // true
+          ```
+
+          record не может наследовать классы (неявно `extends Record`), но может реализовывать интерфейсы. Идеально для DTO, ключей, результатов.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              enum Size { S, M, L }
+              System.out.println(Size.L.ordinal() + " " + Size.valueOf("M"));
+            answer: 2 M
+          - type: output
+            q: Что выведет код?
+            code: |
+              record P(int x, int y) {}
+              System.out.println(new P(1, 2));
+            answer: P[x=1, y=2]
+          - type: output
+            q: Что выведет код?
+            code: |
+              record P(int x) {}
+              System.out.println(new P(5).equals(new P(5)) + " " + (new P(5) == new P(5)));
+            answer: true false
+          - type: choice
+            q: Можно ли добавить элемент в `final List<String> list = new ArrayList<>();`?
+            options: ["Нет, final", "Да — final запрещает переприсвоение ссылки, а не изменение объекта", "Только в конструкторе", "Только через static"]
+            answer: 1
+          - type: fill
+            q: Обратитесь к компоненту record
+            code: |
+              record User(String name) {}
+              String n = user.___();
+            answers: ["name"]
+        homework:
+          task: |
+            Опишите доставку: `enum DeliveryType` (COURIER, POST, PICKUP) с ценой и сроком в днях и методом `cost(double weight)`; `record Address(String city, String street)` с валидацией в компактном конструкторе; `record Order(long id, Address to, DeliveryType type, double weight)`. Утилитный класс `Orders` (final, приватный конструктор) со статическими методами `totalCost(List<Order>)` и `groupByType(List<Order>)` → `EnumMap`.
+          checklist:
+            - У enum есть поля и конструктор
+            - Валидация в компактном конструкторе
+            - Утилитный класс нельзя инстанцировать
+          solution: |
+            import java.util.*;
+
+            enum DeliveryType {
+                COURIER(300, 1), POST(150, 7), PICKUP(0, 0);
+                private final double base; private final int days;
+                DeliveryType(double base, int days) { this.base = base; this.days = days; }
+                double cost(double kg) { return this == PICKUP ? 0 : base + kg * 30; }
+                int days() { return days; }
+            }
+
+            record Address(String city, String street) {
+                Address {
+                    if (city == null || city.isBlank()) throw new IllegalArgumentException("Город обязателен");
+                }
+            }
+
+            record Order(long id, Address to, DeliveryType type, double weight) { }
+
+            final class Orders {
+                private Orders() { }
+                static double totalCost(List<Order> list) {
+                    double s = 0;
+                    for (Order o : list) s += o.type().cost(o.weight());
+                    return s;
+                }
+                static Map<DeliveryType, List<Order>> groupByType(List<Order> list) {
+                    Map<DeliveryType, List<Order>> m = new EnumMap<>(DeliveryType.class);
+                    for (Order o : list) m.computeIfAbsent(o.type(), k -> new ArrayList<>()).add(o);
+                    return m;
+                }
+            }
+      - id: java-02-07
+        title: equals, hashCode, toString
+        minutes: 30
+        xp: 35
+        theory: |
+          Три метода `Object`, которые нужно понимать каждому Java-разработчику.
+
+          ## toString
+
+          По умолчанию: `User@1b6d3586` (класс + хеш). Переопределяйте для логов и отладки.
+
+          ## == vs equals
+
+          - `==` для объектов сравнивает **ссылки** (тот же ли это объект).
+          - `equals` — логическое равенство. По умолчанию в `Object` — тоже ссылки.
+
+          ```java
+          String a = new String("hi"), b = new String("hi");
+          a == b;          // false
+          a.equals(b);     // true — String переопределяет equals
+          Integer x = 127, y = 127;  x == y;   // true (кеш -128..127)
+          Integer p = 128, q = 128;  p == q;   // false! Всегда сравнивайте обёртки через equals
+          ```
+
+          ## Правильная реализация
+
+          ```java
+          public final class Point {
+              private final int x, y;
+              public Point(int x, int y) { this.x = x; this.y = y; }
+
+              @Override
+              public boolean equals(Object o) {
+                  if (this == o) return true;
+                  if (!(o instanceof Point p)) return false;     // и проверка на null
+                  return x == p.x && y == p.y;
+              }
+
+              @Override
+              public int hashCode() {
+                  return Objects.hash(x, y);
+              }
+
+              @Override
+              public String toString() { return "Point(" + x + ", " + y + ")"; }
+          }
+          ```
+
+          ## Контракт
+
+          **equals**: рефлексивность (`a.equals(a)`), симметричность, транзитивность, согласованность, `a.equals(null) == false`.
+
+          **hashCode**: если `a.equals(b)`, то `a.hashCode() == b.hashCode()` — **обязательно**. Переопределили equals — переопределите hashCode. Иначе `HashMap`/`HashSet` перестанут находить объекты:
+
+          ```java
+          Set<Point> set = new HashSet<>();
+          set.add(new Point(1, 2));
+          set.contains(new Point(1, 2));   // false, если hashCode не переопределён!
+          ```
+
+          ## Изменяемые ключи
+
+          Если поле, участвующее в hashCode, изменилось после добавления в `HashSet`, объект «потеряется» в своей корзине. Ключи должны быть неизменяемыми.
+
+          ## Наследование и equals
+
+          Добавление полей в наследнике ломает симметричность. Решения: `final`-классы, `getClass() != o.getClass()` вместо instanceof, композиция.
+
+          ## Проще всего
+
+          `record` генерирует корректные `equals`/`hashCode`/`toString`. IDE (Alt+Insert в IntelliJ) и Lombok `@EqualsAndHashCode` — тоже.
+
+          `compareTo` (Comparable) желательно делать согласованным с equals.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              String a = new String("java");
+              String b = new String("java");
+              System.out.println((a == b) + " " + a.equals(b));
+            answer: false true
+          - type: output
+            q: Что выведет код?
+            code: |
+              Integer a = 1000, b = 1000;
+              System.out.println(a == b);
+            answer: "false"
+            explain: Кешируются только значения от -128 до 127.
+          - type: choice
+            q: Что обязательно сделать, переопределив equals?
+            options: ["Переопределить toString", "Переопределить hashCode", "Сделать класс abstract", "Ничего"]
+            answer: 1
+          - type: fill
+            q: Сгенерируйте хеш из нескольких полей
+            code: |
+              return Objects.___(id, name);
+            answers: ["hash"]
+          - type: bug
+            q: Из-за какой строки set.contains(new Tag("java")) вернёт false?
+            code: |
+              class Tag {
+                  final String name;
+                  Tag(String n) { name = n; }
+                  @Override public boolean equals(Object o) {
+                      return o instanceof Tag t && t.name.equals(name);
+                  }
+              }
+            bugLine: 6
+            fix: добавить @Override public int hashCode() { return name.hashCode(); }
+            explain: hashCode не переопределён — равные объекты попадают в разные корзины HashSet.
+        homework:
+          task: |
+            Класс `Email` (адрес сравнивается без учёта регистра и пробелов по краям). Реализуйте `equals`, `hashCode`, `toString`, сделайте класс неизменяемым и `final`. Напишите проверки (в main через `assert` или вывод) всех свойств контракта equals и работы в `HashSet`/`HashMap`. Затем покажите баг с изменяемым ключом на отдельном классе `MutableKey`.
+          checklist:
+            - Нормализация в конструкторе
+            - Контракт equals/hashCode соблюдён
+            - Продемонстрирован «потерянный» изменяемый ключ
+          solution: |
+            import java.util.*;
+
+            public final class Email {
+                private final String value;
+                public Email(String raw) { this.value = Objects.requireNonNull(raw).trim().toLowerCase(Locale.ROOT); }
+                @Override public boolean equals(Object o) { return this == o || (o instanceof Email e && value.equals(e.value)); }
+                @Override public int hashCode() { return value.hashCode(); }
+                @Override public String toString() { return value; }
+
+                public static void main(String[] args) {
+                    Email a = new Email(" Anya@Mail.ru "), b = new Email("anya@mail.ru"), c = new Email("ANYA@mail.RU");
+                    System.out.println(a.equals(a));                                  // рефлексивность
+                    System.out.println(a.equals(b) && b.equals(a));                   // симметричность
+                    System.out.println(a.equals(b) && b.equals(c) && a.equals(c));    // транзитивность
+                    System.out.println(!a.equals(null));
+                    System.out.println(new HashSet<>(List.of(a)).contains(c));       // true
+
+                    class MutableKey { int v; MutableKey(int v) { this.v = v; }
+                        public boolean equals(Object o) { return o instanceof MutableKey k && k.v == v; }
+                        public int hashCode() { return v; } }
+                    var k = new MutableKey(1);
+                    Set<MutableKey> set = new HashSet<>(Set.of(k));
+                    k.v = 2;
+                    System.out.println(set.contains(k));   // false — ключ «потерян»
+                }
+            }

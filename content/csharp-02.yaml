@@ -1,0 +1,686 @@
+id: csharp
+modules:
+  - id: cs-m2
+    title: Коллекции и LINQ
+    level: Junior
+    lessons:
+      - id: cs-02-01
+        title: List<T> и Dictionary<TKey, TValue>
+        minutes: 25
+        xp: 30
+        theory: |
+          Коллекции лежат в пространстве имён `System.Collections.Generic` (подключено по умолчанию в новых проектах).
+
+          ## List<T> — динамический массив
+
+          ```csharp
+          var nums = new List<int> { 3, 1, 4 };
+          nums.Add(5);
+          nums.AddRange(new[] { 9, 2 });
+          nums.Insert(0, 7);
+          nums.Remove(4);            // первое вхождение значения
+          nums.RemoveAt(0);          // по индексу
+          nums.Contains(9);          // true — O(n)
+          nums.IndexOf(9);
+          nums.Sort();
+          nums.Reverse();
+          Console.WriteLine(nums.Count);      // Count, а не Length
+          List<string> names = ["Аня", "Боб"]; // collection expression (C# 12)
+          ```
+
+          ## Dictionary<TKey, TValue> — хеш-таблица
+
+          ```csharp
+          var ages = new Dictionary<string, int>
+          {
+              ["Аня"] = 25,
+              ["Боб"] = 30
+          };
+          ages["Вика"] = 22;                    // добавить или заменить
+          ages.Add("Гена", 40);                  // исключение, если ключ уже есть
+          int a = ages["Аня"];                   // KeyNotFoundException, если ключа нет
+
+          if (ages.TryGetValue("Дима", out int age))
+              Console.WriteLine(age);
+
+          ages.ContainsKey("Боб");               // O(1)
+          ages.Remove("Боб");
+
+          foreach (var (name, value) in ages)    // деконструкция KeyValuePair
+              Console.WriteLine($"{name}: {value}");
+          ```
+
+          ## Подсчёт частоты
+
+          ```csharp
+          var counts = new Dictionary<char, int>();
+          foreach (char c in "banana")
+              counts[c] = counts.GetValueOrDefault(c) + 1;
+          ```
+
+          > ⚠️ Нельзя изменять коллекцию (Add/Remove) во время `foreach` по ней — `InvalidOperationException`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              var list = new List<int> { 1, 2, 3 };
+              list.Add(4);
+              list.RemoveAt(0);
+              Console.WriteLine(list.Count + " " + list[0]);
+            answer: 3 2
+          - type: choice
+            q: Как безопасно получить значение из словаря, если ключа может не быть?
+            options: ["`dict[key]`", "`dict.TryGetValue(key, out var v)`", "`dict.Get(key)`", "`dict.Find(key)`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              var d = new Dictionary<string, int>();
+              d["a"] = 1;
+              d["a"] = 5;
+              Console.WriteLine(d.Count + " " + d["a"]);
+            answer: 1 5
+          - type: bug
+            q: Где возникнет исключение?
+            code: |
+              var list = new List<int> { 1, 2, 3, 4 };
+              foreach (var x in list)
+              {
+                  if (x % 2 == 0) list.Remove(x);
+              }
+            bugLine: 4
+            explain: "Нельзя изменять коллекцию во время foreach. Используйте `list.RemoveAll(x => x % 2 == 0)`."
+          - type: fill
+            q: Посчитайте частоту слов
+            code: |
+              counts[word] = counts.___(word) + 1;
+            answers: [GetValueOrDefault]
+        homework:
+          task: |
+            Программа читает текст и выводит топ-5 самых частых слов (без учёта регистра и знаков препинания) с количеством. Используйте `Dictionary<string, int>` и `List<KeyValuePair<string,int>>` с сортировкой через `Sort((a, b) => b.Value.CompareTo(a.Value))`.
+          checklist:
+            - Слова приводятся к нижнему регистру
+            - Используется TryGetValue или GetValueOrDefault
+          solution: |
+            string text = Console.ReadLine() ?? "";
+            var counts = new Dictionary<string, int>();
+            foreach (var raw in text.ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var word = raw.Trim('.', ',', '!', '?', ';', ':');
+                if (word.Length == 0) continue;
+                counts[word] = counts.GetValueOrDefault(word) + 1;
+            }
+            var list = new List<KeyValuePair<string, int>>(counts);
+            list.Sort((a, b) => b.Value.CompareTo(a.Value));
+            for (int i = 0; i < Math.Min(5, list.Count); i++)
+                Console.WriteLine($"{list[i].Key}: {list[i].Value}");
+
+      - id: cs-02-02
+        title: HashSet, Queue, Stack
+        minutes: 20
+        xp: 25
+        theory: |
+          ## HashSet<T> — уникальные элементы
+
+          ```csharp
+          var tags = new HashSet<string> { "csharp", "dotnet" };
+          bool added = tags.Add("csharp");   // false — уже есть
+          tags.Contains("dotnet");           // O(1)
+
+          var a = new HashSet<int> { 1, 2, 3 };
+          var b = new HashSet<int> { 2, 3, 4 };
+          a.IntersectWith(b);   // a = {2, 3}  — изменяет a
+          a.UnionWith(b);       // объединение
+          a.ExceptWith(b);      // разность
+          ```
+
+          `SortedSet<T>` — хранит элементы отсортированными.
+
+          ## Queue<T> — очередь (FIFO)
+
+          ```csharp
+          var q = new Queue<string>();
+          q.Enqueue("первый");
+          q.Enqueue("второй");
+          q.Peek();          // "первый" — посмотреть без удаления
+          q.Dequeue();       // "первый" — извлечь
+          q.TryDequeue(out var item);
+          ```
+
+          ## Stack<T> — стек (LIFO)
+
+          ```csharp
+          var s = new Stack<int>();
+          s.Push(1);
+          s.Push(2);
+          s.Peek();   // 2
+          s.Pop();    // 2
+          ```
+
+          ## PriorityQueue<TElement, TPriority> (.NET 6+)
+
+          ```csharp
+          var pq = new PriorityQueue<string, int>();
+          pq.Enqueue("низкий", 5);
+          pq.Enqueue("срочно", 1);
+          pq.Dequeue();   // "срочно" — минимальный приоритет первым
+          ```
+
+          ## Выбор коллекции
+
+          | Нужно | Коллекция |
+          |---|---|
+          | список с доступом по индексу | `List<T>` |
+          | поиск по ключу | `Dictionary<K,V>` |
+          | уникальность, быстрый Contains | `HashSet<T>` |
+          | обработка по порядку поступления | `Queue<T>` |
+          | отмена действий, обход в глубину | `Stack<T>` |
+          | задачи с приоритетом | `PriorityQueue` |
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              var s = new HashSet<int> { 1, 2, 2, 3 };
+              s.Add(3);
+              Console.WriteLine(s.Count);
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              var st = new Stack<int>();
+              st.Push(1); st.Push(2); st.Push(3);
+              st.Pop();
+              Console.WriteLine(st.Peek());
+            answer: "2"
+          - type: output
+            q: Что выведет код?
+            code: |
+              var q = new Queue<string>();
+              q.Enqueue("a"); q.Enqueue("b");
+              Console.WriteLine(q.Dequeue() + q.Count);
+            answer: a1
+          - type: choice
+            q: Какая коллекция подходит для «истории отмен» (Ctrl+Z)?
+            options: ["Queue", "Stack", "HashSet", "Dictionary"]
+            answer: 1
+          - type: fill
+            q: Оставьте в a только элементы, которые есть и в b
+            code: |
+              a.___(b);
+            answers: [IntersectWith]
+        homework:
+          task: |
+            Реализуйте простой текстовый редактор в консоли: команды `type <текст>` (добавить к строке), `undo` (отменить последнее действие), `redo`, `show`. Используйте два стека. Дополнительно: очередь печати документов с командами `print <имя>` и `next`.
+          checklist:
+            - undo/redo работают многократно
+            - Новое действие очищает стек redo
+          solution: |
+            var text = "";
+            var undo = new Stack<string>();
+            var redo = new Stack<string>();
+            while (true)
+            {
+                var line = Console.ReadLine() ?? "exit";
+                if (line.StartsWith("type "))
+                {
+                    undo.Push(text);
+                    redo.Clear();
+                    text += line[5..];
+                }
+                else if (line == "undo" && undo.Count > 0) { redo.Push(text); text = undo.Pop(); }
+                else if (line == "redo" && redo.Count > 0) { undo.Push(text); text = redo.Pop(); }
+                else if (line == "show") Console.WriteLine(text);
+                else if (line == "exit") break;
+            }
+
+      - id: cs-02-03
+        title: Лямбда-выражения и делегаты Func/Action
+        minutes: 25
+        xp: 30
+        theory: |
+          **Делегат** — тип, представляющий ссылку на метод. Позволяет передавать поведение как параметр.
+
+          ## Встроенные делегаты
+
+          - `Action` — метод без возвращаемого значения: `Action<string>` принимает string;
+          - `Func<..., TResult>` — возвращает значение, последний тип-параметр — результат;
+          - `Predicate<T>` — `Func<T, bool>`.
+
+          ```csharp
+          Func<int, int, int> add = (a, b) => a + b;
+          Func<int, bool> isEven = x => x % 2 == 0;
+          Action<string> log = msg => Console.WriteLine($"[LOG] {msg}");
+          Func<string> now = () => DateTime.Now.ToShortTimeString();
+
+          Console.WriteLine(add(2, 3));   // 5
+          log("Старт");
+          ```
+
+          ## Лямбда с телом
+
+          ```csharp
+          Func<int, string> classify = n =>
+          {
+              if (n < 0) return "отрицательное";
+              return n == 0 ? "ноль" : "положительное";
+          };
+          ```
+
+          ## Передача поведения в метод
+
+          ```csharp
+          static List<T> Filter<T>(List<T> items, Func<T, bool> predicate)
+          {
+              var result = new List<T>();
+              foreach (var item in items)
+                  if (predicate(item)) result.Add(item);
+              return result;
+          }
+
+          var big = Filter(new List<int> { 1, 50, 7, 100 }, x => x > 10);
+          ```
+
+          Методы коллекций принимают лямбды: `list.RemoveAll(x => x < 0)`, `list.Find(...)`, `list.Sort((a, b) => a.Name.CompareTo(b.Name))`.
+
+          ## Замыкания
+
+          Лямбда захватывает внешние переменные (не копию, а саму переменную):
+
+          ```csharp
+          int counter = 0;
+          Action inc = () => counter++;
+          inc(); inc();
+          Console.WriteLine(counter);   // 2
+          ```
+
+          Можно передавать и обычные методы: `list.ForEach(Console.WriteLine);` (method group).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              Func<int, int> sq = x => x * x;
+              Func<int, int, int> sum = (a, b) => a + b;
+              Console.WriteLine(sum(sq(2), sq(3)));
+            answer: "13"
+          - type: choice
+            q: Какой делегат подходит для метода `void Print(string s)`?
+            options: ["`Func<string>`", "`Action<string>`", "`Func<string, void>`", "`Predicate<string>`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              int x = 10;
+              Func<int> get = () => x;
+              x = 20;
+              Console.WriteLine(get());
+            answer: "20"
+            explain: Лямбда захватывает переменную, а не её значение на момент создания.
+          - type: fill
+            q: Удалите все отрицательные числа из списка
+            code: |
+              nums.___(n ___ n < 0);
+            answers: [RemoveAll, "=>"]
+          - type: choice
+            q: Что означает последний тип-параметр в `Func<int, string, bool>`?
+            options: ["Первый аргумент", "Тип возвращаемого значения", "Тип исключения", "Ничего"]
+            answer: 1
+        homework:
+          task: |
+            Напишите обобщённые методы `Map<T, R>(List<T>, Func<T, R>)`, `Filter<T>(List<T>, Func<T, bool>)`, `Reduce<T, R>(List<T>, R seed, Func<R, T, R>)` и метод `Compose<A, B, C>(Func<A, B> f, Func<B, C> g)`, возвращающий `Func<A, C>`. Проверьте на списке чисел и строк.
+          checklist:
+            - Методы обобщённые
+            - Compose возвращает новый делегат
+          solution: |
+            static List<R> Map<T, R>(List<T> xs, Func<T, R> f)
+            {
+                var r = new List<R>(); foreach (var x in xs) r.Add(f(x)); return r;
+            }
+            static List<T> Filter<T>(List<T> xs, Func<T, bool> p)
+            {
+                var r = new List<T>(); foreach (var x in xs) if (p(x)) r.Add(x); return r;
+            }
+            static R Reduce<T, R>(List<T> xs, R seed, Func<R, T, R> f)
+            {
+                var acc = seed; foreach (var x in xs) acc = f(acc, x); return acc;
+            }
+            static Func<A, C> Compose<A, B, C>(Func<A, B> f, Func<B, C> g) => x => g(f(x));
+
+            var nums = new List<int> { 1, 2, 3, 4, 5 };
+            Console.WriteLine(Reduce(Map(Filter(nums, x => x % 2 == 1), x => x * x), 0, (a, x) => a + x));
+            Console.WriteLine(Compose<int, int, string>(x => x * 2, x => $"<{x}>")(21));
+
+      - id: cs-02-04
+        title: LINQ — фильтрация, проекция, сортировка
+        minutes: 30
+        xp: 35
+        theory: |
+          **LINQ** (Language Integrated Query) — запросы к коллекциям прямо в C#. Подключается `using System.Linq;` (по умолчанию).
+
+          ```csharp
+          var products = new List<Product>
+          {
+              new("Мышь", 990, "Периферия"),
+              new("Монитор", 18000, "Мониторы"),
+              new("Клавиатура", 2500, "Периферия"),
+          };
+          record Product(string Name, decimal Price, string Category);
+          ```
+
+          ## Синтаксис методов (используется чаще)
+
+          ```csharp
+          var cheap = products
+              .Where(p => p.Price < 5000)          // фильтр
+              .OrderBy(p => p.Price)               // сортировка (ThenBy — по второму ключу)
+              .Select(p => p.Name)                 // проекция
+              .ToList();                           // выполнить и собрать в список
+
+          var first = products.First(p => p.Category == "Мониторы");   // исключение, если нет
+          var maybe = products.FirstOrDefault(p => p.Price > 100000);  // null, если нет
+          bool any = products.Any(p => p.Price > 10000);
+          bool all = products.All(p => p.Price > 0);
+          var top2 = products.OrderByDescending(p => p.Price).Take(2);
+          var page = products.Skip(10).Take(10);                       // пагинация
+          var names = products.Select((p, i) => $"{i + 1}. {p.Name}");
+          ```
+
+          ## Синтаксис запросов
+
+          ```csharp
+          var q = from p in products
+                  where p.Price < 5000
+                  orderby p.Name
+                  select new { p.Name, p.Price };   // анонимный тип
+          ```
+
+          ## Отложенное выполнение
+
+          `Where`, `Select`, `OrderBy` **не выполняются** сразу — они строят запрос. Выполнение — при переборе или вызове `ToList()`, `Count()`, `First()` и т.д.
+
+          ```csharp
+          var query = nums.Where(n => n > 2);
+          nums.Add(10);
+          query.Count();     // учтёт 10 — запрос выполнился сейчас
+          ```
+
+          Если результат нужен несколько раз — материализуйте его через `ToList()`, иначе запрос выполнится заново.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              var nums = new[] { 5, 2, 8, 1, 9 };
+              var r = nums.Where(n => n > 3).OrderBy(n => n);
+              Console.WriteLine(string.Join(",", r));
+            answer: 5,8,9
+          - type: output
+            q: Что выведет код?
+            code: |
+              var nums = new List<int> { 1, 2, 3 };
+              var q = nums.Select(n => n * 10);
+              nums.Add(4);
+              Console.WriteLine(q.Count());
+            answer: "4"
+            explain: Отложенное выполнение — запрос выполнился при вызове Count(), когда в списке уже 4 элемента.
+          - type: choice
+            q: Чем `First` отличается от `FirstOrDefault`?
+            options: ["Ничем", "First бросает исключение, если элемент не найден; FirstOrDefault вернёт default", "FirstOrDefault быстрее", "First возвращает список"]
+            answer: 1
+          - type: fill
+            q: Вторая страница по 10 элементов
+            code: |
+              var page = items.___(10).___(10).ToList();
+            answers: [Skip, Take]
+          - type: output
+            q: Что выведет код?
+            code: |
+              var words = new[] { "кот", "слон", "ёж" };
+              Console.WriteLine(words.Any(w => w.Length > 3) + " " + words.All(w => w.Length > 2));
+            answer: True False
+        homework:
+          task: |
+            Создайте список из 15 студентов (`record Student(string Name, int Age, string Group, double Avg)`). С помощью LINQ выведите: студентов группы «ИТ-1», отсортированных по среднему баллу по убыванию; имена студентов старше 20 лет; трёх лучших студентов; есть ли студенты со средним ниже 3; номера и имена через `Select((s, i) => ...)`.
+          checklist:
+            - Используются Where, OrderByDescending, Select, Take, Any
+            - Повторно используемые результаты материализованы
+          solution: |
+            var students = new List<Student>
+            {
+                new("Аня", 19, "ИТ-1", 4.8), new("Боб", 22, "ИТ-2", 3.9),
+                new("Вика", 21, "ИТ-1", 4.2), new("Гена", 20, "ИТ-1", 2.9),
+                new("Дима", 23, "ИТ-2", 4.5),
+            };
+            foreach (var s in students.Where(s => s.Group == "ИТ-1").OrderByDescending(s => s.Avg))
+                Console.WriteLine($"{s.Name} {s.Avg}");
+            Console.WriteLine(string.Join(", ", students.Where(s => s.Age > 20).Select(s => s.Name)));
+            var top3 = students.OrderByDescending(s => s.Avg).Take(3).ToList();
+            Console.WriteLine(students.Any(s => s.Avg < 3));
+            foreach (var line in students.Select((s, i) => $"{i + 1}. {s.Name}")) Console.WriteLine(line);
+
+            record Student(string Name, int Age, string Group, double Avg);
+
+      - id: cs-02-05
+        title: LINQ — группировка и агрегаты
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Агрегаты
+
+          ```csharp
+          products.Count();
+          products.Count(p => p.Price > 1000);
+          products.Sum(p => p.Price);
+          products.Average(p => p.Price);
+          products.Min(p => p.Price);
+          products.MaxBy(p => p.Price);       // сам объект с максимальной ценой (.NET 6+)
+          nums.Aggregate((acc, x) => acc * x); // свёртка
+          ```
+
+          ## GroupBy
+
+          ```csharp
+          var byCategory = products
+              .GroupBy(p => p.Category)
+              .Select(g => new
+              {
+                  Category = g.Key,
+                  Count = g.Count(),
+                  Total = g.Sum(p => p.Price),
+                  Cheapest = g.MinBy(p => p.Price)!.Name
+              })
+              .OrderByDescending(x => x.Total);
+
+          foreach (var g in byCategory)
+              Console.WriteLine($"{g.Category}: {g.Count} шт., {g.Total} руб.");
+          ```
+
+          ## Превращение в словарь и lookup
+
+          ```csharp
+          var byName = products.ToDictionary(p => p.Name);          // ключи должны быть уникальны
+          var lookup = products.ToLookup(p => p.Category);         // ключ → несколько значений
+          foreach (var p in lookup["Периферия"]) { }
+          ```
+
+          ## Join
+
+          ```csharp
+          var orderInfo = orders.Join(customers,
+              o => o.CustomerId,
+              c => c.Id,
+              (o, c) => new { c.Name, o.Total });
+          ```
+
+          ## Операции над множествами и прочее
+
+          ```csharp
+          nums.Distinct();  a.Union(b);  a.Intersect(b);  a.Except(b);
+          products.DistinctBy(p => p.Category);
+          nums.Chunk(3);                       // разбить на части по 3
+          names.Zip(scores, (n, s) => $"{n}: {s}");
+          lists.SelectMany(l => l);            // «расплющить» вложенные коллекции
+          ```
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              var words = new[] { "кот", "кит", "дом", "дуб", "сад" };
+              var g = words.GroupBy(w => w[0]).Count();
+              Console.WriteLine(g);
+            answer: "3"
+          - type: output
+            q: Что выведет код?
+            code: |
+              var n = new[] { 1, 2, 3, 4 };
+              Console.WriteLine(n.Aggregate((a, x) => a * x) + " " + n.Average());
+            answer: 24 2.5
+          - type: fill
+            q: Сгруппируйте заказы по клиенту и посчитайте сумму
+            code: |
+              var totals = orders.___(o => o.Customer)
+                  .Select(g => new { g.___, Sum = g.Sum(o => o.Total) });
+            answers: [GroupBy, Key]
+          - type: output
+            q: Что выведет код?
+            code: |
+              var a = new[] { 1, 2, 3, 3 };
+              var b = new[] { 3, 4 };
+              Console.WriteLine(string.Join(",", a.Distinct().Except(b)));
+            answer: 1,2
+          - type: choice
+            q: Что делает SelectMany?
+            options: ["Выбирает много полей", "Разворачивает вложенные коллекции в одну последовательность", "Сортирует", "Группирует"]
+            answer: 1
+        homework:
+          task: |
+            Дан список продаж `record Sale(DateTime Date, string Manager, string Product, int Qty, decimal Price)`. Постройте отчёты: выручка по менеджерам (по убыванию); самый продаваемый товар по количеству; выручка по месяцам; менеджер с максимальным средним чеком; товары, которые продавал более чем один менеджер.
+          checklist:
+            - Используются GroupBy, Sum, MaxBy, OrderByDescending
+            - Месяц определяется через new { d.Year, d.Month }
+          solution: |
+            var sales = new List<Sale>
+            {
+                new(new DateTime(2026, 9, 3), "Аня", "Мышь", 3, 990),
+                new(new DateTime(2026, 9, 10), "Боб", "Монитор", 1, 18000),
+                new(new DateTime(2026, 10, 1), "Аня", "Монитор", 2, 17500),
+                new(new DateTime(2026, 10, 2), "Боб", "Мышь", 5, 950),
+            };
+            foreach (var m in sales.GroupBy(s => s.Manager)
+                         .Select(g => (g.Key, Sum: g.Sum(s => s.Qty * s.Price))).OrderByDescending(x => x.Sum))
+                Console.WriteLine($"{m.Key}: {m.Sum}");
+            Console.WriteLine(sales.GroupBy(s => s.Product).MaxBy(g => g.Sum(s => s.Qty))!.Key);
+            foreach (var m in sales.GroupBy(s => new { s.Date.Year, s.Date.Month }))
+                Console.WriteLine($"{m.Key.Month}.{m.Key.Year}: {m.Sum(s => s.Qty * s.Price)}");
+            Console.WriteLine(sales.GroupBy(s => s.Manager).MaxBy(g => g.Average(s => s.Qty * s.Price))!.Key);
+            Console.WriteLine(string.Join(", ", sales.GroupBy(s => s.Product)
+                .Where(g => g.Select(s => s.Manager).Distinct().Count() > 1).Select(g => g.Key)));
+
+            record Sale(DateTime Date, string Manager, string Product, int Qty, decimal Price);
+
+      - id: cs-02-06
+        title: Практикум «Библиотека книг»
+        minutes: 45
+        xp: 45
+        theory: |
+          Соберём всё из модуля в консольном приложении.
+
+          ## Модель
+
+          ```csharp
+          record Book(int Id, string Title, string Author, int Year, string Genre);
+
+          class Library
+          {
+              private readonly List<Book> _books = new();
+              private readonly Dictionary<int, string> _loans = new();   // bookId → читатель
+              private int _nextId = 1;
+
+              public Book Add(string title, string author, int year, string genre)
+              {
+                  var book = new Book(_nextId++, title, author, year, genre);
+                  _books.Add(book);
+                  return book;
+              }
+
+              public IEnumerable<Book> Search(string text) =>
+                  _books.Where(b => b.Title.Contains(text, StringComparison.OrdinalIgnoreCase)
+                                 || b.Author.Contains(text, StringComparison.OrdinalIgnoreCase));
+
+              public bool Lend(int id, string reader) => _books.Any(b => b.Id == id) && _loans.TryAdd(id, reader);
+              public bool Return(int id) => _loans.Remove(id);
+              public IEnumerable<Book> Available => _books.Where(b => !_loans.ContainsKey(b.Id));
+          }
+          ```
+
+          ## Приёмы
+
+          - `private readonly` поля — коллекции нельзя подменить снаружи;
+          - методы возвращают `IEnumerable<T>` — вызывающий код не может изменить внутренний список;
+          - `StringComparison.OrdinalIgnoreCase` — поиск без учёта регистра;
+          - `Dictionary.TryAdd` — добавляет, только если ключа нет.
+
+          ## Меню
+
+          ```csharp
+          while (true)
+          {
+              Console.Write("> ");
+              var parts = (Console.ReadLine() ?? "").Split(' ', 2);
+              switch (parts[0])
+              {
+                  case "add": ...; break;
+                  case "find": ...; break;
+                  case "exit": return;
+              }
+          }
+          ```
+        practice:
+          - type: choice
+            q: Зачем методу возвращать `IEnumerable<Book>`, а не внутренний `List<Book>`?
+            options: ["Это быстрее", "Чтобы внешний код не мог изменить внутреннюю коллекцию", "Так требует компилятор", "Без причины"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              var d = new Dictionary<int, string>();
+              Console.WriteLine(d.TryAdd(1, "a") + " " + d.TryAdd(1, "b"));
+            answer: True False
+          - type: choice
+            q: Как сравнить строки без учёта регистра?
+            options: ["`a == b`", "`a.Equals(b, StringComparison.OrdinalIgnoreCase)`", "`a.Compare(b)`", "`a.Same(b)`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              var parts = "add Война и мир".Split(' ', 2);
+              Console.WriteLine(parts[1]);
+            answer: Война и мир
+        homework:
+          task: |
+            Доделайте «Библиотеку»: команды `add`, `find <текст>`, `lend <id> <читатель>`, `return <id>`, `available`, `stats` (количество книг по жанрам, самый плодовитый автор, сколько книг выдано), `by-decade` (книги по десятилетиям). Используйте LINQ во всех отчётах.
+          checklist:
+            - Все команды обрабатывают неверный ввод
+            - Отчёты на LINQ (GroupBy, MaxBy)
+          solution: |
+            var lib = new Library();
+            lib.Add("Война и мир", "Толстой", 1869, "Роман");
+            lib.Add("Анна Каренина", "Толстой", 1877, "Роман");
+            lib.Add("Вишнёвый сад", "Чехов", 1904, "Пьеса");
+            while (true)
+            {
+                var p = (Console.ReadLine() ?? "exit").Split(' ', 3);
+                switch (p[0])
+                {
+                    case "find": foreach (var b in lib.Search(p[1])) Console.WriteLine(b); break;
+                    case "lend" when p.Length == 3 && int.TryParse(p[1], out var id):
+                        Console.WriteLine(lib.Lend(id, p[2]) ? "Выдано" : "Нельзя выдать"); break;
+                    case "stats":
+                        foreach (var g in lib.All.GroupBy(b => b.Genre)) Console.WriteLine($"{g.Key}: {g.Count()}");
+                        Console.WriteLine(lib.All.GroupBy(b => b.Author).MaxBy(g => g.Count())?.Key);
+                        break;
+                    case "by-decade":
+                        foreach (var g in lib.All.GroupBy(b => b.Year / 10 * 10).OrderBy(g => g.Key))
+                            Console.WriteLine($"{g.Key}-е: {string.Join(", ", g.Select(b => b.Title))}");
+                        break;
+                    case "exit": return;
+                }
+            }

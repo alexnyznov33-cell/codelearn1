@@ -1,0 +1,780 @@
+id: csharp
+title: C#
+short: C#
+lang: csharp
+color: "#9b4f96"
+description: Язык платформы .NET — бэкенд, десктоп, игры на Unity и корпоративные системы.
+modules:
+  - id: cs-m1
+    title: Основы C#
+    level: Junior
+    lessons:
+      - id: cs-01-01
+        title: Платформа .NET и первая программа
+        minutes: 15
+        xp: 15
+        theory: |
+          **C#** — строго типизированный объектно-ориентированный язык от Microsoft. Код компилируется в промежуточный язык (IL), который выполняет среда **.NET** (CLR) — на Windows, Linux и macOS.
+
+          ## Установка
+
+          1. Установите [.NET SDK](https://dotnet.microsoft.com/download) (версия 8 или новее).
+          2. Редактор: Visual Studio, JetBrains Rider или VS Code с расширением C# Dev Kit.
+          3. Создание и запуск проекта:
+
+          ```
+          dotnet new console -n Hello
+          cd Hello
+          dotnet run
+          ```
+
+          ## Первая программа
+
+          Современный C# поддерживает **top-level statements** — код можно писать сразу:
+
+          ```csharp
+          Console.WriteLine("Привет, мир!");
+          ```
+
+          Классическая форма, которую вы встретите в большинстве проектов:
+
+          ```csharp
+          using System;
+
+          namespace Hello
+          {
+              class Program
+              {
+                  static void Main(string[] args)
+                  {
+                      Console.WriteLine("Привет, мир!");
+                  }
+              }
+          }
+          ```
+
+          - `using System;` — подключение пространства имён;
+          - `Main` — точка входа в программу;
+          - каждая инструкция заканчивается `;`, блоки — в `{ }`.
+
+          ## Вывод
+
+          ```csharp
+          Console.WriteLine("с переводом строки");
+          Console.Write("без перевода ");
+          Console.Write("строки\n");
+          ```
+
+          Комментарии: `// однострочный` и `/* многострочный */`. Документирующие — `/// <summary>`.
+        practice:
+          - type: choice
+            q: Как называется метод — точка входа в программу C#?
+            options: ["`Start`", "`Main`", "`Run`", "`Init`"]
+            answer: 1
+          - type: output
+            q: Что выведет программа?
+            code: |
+              Console.Write("A");
+              Console.Write("B");
+              Console.WriteLine("C");
+            answer: ABC
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              using System;
+              Console.WriteLine("Старт")
+              Console.WriteLine("Финиш");
+            bugLine: 2
+            explain: Пропущена точка с запятой.
+            fix: Console.WriteLine("Старт");
+          - type: choice
+            q: Какая команда создаёт новый консольный проект?
+            options: ["`dotnet run console`", "`dotnet new console`", "`csc new`", "`dotnet create app`"]
+            answer: 1
+          - type: fill
+            q: Выведите строку с переводом строки
+            code: |
+              Console.___("Hello");
+            answers: [WriteLine]
+        homework:
+          task: |
+            Установите .NET SDK, создайте проект `dotnet new console -n Card` и напишите программу, которая выводит визитку из 4 строк: рамка, имя, любимый язык, рамка. Используйте и `Write`, и `WriteLine`.
+          checklist:
+            - "`dotnet run` выполняется без ошибок"
+            - Использованы оба метода вывода
+          solution: |
+            Console.WriteLine("==========");
+            Console.Write("Имя: ");
+            Console.WriteLine("Алекс");
+            Console.WriteLine("Язык: C#");
+            Console.WriteLine("==========");
+
+      - id: cs-01-02
+        title: Переменные и типы данных
+        minutes: 20
+        xp: 20
+        theory: |
+          C# — **статически типизированный** язык: тип переменной известен при компиляции и не меняется.
+
+          ```csharp
+          int age = 25;            // целое, 32 бита
+          long big = 9_000_000_000L;
+          double price = 99.9;     // дробное, 64 бита
+          decimal money = 10.50m;  // точный десятичный тип — для денег
+          float f = 3.14f;
+          bool isAdmin = false;
+          char letter = 'A';       // один символ — в одинарных кавычках
+          string name = "Анна";    // строка — в двойных
+          ```
+
+          ## var — вывод типа
+
+          ```csharp
+          var count = 10;      // компилятор понял: int
+          var title = "Книга"; // string
+          ```
+
+          `var` не делает переменную динамической — тип фиксируется при объявлении.
+
+          ## Константы
+
+          ```csharp
+          const double Pi = 3.14159;
+          ```
+
+          ## Значимые и ссылочные типы
+
+          - **значимые** (value types): `int`, `double`, `bool`, `char`, `struct` — хранят само значение;
+          - **ссылочные** (reference types): `string`, массивы, классы — хранят ссылку на объект в куче.
+
+          ## Преобразования
+
+          ```csharp
+          int n = 10;
+          double d = n;              // неявное — без потери данных
+          int back = (int)7.9;       // явное приведение → 7
+          int parsed = int.Parse("42");
+          bool ok = int.TryParse("abc", out int result); // ok = false, result = 0
+          string s = n.ToString();
+          ```
+
+          ## Nullable
+
+          ```csharp
+          int? maybe = null;          // значимый тип, который может быть null
+          string? text = null;        // явное указание, что ссылка может быть null
+          ```
+
+          > 💡 Имена переменных в C# — `camelCase`, имена методов и классов — `PascalCase`.
+        practice:
+          - type: choice
+            q: Какой тип лучше подходит для хранения денежных сумм?
+            options: ["`float`", "`double`", "`decimal`", "`int`"]
+            answer: 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              int x = (int)9.99;
+              Console.WriteLine(x);
+            answer: "9"
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              var count = 5;
+              count = 10;
+              count = "десять";
+            bugLine: 3
+            explain: "`var` вывел тип `int`; присвоить строку нельзя."
+          - type: choice
+            q: Какие типы являются значимыми (value types)?
+            options: ["`int`", "`string`", "`bool`", "`int[]`"]
+            answer: [0, 2]
+          - type: fill
+            q: Безопасно преобразуйте строку в число
+            code: |
+              if (int.___(input, out int number))
+                  Console.WriteLine(number * 2);
+            answers: [TryParse]
+          - type: bug
+            q: Где ошибка?
+            code: |
+              char c = "A";
+              string s = "B";
+            bugLine: 1
+            explain: "`char` записывается в одинарных кавычках: `'A'`."
+            fix: char c = 'A';
+        homework:
+          task: |
+            Объявите переменные для карточки товара: название (`string`), цена (`decimal`), количество (`int`), в наличии (`bool`), артикул-буква (`char`). Посчитайте стоимость партии и выведите всё на экран. Попробуйте присвоить `int` значение `double` без приведения и прочитайте ошибку компилятора.
+          checklist:
+            - Использован `decimal` для цены
+            - Понимаю, почему `int x = 2.5;` не компилируется
+          solution: |
+            string title = "Мышь";
+            decimal price = 1499.90m;
+            int quantity = 4;
+            bool inStock = true;
+            char category = 'B';
+            Console.WriteLine(title + " " + category + " " + inStock);
+            Console.WriteLine(price * quantity);
+
+      - id: cs-01-03
+        title: Операторы, ввод и строки
+        minutes: 20
+        xp: 20
+        theory: |
+          ## Арифметика
+
+          `+ - * / %`. Важно: деление целых даёт **целое**!
+
+          ```csharp
+          Console.WriteLine(7 / 2);    // 3
+          Console.WriteLine(7 / 2.0);  // 3.5
+          Console.WriteLine(7 % 2);    // 1
+          int i = 5;
+          i++;          // 6
+          i += 10;      // 16
+          Math.Pow(2, 10); Math.Sqrt(16); Math.Abs(-3); Math.Round(2.567, 2);
+          ```
+
+          ## Ввод
+
+          ```csharp
+          Console.Write("Введите имя: ");
+          string? name = Console.ReadLine();
+          int age = int.Parse(Console.ReadLine()!);
+          ```
+
+          ## Строки
+
+          ```csharp
+          string s = "Hello";
+          s.Length;              // 5
+          s.ToUpper();           // "HELLO"
+          s.Substring(1, 3);     // "ell" — (начало, длина)
+          s.Contains("ll");      // true
+          s.Replace("l", "L");   // "HeLLo"
+          s[0];                  // 'H' — char
+          "a,b".Split(',');      // массив строк
+          string.Join("-", parts);
+          "  x ".Trim();
+          ```
+
+          ## Интерполяция
+
+          ```csharp
+          string name = "Аня"; double score = 95.456;
+          Console.WriteLine($"{name}: {score:F1} баллов");  // Аня: 95.5 баллов
+          Console.WriteLine($"{42,6}|");                    // выравнивание вправо на 6
+          string path = @"C:\Users\docs";                    // verbatim — без экранирования
+          ```
+
+          Строки **неизменяемы**. Для сборки длинной строки в цикле используйте `StringBuilder`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              Console.WriteLine(17 / 5 + " " + 17 % 5);
+            answer: 3 2
+          - type: output
+            q: Что выведет код?
+            code: |
+              double r = 10 / 4;
+              Console.WriteLine(r);
+            answer: "2"
+            explain: "Сначала выполняется целочисленное деление `10 / 4 = 2`, потом результат превращается в double `2`."
+          - type: output
+            q: Что выведет код?
+            code: |
+              string s = "programming";
+              Console.WriteLine(s.Substring(3, 4));
+            answer: gram
+          - type: fill
+            q: "Выведите `Итого: 9.99` через интерполяцию"
+            code: |
+              double sum = 9.987;
+              Console.WriteLine(___"Итого: {sum:___}");
+            answers: ["$", [F2, N2, "0.00"]]
+          - type: output
+            q: Что выведет код?
+            code: |
+              int a = 5;
+              int b = a++;
+              Console.WriteLine($"{a} {b}");
+            answer: 6 5
+            explain: Постфиксный `a++` сначала возвращает старое значение, потом увеличивает.
+        homework:
+          task: |
+            **Конвертер температуры.** Пользователь вводит температуру в °C (дробное число). Выведите значение в °F и K с одним знаком после запятой, используя интерполяцию. Формулы: F = C × 9/5 + 32, K = C + 273.15.
+          hints:
+            - "Используйте `double.Parse` и обратите внимание на `9 / 5` — это целочисленное деление!"
+          checklist:
+            - 100 °C → 212.0 °F
+            - Нет ошибки с целочисленным делением
+          solution: |
+            Console.Write("°C: ");
+            double c = double.Parse(Console.ReadLine()!);
+            double f = c * 9.0 / 5 + 32;
+            Console.WriteLine($"{f:F1} °F, {c + 273.15:F1} K");
+
+      - id: cs-01-04
+        title: Условия и switch
+        minutes: 20
+        xp: 25
+        theory: |
+          ## if / else
+
+          ```csharp
+          int age = 20;
+          if (age >= 18)
+          {
+              Console.WriteLine("Взрослый");
+          }
+          else if (age >= 14)
+          {
+              Console.WriteLine("Подросток");
+          }
+          else
+          {
+              Console.WriteLine("Ребёнок");
+          }
+          ```
+
+          Логические операторы: `&&` (и), `||` (или), `!` (не). Они **сокращённые**: если результат понятен по левой части, правая не вычисляется.
+
+          ## Тернарный оператор и null-операторы
+
+          ```csharp
+          string status = age >= 18 ? "взрослый" : "ребёнок";
+          string display = name ?? "Гость";   // если name == null
+          int? len = name?.Length;            // null, если name == null
+          ```
+
+          ## switch
+
+          ```csharp
+          switch (day)
+          {
+              case 6:
+              case 7:
+                  Console.WriteLine("Выходной");
+                  break;
+              default:
+                  Console.WriteLine("Будний");
+                  break;
+          }
+          ```
+
+          ## switch-выражение (C# 8+)
+
+          ```csharp
+          string grade = score switch
+          {
+              >= 90 => "A",
+              >= 75 => "B",
+              >= 60 => "C",
+              _ => "F"
+          };
+          ```
+
+          > ⚠️ В C# условие обязано быть `bool`: `if (count)` не скомпилируется, нужно `if (count > 0)`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int x = 7;
+              string r = x % 2 == 0 ? "even" : "odd";
+              Console.WriteLine(r);
+            answer: odd
+          - type: output
+            q: Что выведет код?
+            code: |
+              string? name = null;
+              Console.WriteLine(name ?? "Гость");
+            answer: Гость
+          - type: output
+            q: Что выведет код?
+            code: |
+              int score = 80;
+              var g = score switch
+              {
+                  >= 90 => "A",
+                  >= 75 => "B",
+                  _ => "C"
+              };
+              Console.WriteLine(g);
+            answer: B
+          - type: bug
+            q: Где ошибка компиляции?
+            code: |
+              int count = 3;
+              if (count)
+              {
+                  Console.WriteLine("Есть элементы");
+              }
+            bugLine: 2
+            fix: if (count > 0)
+          - type: fill
+            q: Проверьте, что число в диапазоне 1..10
+            code: |
+              if (n >= 1 ___ n <= 10)
+                  Console.WriteLine("ok");
+            answers: ["&&"]
+          - type: bug
+            q: В классическом switch чего не хватает?
+            code: |
+              switch (cmd)
+              {
+                  case "start":
+                      Console.WriteLine("Старт");
+                  case "stop":
+                      Console.WriteLine("Стоп");
+                      break;
+              }
+            bugLine: 4
+            explain: В C# нельзя «проваливаться» в следующий case, если в текущем есть код — нужен `break`.
+        homework:
+          task: |
+            **ИМТ-калькулятор.** Пользователь вводит вес (кг) и рост (м). Посчитайте индекс массы тела `вес / рост²` и выведите категорию через switch-выражение: < 18.5 — «Недостаток», < 25 — «Норма», < 30 — «Избыток», иначе — «Ожирение».
+          checklist:
+            - Используется switch-выражение с реляционными паттернами
+            - ИМТ выводится с 1 знаком после запятой
+          solution: |
+            double w = double.Parse(Console.ReadLine()!);
+            double h = double.Parse(Console.ReadLine()!);
+            double bmi = w / (h * h);
+            string cat = bmi switch
+            {
+                < 18.5 => "Недостаток",
+                < 25 => "Норма",
+                < 30 => "Избыток",
+                _ => "Ожирение"
+            };
+            Console.WriteLine($"ИМТ {bmi:F1}: {cat}");
+
+      - id: cs-01-05
+        title: Циклы
+        minutes: 20
+        xp: 25
+        theory: |
+          ## for
+
+          ```csharp
+          for (int i = 0; i < 5; i++)
+          {
+              Console.Write(i + " ");   // 0 1 2 3 4
+          }
+          ```
+
+          Три части: инициализация; условие продолжения; шаг.
+
+          ## while и do-while
+
+          ```csharp
+          int n = 3;
+          while (n > 0)
+          {
+              Console.WriteLine(n--);
+          }
+
+          string? input;
+          do
+          {
+              input = Console.ReadLine();
+          } while (input != "exit");   // тело выполнится минимум один раз
+          ```
+
+          ## foreach
+
+          ```csharp
+          int[] nums = { 3, 1, 4 };
+          foreach (int x in nums)
+          {
+              Console.WriteLine(x);
+          }
+          foreach (char c in "abc") { }
+          ```
+
+          Внутри `foreach` переменную цикла изменять нельзя.
+
+          ## break и continue
+
+          ```csharp
+          for (int i = 1; i <= 10; i++)
+          {
+              if (i % 2 == 0) continue;  // пропустить чётные
+              if (i > 7) break;          // выйти из цикла
+              Console.Write(i + " ");     // 1 3 5 7
+          }
+          ```
+
+          > 💡 Для сборки строки в цикле: `var sb = new StringBuilder(); sb.Append(...); sb.ToString();`
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              for (int i = 10; i > 0; i -= 3)
+                  Console.Write(i + " ");
+            answer: 10 7 4 1
+          - type: output
+            q: Сколько раз выполнится тело? Введите число.
+            code: |
+              int x = 10;
+              do
+              {
+                  x++;
+              } while (x < 5);
+            answer: "1"
+          - type: output
+            q: Что выведет код?
+            code: |
+              int sum = 0;
+              foreach (int n in new[] { 1, 2, 3, 4 })
+              {
+                  if (n == 3) continue;
+                  sum += n;
+              }
+              Console.WriteLine(sum);
+            answer: "7"
+          - type: fill
+            q: Переберите все элементы массива
+            code: |
+              ___ (var name ___ names)
+                  Console.WriteLine(name);
+            answers: [foreach, in]
+          - type: bug
+            q: Какая строка вызовет выход за границы массива?
+            code: |
+              int[] a = { 1, 2, 3 };
+              for (int i = 0; i <= a.Length; i++)
+              {
+                  Console.WriteLine(a[i]);
+              }
+            bugLine: 2
+            explain: Последний индекс — `Length - 1`, условие должно быть `i < a.Length`.
+            fix: for (int i = 0; i < a.Length; i++)
+        homework:
+          task: |
+            **Таблица умножения.** Выведите таблицу умножения 1..9 в виде ровной сетки (используйте выравнивание `{x,4}`). Затем посчитайте и выведите сумму всех чисел таблицы.
+          checklist:
+            - Используются вложенные циклы for
+            - Колонки ровные
+          solution: |
+            int total = 0;
+            for (int i = 1; i <= 9; i++)
+            {
+                for (int j = 1; j <= 9; j++)
+                {
+                    Console.Write($"{i * j,4}");
+                    total += i * j;
+                }
+                Console.WriteLine();
+            }
+            Console.WriteLine($"Сумма: {total}");
+
+      - id: cs-01-06
+        title: Массивы и методы
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Массивы
+
+          ```csharp
+          int[] nums = new int[5];          // 5 нулей
+          int[] primes = { 2, 3, 5, 7 };
+          primes[0] = 1;
+          Console.WriteLine(primes.Length);  // 4
+          Array.Sort(primes);
+          int[,] grid = new int[3, 3];       // двумерный массив
+          grid[1, 2] = 5;
+          ```
+
+          Размер массива фиксирован. Для динамических коллекций используют `List<T>` (следующий модуль).
+
+          ## Методы
+
+          ```csharp
+          static int Add(int a, int b)
+          {
+              return a + b;
+          }
+
+          static double Average(int[] values) => values.Sum() / (double)values.Length; // expression-bodied
+
+          static void Greet(string name = "Гость")   // параметр по умолчанию
+          {
+              Console.WriteLine($"Привет, {name}!");
+          }
+
+          Greet();             // Привет, Гость!
+          Greet(name: "Аня");  // именованный аргумент
+          ```
+
+          - `void` — метод ничего не возвращает;
+          - перегрузка — несколько методов с одним именем, но разными параметрами.
+
+          ## ref, out, params
+
+          ```csharp
+          static void Double(ref int x) => x *= 2;   // изменяет переданную переменную
+          static bool TryDivide(int a, int b, out int result) { ... }
+          static int Sum(params int[] xs) => xs.Sum(); // Sum(1, 2, 3)
+          ```
+
+          Значимые типы передаются в метод **копией**, ссылочные — копией ссылки (объект общий).
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              int[] a = { 5, 2, 9 };
+              Array.Sort(a);
+              Console.WriteLine(a[0] + a[a.Length - 1]);
+            answer: "11"
+          - type: output
+            q: Что выведет код?
+            code: |
+              static void Inc(int x) { x++; }
+              int n = 5;
+              Inc(n);
+              Console.WriteLine(n);
+            answer: "5"
+            explain: "`int` передаётся копией. Чтобы изменить оригинал, нужен `ref`."
+          - type: fill
+            q: Метод, возвращающий большее из двух чисел
+            code: |
+              static ___ Max(int a, int b)
+              {
+                  ___ a > b ? a : b;
+              }
+            answers: [int, return]
+          - type: choice
+            q: Что означает `void` в объявлении метода?
+            options: ["Метод приватный", "Метод ничего не возвращает", "Метод статический", "Метод может вернуть null"]
+            answer: 1
+          - type: order
+            q: Соберите метод подсчёта суммы массива
+            lines:
+              - "static int Sum(int[] arr)"
+              - "{"
+              - "    int s = 0;"
+              - "    foreach (int x in arr) s += x;"
+              - "    return s;"
+              - "}"
+        homework:
+          task: |
+            Напишите методы: `Min(int[])`, `Max(int[])`, `Average(int[])`, `CountEven(int[])` и `Reverse(int[])` (возвращает новый перевёрнутый массив) **без** LINQ. Протестируйте их в `Main` на массиве из 10 случайных чисел (`Random.Shared.Next(1, 100)`).
+          checklist:
+            - Все методы статические и с понятными именами
+            - Average возвращает double
+            - Reverse не меняет исходный массив
+          solution: |
+            static int Min(int[] a) { int m = a[0]; foreach (var x in a) if (x < m) m = x; return m; }
+            static int Max(int[] a) { int m = a[0]; foreach (var x in a) if (x > m) m = x; return m; }
+            static double Average(int[] a) { int s = 0; foreach (var x in a) s += x; return (double)s / a.Length; }
+            static int CountEven(int[] a) { int c = 0; foreach (var x in a) if (x % 2 == 0) c++; return c; }
+            static int[] Reverse(int[] a)
+            {
+                var r = new int[a.Length];
+                for (int i = 0; i < a.Length; i++) r[i] = a[a.Length - 1 - i];
+                return r;
+            }
+
+            var nums = new int[10];
+            for (int i = 0; i < nums.Length; i++) nums[i] = Random.Shared.Next(1, 100);
+            Console.WriteLine(string.Join(" ", nums));
+            Console.WriteLine($"{Min(nums)} {Max(nums)} {Average(nums):F2} {CountEven(nums)}");
+            Console.WriteLine(string.Join(" ", Reverse(nums)));
+
+  - id: cs-m2
+    title: Коллекции и LINQ
+    level: Junior
+    lessons:
+      - List<T> и Dictionary<TKey, TValue>
+      - HashSet, Queue, Stack
+      - Лямбда-выражения и делегаты Func/Action
+      - LINQ — фильтрация, проекция, сортировка
+      - LINQ — группировка и агрегаты
+      - Практикум «Библиотека книг»
+  - id: cs-m3
+    title: ООП в C#
+    level: Junior
+    lessons:
+      - Классы, поля, конструкторы
+      - Свойства и модификаторы доступа
+      - Наследование и virtual/override
+      - Абстрактные классы и интерфейсы
+      - struct, record и enum
+      - Статические члены и extension-методы
+      - Переопределение Equals, GetHashCode, ToString
+  - id: cs-m4
+    title: Исключения, файлы, generics
+    level: Junior+
+    lessons:
+      - try / catch / finally и свои исключения
+      - using и IDisposable
+      - Работа с файлами, System.IO
+      - JSON — System.Text.Json
+      - Обобщения (generics) и ограничения where
+      - Nullable reference types
+  - id: cs-m5
+    title: Продвинутый C#
+    level: Junior+
+    lessons:
+      - Делегаты и события
+      - IEnumerable и yield return
+      - Pattern matching
+      - Span<T> и работа с памятью
+      - Рефлексия и атрибуты
+  - id: cs-m6
+    title: Асинхронность и многопоточность
+    level: Middle
+    lessons:
+      - Потоки и Task Parallel Library
+      - async / await
+      - CancellationToken и тайм-ауты
+      - Синхронизация, lock, ConcurrentDictionary
+      - Channels и producer/consumer
+  - id: cs-m7
+    title: Устройство .NET
+    level: Middle
+    lessons:
+      - CLR, JIT, сборки
+      - Сборщик мусора и поколения
+      - Value vs reference types глубже, boxing
+      - Производительность и BenchmarkDotNet
+  - id: cs-m8
+    title: Базы данных
+    level: Middle
+    lessons:
+      - SQL и ADO.NET
+      - Entity Framework Core — модели и контекст
+      - Миграции EF Core
+      - Связи, Include, отслеживание изменений
+      - Dapper
+  - id: cs-m9
+    title: ASP.NET Core
+    level: Middle
+    lessons:
+      - HTTP и REST
+      - Minimal API и контроллеры
+      - Dependency Injection
+      - Middleware и конфигурация
+      - Валидация и обработка ошибок
+      - Аутентификация JWT
+  - id: cs-m10
+    title: Тестирование и архитектура
+    level: Middle
+    lessons:
+      - Unit-тесты xUnit
+      - Moq и тестовые двойники
+      - SOLID и чистая архитектура
+      - Паттерны проектирования в .NET
+      - Логирование Serilog
+  - id: cs-m11
+    title: Инженерные практики
+    level: Middle
+    lessons:
+      - Git и code review
+      - Docker для .NET
+      - CI/CD
+      - "Итоговый проект: Web API с EF Core и тестами"

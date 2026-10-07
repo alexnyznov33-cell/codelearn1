@@ -1,0 +1,661 @@
+id: python
+modules:
+  - id: py-m4
+    title: Файлы, исключения и модули
+    level: Junior
+    lessons:
+      - id: py-04-01
+        title: Обработка исключений try / except / finally
+        minutes: 25
+        xp: 30
+        theory: |
+          **Исключение** — сигнал об ошибке во время выполнения. Если его не обработать, программа завершится с трейсбэком.
+
+          ```python
+          try:
+              n = int(input("Число: "))
+              print(100 / n)
+          except ValueError:
+              print("Это не число")
+          except ZeroDivisionError:
+              print("На ноль делить нельзя")
+          else:
+              print("Успех")          # если исключения не было
+          finally:
+              print("Выполнится всегда")   # закрыть ресурсы, логирование
+          ```
+
+          ## Получение объекта ошибки
+
+          ```python
+          try:
+              data = {"a": 1}["b"]
+          except KeyError as e:
+              print("Нет ключа:", e)
+          ```
+
+          ## Несколько типов сразу
+
+          ```python
+          except (ValueError, TypeError) as e:
+          ```
+
+          ## Частые исключения
+
+          `ValueError`, `TypeError`, `KeyError`, `IndexError`, `ZeroDivisionError`, `FileNotFoundError`, `AttributeError`, `NameError`.
+
+          Все они наследуются от `Exception`. Порядок `except` важен: более конкретные — выше.
+
+          ## raise
+
+          ```python
+          def set_age(age):
+              if age < 0:
+                  raise ValueError("Возраст не может быть отрицательным")
+              return age
+          ```
+
+          `raise` без аргументов внутри `except` пробрасывает текущее исключение дальше.
+
+          > ⚠️ Не пишите голый `except:` и `except Exception: pass` — они скрывают реальные баги. Ловите только те ошибки, которые умеете обработать.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              try:
+                  x = int("abc")
+              except ValueError:
+                  print("V")
+              finally:
+                  print("F")
+            answer: |
+              V
+              F
+          - type: output
+            q: Что выведет код?
+            code: |
+              try:
+                  print("A")
+              except Exception:
+                  print("B")
+              else:
+                  print("C")
+            answer: |
+              A
+              C
+          - type: output
+            q: Что выведет код?
+            code: |
+              def f():
+                  try:
+                      return 1
+                  finally:
+                      print("fin")
+              print(f())
+            answer: |
+              fin
+              1
+            explain: "`finally` выполняется даже при `return`."
+          - type: fill
+            q: Сгенерируйте исключение
+            code: |
+              if amount <= 0:
+                  ___ ValueError("Сумма должна быть положительной")
+            answers: [raise]
+          - type: choice
+            q: Какое исключение вызовет `[1, 2][5]`?
+            options: ["`KeyError`", "`IndexError`", "`ValueError`", "`TypeError`"]
+            answer: 1
+        homework:
+          task: |
+            Напишите функцию `safe_input_int(prompt, min_v, max_v)`, которая запрашивает число, пока пользователь не введёт корректное целое в диапазоне. Используйте её в калькуляторе деления двух чисел с обработкой деления на ноль.
+          checklist:
+            - Программа не падает ни при каком вводе
+            - Ловятся конкретные исключения, а не голый except
+          solution: |
+            def safe_input_int(prompt, min_v, max_v):
+                while True:
+                    try:
+                        value = int(input(prompt))
+                    except ValueError:
+                        print("Введите целое число")
+                        continue
+                    if min_v <= value <= max_v:
+                        return value
+                    print(f"Число должно быть от {min_v} до {max_v}")
+
+            a = safe_input_int("a: ", -1000, 1000)
+            b = safe_input_int("b: ", -1000, 1000)
+            try:
+                print(a / b)
+            except ZeroDivisionError:
+                print("Делить на ноль нельзя")
+
+      - id: py-04-02
+        title: Собственные исключения
+        minutes: 20
+        xp: 25
+        theory: |
+          Свои классы исключений делают ошибки понятными и позволяют ловить их отдельно от системных.
+
+          ```python
+          class AppError(Exception):
+              """Базовое исключение приложения."""
+
+          class InsufficientFundsError(AppError):
+              def __init__(self, balance, amount):
+                  super().__init__(f"Недостаточно средств: баланс {balance}, нужно {amount}")
+                  self.balance = balance
+                  self.amount = amount
+
+          def withdraw(balance, amount):
+              if amount > balance:
+                  raise InsufficientFundsError(balance, amount)
+              return balance - amount
+
+          try:
+              withdraw(100, 500)
+          except InsufficientFundsError as e:
+              print(e)            # Недостаточно средств: баланс 100, нужно 500
+              print(e.amount)     # 500
+          ```
+
+          ## Иерархия
+
+          Создайте один базовый класс для приложения (`AppError`) и наследуйте от него конкретные ошибки. Тогда можно поймать все ошибки приложения одним `except AppError`.
+
+          ## Цепочки исключений
+
+          ```python
+          try:
+              config = load_file(path)
+          except FileNotFoundError as e:
+              raise ConfigError("Не найден конфиг") from e
+          ```
+
+          `from e` сохраняет исходную причину в трейсбэке — проще отлаживать.
+
+          ## Когда что использовать
+
+          - неверный аргумент → `ValueError` / `TypeError`;
+          - нарушение бизнес-правила → своё исключение;
+          - никогда не используйте исключения для обычного управления потоком, если хватит `if`.
+        practice:
+          - type: fill
+            q: Объявите своё исключение
+            code: |
+              class ValidationError(___):
+                  pass
+            answers: [Exception]
+          - type: output
+            q: Что выведет код?
+            code: |
+              class AppError(Exception): pass
+              class DbError(AppError): pass
+              try:
+                  raise DbError("нет связи")
+              except AppError as e:
+                  print("App:", e)
+            answer: "App: нет связи"
+          - type: choice
+            q: Что делает `raise NewError() from e`?
+            options: ["Подавляет исходную ошибку", "Сохраняет исходное исключение как причину", "Повторяет код", "Ничего особенного"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              class E(Exception): pass
+              try:
+                  try:
+                      raise E("x")
+                  except ValueError:
+                      print("V")
+              except E:
+                  print("E")
+            answer: E
+            explain: Внутренний `except` не подошёл по типу — исключение ушло во внешний блок.
+        homework:
+          task: |
+            Создайте иерархию: `ShopError` → `OutOfStockError`, `InvalidQuantityError`. Напишите функцию `buy(stock: dict, item: str, qty: int)`, которая уменьшает остаток и бросает нужные исключения (в том числе `KeyError` превратите в `ShopError ... from e`). Обработайте все случаи в основной программе.
+          checklist:
+            - Исключения несут полезные атрибуты
+            - Используется raise ... from
+          solution: |
+            class ShopError(Exception): pass
+
+            class OutOfStockError(ShopError):
+                def __init__(self, item, left):
+                    super().__init__(f"{item}: осталось только {left}")
+                    self.item, self.left = item, left
+
+            class InvalidQuantityError(ShopError): pass
+
+            def buy(stock, item, qty):
+                if qty <= 0:
+                    raise InvalidQuantityError("Количество должно быть > 0")
+                try:
+                    left = stock[item]
+                except KeyError as e:
+                    raise ShopError(f"Нет товара {item}") from e
+                if qty > left:
+                    raise OutOfStockError(item, left)
+                stock[item] = left - qty
+
+            stock = {"яблоко": 5}
+            for args in [("яблоко", 2), ("яблоко", 10), ("груша", 1), ("яблоко", 0)]:
+                try:
+                    buy(stock, *args)
+                    print("OK", stock)
+                except ShopError as e:
+                    print(type(e).__name__, e)
+
+      - id: py-04-03
+        title: Работа с файлами и контекстный менеджер with
+        minutes: 25
+        xp: 30
+        theory: |
+          ## Открытие файла
+
+          ```python
+          with open("notes.txt", "w", encoding="utf-8") as f:
+              f.write("Первая строка\n")
+              f.write("Вторая строка\n")
+          ```
+
+          `with` автоматически закрывает файл, даже если произошла ошибка. Всегда указывайте `encoding="utf-8"` — иначе на Windows кириллица может сломаться.
+
+          ## Режимы
+
+          | Режим | Значение |
+          |---|---|
+          | `"r"` | чтение (по умолчанию), файл должен существовать |
+          | `"w"` | запись, **стирает** содержимое |
+          | `"a"` | дозапись в конец |
+          | `"x"` | создать, ошибка если существует |
+          | `"b"` | бинарный режим: `"rb"`, `"wb"` |
+
+          ## Чтение
+
+          ```python
+          with open("notes.txt", encoding="utf-8") as f:
+              text = f.read()            # весь файл одной строкой
+
+          with open("notes.txt", encoding="utf-8") as f:
+              for line in f:             # построчно — экономит память
+                  print(line.rstrip("\n"))
+
+          lines = open("notes.txt", encoding="utf-8").read().splitlines()
+          ```
+
+          ## pathlib — современная работа с путями
+
+          ```python
+          from pathlib import Path
+          p = Path("data") / "report.txt"     # корректно на любой ОС
+          p.parent.mkdir(parents=True, exist_ok=True)
+          p.write_text("Привет", encoding="utf-8")
+          print(p.read_text(encoding="utf-8"))
+          p.exists(), p.suffix, p.stem, p.name
+          for file in Path(".").glob("*.py"):
+              print(file)
+          ```
+        practice:
+          - type: choice
+            q: Что произойдёт с содержимым файла при `open("a.txt", "w")`?
+            options: ["Дозапишется в конец", "Будет стёрто", "Ничего — режим только для чтения", "Ошибка, если файл существует"]
+            answer: 1
+          - type: fill
+            q: Безопасно откройте файл для дозаписи
+            code: |
+              ___ open("log.txt", "___", encoding="utf-8") as f:
+                  f.write("событие\n")
+            answers: [with, a]
+          - type: choice
+            q: Зачем нужен `with` при работе с файлами?
+            options: ["Ускоряет чтение", "Гарантирует закрытие файла", "Создаёт файл", "Включает UTF-8"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              from pathlib import Path
+              p = Path("docs") / "report.final.pdf"
+              print(p.suffix, p.stem)
+            answer: .pdf report.final
+          - type: bug
+            q: Какая строка может сломать кириллицу на Windows?
+            code: |
+              from pathlib import Path
+              Path("out").mkdir(exist_ok=True)
+              with open("out/ru.txt", "w") as f:
+                  f.write("Привет")
+            bugLine: 3
+            fix: "with open(\"out/ru.txt\", \"w\", encoding=\"utf-8\") as f:"
+        homework:
+          task: |
+            **Анализатор лог-файла.** Создайте файл `app.log` со строками вида `2026-10-01 12:00:01 ERROR Не удалось подключиться`. Программа читает его построчно и выводит количество записей каждого уровня (INFO, WARNING, ERROR), а все ошибки записывает в `errors.txt`.
+          checklist:
+            - Файлы открываются через with и utf-8
+            - Чтение построчное
+            - Отсутствующий файл обрабатывается (FileNotFoundError)
+          solution: |
+            from collections import Counter
+
+            levels = Counter()
+            try:
+                with open("app.log", encoding="utf-8") as src, \
+                     open("errors.txt", "w", encoding="utf-8") as dst:
+                    for line in src:
+                        parts = line.split(maxsplit=3)
+                        if len(parts) < 3:
+                            continue
+                        levels[parts[2]] += 1
+                        if parts[2] == "ERROR":
+                            dst.write(line)
+            except FileNotFoundError:
+                print("Файл app.log не найден")
+            print(dict(levels))
+
+      - id: py-04-04
+        title: JSON и CSV
+        minutes: 25
+        xp: 30
+        theory: |
+          ## JSON
+
+          Самый популярный формат обмена данными (API, конфиги).
+
+          ```python
+          import json
+
+          user = {"name": "Аня", "age": 25, "skills": ["Python", "SQL"], "active": True}
+
+          text = json.dumps(user, ensure_ascii=False, indent=2)   # объект → строка
+          data = json.loads(text)                                # строка → объект
+
+          with open("user.json", "w", encoding="utf-8") as f:
+              json.dump(user, f, ensure_ascii=False, indent=2)    # в файл
+          with open("user.json", encoding="utf-8") as f:
+              loaded = json.load(f)                               # из файла
+          ```
+
+          Соответствие типов: `dict ↔ object`, `list ↔ array`, `str`, `int/float ↔ number`, `True ↔ true`, `None ↔ null`. Кортежи превращаются в списки, `set` и `datetime` не сериализуются напрямую.
+
+          `ensure_ascii=False` — чтобы кириллица сохранилась читаемой, а не как `\u0410`.
+
+          ## CSV
+
+          Табличные данные (Excel, выгрузки).
+
+          ```python
+          import csv
+
+          rows = [{"name": "Аня", "score": 90}, {"name": "Боб", "score": 75}]
+          with open("scores.csv", "w", newline="", encoding="utf-8") as f:
+              writer = csv.DictWriter(f, fieldnames=["name", "score"])
+              writer.writeheader()
+              writer.writerows(rows)
+
+          with open("scores.csv", encoding="utf-8") as f:
+              for row in csv.DictReader(f):
+                  print(row["name"], int(row["score"]))   # значения — строки!
+          ```
+
+          `newline=""` обязателен при записи CSV, иначе на Windows появятся пустые строки. Для Excel с кириллицей используйте `encoding="utf-8-sig"` и часто `delimiter=";"`.
+        practice:
+          - type: output
+            q: Что выведет код?
+            code: |
+              import json
+              print(json.dumps({"ok": True, "v": None}))
+            answer: '{"ok": true, "v": null}'
+          - type: fill
+            q: Прочитайте JSON из файла
+            code: |
+              with open("cfg.json", encoding="utf-8") as f:
+                  cfg = json.___(f)
+            answers: [load]
+          - type: choice
+            q: Какой тип будут иметь значения при чтении через `csv.DictReader`?
+            options: ["Автоматически определённый", "Всегда `str`", "`bytes`", "`int` для чисел"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              import json
+              data = json.loads('{"items": [1, 2, 3]}')
+              print(sum(data["items"]))
+            answer: "6"
+          - type: choice
+            q: Зачем `ensure_ascii=False` в `json.dumps`?
+            options: ["Ускоряет работу", "Сохраняет кириллицу читаемой", "Сжимает JSON", "Сортирует ключи"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте «Список задач» с сохранением в `tasks.json`: добавить задачу, отметить выполненной, удалить, показать все. При запуске данные загружаются из файла (если его нет — пустой список), после каждого изменения — сохраняются. Добавьте команду экспорта в `tasks.csv`.
+          checklist:
+            - Данные переживают перезапуск программы
+            - CSV открывается в Excel без «кракозябр» (utf-8-sig)
+          solution: |
+            import csv, json
+            from pathlib import Path
+
+            FILE = Path("tasks.json")
+            tasks = json.loads(FILE.read_text(encoding="utf-8")) if FILE.exists() else []
+
+            def save():
+                FILE.write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            while True:
+                cmd = input("add/done/del/list/csv/exit: ").strip()
+                if cmd == "add":
+                    tasks.append({"title": input("Задача: "), "done": False}); save()
+                elif cmd in ("done", "del"):
+                    i = int(input("Номер: ")) - 1
+                    if 0 <= i < len(tasks):
+                        if cmd == "done": tasks[i]["done"] = True
+                        else: tasks.pop(i)
+                        save()
+                elif cmd == "list":
+                    for i, t in enumerate(tasks, 1):
+                        print(i, "✓" if t["done"] else " ", t["title"])
+                elif cmd == "csv":
+                    with open("tasks.csv", "w", newline="", encoding="utf-8-sig") as f:
+                        w = csv.DictWriter(f, fieldnames=["title", "done"], delimiter=";")
+                        w.writeheader(); w.writerows(tasks)
+                elif cmd == "exit":
+                    break
+
+      - id: py-04-05
+        title: Модули, пакеты и pip
+        minutes: 20
+        xp: 25
+        theory: |
+          **Модуль** — любой `.py` файл. **Пакет** — папка с модулями (обычно с файлом `__init__.py`).
+
+          ## Импорт
+
+          ```python
+          import math
+          math.sqrt(16)
+
+          from math import pi, sqrt
+          from datetime import datetime as dt     # псевдоним
+          import numpy as np                      # общепринятые сокращения
+          ```
+
+          ⚠️ Избегайте `from module import *` — непонятно, откуда взялись имена.
+
+          ## Свой модуль
+
+          ```python
+          # utils.py
+          def slugify(text):
+              return text.lower().replace(" ", "-")
+
+          # main.py
+          from utils import slugify
+          ```
+
+          ## if __name__ == "__main__"
+
+          ```python
+          def main():
+              print("Запуск")
+
+          if __name__ == "__main__":   # True только при прямом запуске файла
+              main()
+          ```
+
+          Так модуль можно и запускать, и импортировать без побочных эффектов.
+
+          ## Структура проекта
+
+          ```
+          shop/
+            __init__.py
+            models.py
+            services/
+              __init__.py
+              orders.py
+          main.py
+          ```
+
+          Импорт: `from shop.services.orders import create_order`.
+
+          ## pip — установка библиотек
+
+          ```
+          pip install requests
+          pip install requests==2.32.0
+          pip list
+          pip freeze > requirements.txt
+          pip install -r requirements.txt
+          ```
+
+          Библиотеки ищут на [pypi.org](https://pypi.org). Полезная стандартная библиотека: `os`, `sys`, `pathlib`, `datetime`, `random`, `json`, `re`, `collections`, `itertools`, `logging`.
+        practice:
+          - type: choice
+            q: Когда `__name__ == "__main__"` истинно?
+            options: ["Всегда", "Когда файл запущен напрямую", "Когда файл импортирован", "Только в пакетах"]
+            answer: 1
+          - type: fill
+            q: Импортируйте функцию с псевдонимом
+            code: |
+              ___ datetime ___ date as d
+            answers: [from, import]
+          - type: choice
+            q: Какая команда сохраняет список зависимостей проекта?
+            options: ["`pip save`", "`pip freeze > requirements.txt`", "`pip export`", "`python -m deps`"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              import math
+              print(math.floor(3.7), math.ceil(3.2))
+            answer: 3 4
+        homework:
+          task: |
+            Разбейте приложение «Учёт расходов» на модули: `storage.py` (загрузка/сохранение в JSON), `reports.py` (отчёты), `main.py` (меню). Используйте `if __name__ == "__main__"`. Установите библиотеку `rich` и выведите отчёт красивой таблицей (`rich.table.Table`). Создайте `requirements.txt`.
+          checklist:
+            - Модули не выполняют код при импорте
+            - Есть requirements.txt
+          solution: |
+            # storage.py
+            import json
+            from pathlib import Path
+            FILE = Path("expenses.json")
+            def load():
+                return json.loads(FILE.read_text(encoding="utf-8")) if FILE.exists() else []
+            def save(items):
+                FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+
+            # reports.py
+            from rich.table import Table
+            def by_category(items):
+                t = Table("Категория", "Сумма")
+                sums = {}
+                for e in items:
+                    sums[e["category"]] = sums.get(e["category"], 0) + e["amount"]
+                for c, s in sums.items():
+                    t.add_row(c, f"{s:.2f}")
+                return t
+
+            # main.py
+            from rich.console import Console
+            import storage, reports
+            def main():
+                Console().print(reports.by_category(storage.load()))
+            if __name__ == "__main__":
+                main()
+
+      - id: py-04-06
+        title: Виртуальные окружения venv и poetry
+        minutes: 15
+        xp: 20
+        theory: |
+          Разным проектам нужны разные версии библиотек. **Виртуальное окружение** — изолированная папка со своим интерпретатором и пакетами.
+
+          ## venv (встроен в Python)
+
+          ```
+          python -m venv .venv            # создать
+          .venv\Scripts\activate          # Windows
+          source .venv/bin/activate       # Linux / macOS
+          pip install requests            # ставится только в окружение
+          deactivate                      # выйти
+          ```
+
+          Папку `.venv` **не коммитят** в Git — добавьте её в `.gitignore`. Вместо неё храните `requirements.txt`.
+
+          ## Poetry / uv — современные менеджеры
+
+          ```
+          pip install poetry
+          poetry new myproject      # или poetry init в существующей папке
+          poetry add requests       # установить и записать в pyproject.toml
+          poetry add --group dev pytest
+          poetry install            # установить всё по lock-файлу
+          poetry run python main.py
+          ```
+
+          **uv** — очень быстрая альтернатива: `uv init`, `uv add requests`, `uv run main.py`.
+
+          ## pyproject.toml и lock-файл
+
+          - `pyproject.toml` — описание проекта и диапазоны версий зависимостей;
+          - `poetry.lock` / `uv.lock` — точные версии всех пакетов, чтобы у всех разработчиков и на сервере было одинаково.
+
+          > 💡 Правило: один проект — одно окружение. IDE (PyCharm, VS Code) умеют выбирать интерпретатор из `.venv`.
+        practice:
+          - type: choice
+            q: Зачем нужно виртуальное окружение?
+            options: ["Чтобы Python работал быстрее", "Чтобы изолировать зависимости проекта", "Чтобы запускать код в браузере", "Для шифрования кода"]
+            answer: 1
+          - type: fill
+            q: Создайте окружение
+            code: |
+              python -m ___ .venv
+            answers: [venv]
+          - type: choice
+            q: Что НЕ нужно добавлять в Git?
+            options: ["`pyproject.toml`", "`poetry.lock`", "`.venv/`", "`requirements.txt`"]
+            answer: 2
+          - type: choice
+            q: Какая команда Poetry добавляет зависимость?
+            options: ["`poetry install requests`", "`poetry add requests`", "`poetry get requests`", "`poetry pip requests`"]
+            answer: 1
+        homework:
+          task: |
+            Создайте новый проект через Poetry (или uv), добавьте зависимости `requests` и `rich`, а в dev-группу — `pytest` и `mypy`. Напишите скрипт, который скачивает `https://api.github.com/repos/python/cpython` и выводит количество звёзд. Запустите через `poetry run`.
+          checklist:
+            - Есть pyproject.toml и lock-файл
+            - .venv в .gitignore
+          solution: |
+            # poetry new stars && cd stars
+            # poetry add requests rich && poetry add --group dev pytest mypy
+            import requests
+            from rich import print
+
+            r = requests.get("https://api.github.com/repos/python/cpython", timeout=10)
+            r.raise_for_status()
+            print(f"[bold yellow]★ {r.json()['stargazers_count']}[/]")

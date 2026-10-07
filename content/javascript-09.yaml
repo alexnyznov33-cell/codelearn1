@@ -1,0 +1,859 @@
+id: javascript
+modules:
+  - id: js-m9
+    title: Node.js
+    level: Middle
+    lessons:
+      - id: js-09-01
+        title: Модули Node.js, fs, path
+        minutes: 40
+        xp: 45
+        theory: |
+          **Node.js** — среда выполнения JavaScript вне браузера (движок V8 + libuv). Нет `window` и `document`, зато есть доступ к файлам, сети, процессам.
+
+          ```bash
+          node app.js
+          node --watch app.js        # перезапуск при изменениях (Node 18+)
+          node --env-file=.env app.js  # загрузить переменные окружения (Node 20+)
+          ```
+
+          ## Глобальные объекты
+
+          ```javascript
+          process.argv;              // аргументы командной строки
+          process.env.PORT;          // переменные окружения
+          process.cwd();             // текущая папка
+          process.exit(1);           // завершить с кодом ошибки
+          import.meta.dirname;       // папка текущего модуля (ESM, Node 20.11+)
+          ```
+
+          ## path — работа с путями
+
+          ```javascript
+          import path from "node:path";
+          path.join("data", "users", "list.json");   // data/users/list.json (или с \ в Windows)
+          path.resolve("data");                       // абсолютный путь
+          path.extname("photo.jpg");                  // ".jpg"
+          path.basename("/a/b/report.pdf", ".pdf");   // "report"
+          path.dirname("/a/b/c.txt");                 // "/a/b"
+          ```
+
+          Никогда не склеивайте пути строками через `/` — используйте `path.join`, тогда код работает в любой ОС.
+
+          ## fs — файловая система
+
+          ```javascript
+          import { readFile, writeFile, mkdir, readdir, stat, rm } from "node:fs/promises";
+
+          const text = await readFile("config.json", "utf8");
+          const config = JSON.parse(text);
+          await mkdir("out/reports", { recursive: true });
+          await writeFile("out/result.json", JSON.stringify(config, null, 2));
+          const files = await readdir("out", { withFileTypes: true });
+          for (const f of files) console.log(f.name, f.isDirectory());
+          const info = await stat("out/result.json");   // размер, даты
+          await rm("tmp", { recursive: true, force: true });
+          ```
+
+          Синхронные версии (`readFileSync`) блокируют event loop — допустимы только в скриптах и при старте, но не в обработчиках запросов сервера.
+
+          ## Потоки (streams)
+
+          Большие файлы читают частями, не загружая в память целиком:
+
+          ```javascript
+          import { createReadStream, createWriteStream } from "node:fs";
+          import { pipeline } from "node:stream/promises";
+          import { createGzip } from "node:zlib";
+          await pipeline(createReadStream("big.log"), createGzip(), createWriteStream("big.log.gz"));
+
+          import readline from "node:readline";
+          const rl = readline.createInterface({ input: createReadStream("big.csv") });
+          for await (const line of rl) { /* построчная обработка */ }
+          ```
+
+          ## Другие встроенные модули
+
+          `node:http`, `node:crypto` (`randomUUID`, хеши), `node:os`, `node:child_process`, `node:events` (`EventEmitter`), `node:test` (встроенный тест-раннер), `node:util` (`parseArgs`, `promisify`). Префикс `node:` явно указывает на встроенный модуль.
+        practice:
+          - type: fill
+            q: Соберите путь кроссплатформенно
+            code: |
+              const file = path.___(baseDir, "data", "users.json");
+            answers: ["join"]
+          - type: output
+            q: Что выведет код?
+            code: |
+              const path = require("node:path");
+              console.log(path.extname("archive.tar.gz"), path.basename("/docs/report.pdf", ".pdf"));
+            answer: .gz report
+          - type: bug
+            q: Какая строка плоха в обработчике HTTP-запросов?
+            code: |
+              server.on("request", (req, res) => {
+                const data = fs.readFileSync("big-report.json", "utf8");
+                res.end(data);
+              });
+            bugLine: 2
+            fix: const data = await readFile("big-report.json", "utf8"); (в async-обработчике) или поток
+            explain: Синхронное чтение блокирует event loop — все остальные запросы ждут.
+          - type: choice
+            q: Как обработать файл логов на 10 ГБ?
+            options: ["readFile целиком", "Потоками (stream/readline) по частям", "JSON.parse", "Нельзя в Node.js"]
+            answer: 1
+          - type: output
+            q: Что выведет код?
+            code: |
+              const path = require("node:path");
+              console.log(path.posix.join("a", "b", "..", "c", "file.txt"));
+            answer: a/c/file.txt
+        homework:
+          task: |
+            Напишите CLI-утилиту `organize.js`: принимает путь к папке (`process.argv` или `util.parseArgs`), сканирует файлы и раскладывает их по подпапкам по типу (images: jpg/png/gif, docs: pdf/docx/txt, archives: zip/rar, other). Флаг `--dry-run` только показывает план. В конце выводит отчёт: сколько файлов и сколько мегабайт перемещено в каждую категорию, и сохраняет его в `report.json`. Используйте `fs/promises` и `path`.
+          checklist:
+            - Пути собираются через path
+            - Асинхронный fs
+            - Работает dry-run
+            - Ошибки (нет папки) обрабатываются
+          solution: |
+            import { readdir, mkdir, rename, stat, writeFile } from "node:fs/promises";
+            import path from "node:path";
+            import { parseArgs } from "node:util";
+
+            const { values, positionals } = parseArgs({ options: { "dry-run": { type: "boolean" } }, allowPositionals: true });
+            const dir = path.resolve(positionals[0] ?? ".");
+            const groups = { images: [".jpg", ".jpeg", ".png", ".gif"], docs: [".pdf", ".docx", ".txt"], archives: [".zip", ".rar"] };
+            const categoryOf = (file) =>
+              Object.entries(groups).find(([, exts]) => exts.includes(path.extname(file).toLowerCase()))?.[0] ?? "other";
+
+            try {
+              const entries = await readdir(dir, { withFileTypes: true });
+              const report = {};
+              for (const e of entries.filter((x) => x.isFile())) {
+                const cat = categoryOf(e.name);
+                const from = path.join(dir, e.name);
+                const to = path.join(dir, cat, e.name);
+                const { size } = await stat(from);
+                report[cat] ??= { files: 0, mb: 0 };
+                report[cat].files++;
+                report[cat].mb += size / 1024 / 1024;
+                if (values["dry-run"]) console.log(`${e.name} → ${cat}/`);
+                else {
+                  await mkdir(path.join(dir, cat), { recursive: true });
+                  await rename(from, to);
+                }
+              }
+              for (const r of Object.values(report)) r.mb = Number(r.mb.toFixed(2));
+              console.table(report);
+              if (!values["dry-run"]) await writeFile(path.join(dir, "report.json"), JSON.stringify(report, null, 2));
+            } catch (err) {
+              console.error(err.code === "ENOENT" ? `Папка не найдена: ${dir}` : err.message);
+              process.exit(1);
+            }
+      - id: js-09-02
+        title: HTTP-сервер и Express
+        minutes: 40
+        xp: 45
+        theory: |
+          ## Встроенный http
+
+          ```javascript
+          import http from "node:http";
+          const server = http.createServer((req, res) => {
+            if (req.method === "GET" && req.url === "/health") {
+              res.writeHead(200, { "Content-Type": "application/json" });
+              return res.end(JSON.stringify({ ok: true }));
+            }
+            res.writeHead(404).end("Not found");
+          });
+          server.listen(3000, () => console.log("http://localhost:3000"));
+          ```
+
+          Писать роутинг, разбор JSON и cookie вручную долго — поэтому используют фреймворки: **Express** (самый популярный), **Fastify** (быстрый, со схемами), **Hono**, **NestJS** (архитектура как в Spring).
+
+          ## Express
+
+          ```bash
+          npm i express
+          ```
+
+          ```javascript
+          import express from "express";
+          const app = express();
+
+          app.use(express.json());                       // разбор JSON-тела
+          app.use(express.static("public"));             // статические файлы
+
+          app.use((req, res, next) => {                  // свой middleware: логирование
+            const start = Date.now();
+            res.on("finish", () => console.log(req.method, req.url, res.statusCode, `${Date.now() - start}ms`));
+            next();                                      // передать дальше по цепочке
+          });
+
+          app.get("/api/hello", (req, res) => {
+            res.json({ message: `Привет, ${req.query.name ?? "гость"}` });   // ?name=Анна
+          });
+
+          app.get("/api/users/:id", (req, res) => {
+            const user = users.find((u) => u.id === Number(req.params.id));
+            if (!user) return res.status(404).json({ error: "Не найден" });
+            res.json(user);
+          });
+
+          app.post("/api/users", (req, res) => {
+            const user = { id: Date.now(), ...req.body };
+            users.push(user);
+            res.status(201).json(user);
+          });
+
+          app.listen(process.env.PORT ?? 3000);
+          ```
+
+          ## Middleware
+
+          Функция `(req, res, next)` — звено конвейера. Может изменить `req`/`res`, завершить ответ или вызвать `next()`. Порядок `app.use` важен. Популярные: `cors`, `helmet` (заголовки безопасности), `morgan` (логи), `express-rate-limit`, `cookie-parser`.
+
+          ## Роутеры и обработка ошибок
+
+          ```javascript
+          // routes/products.js
+          const router = express.Router();
+          router.get("/", listProducts);
+          router.post("/", createProduct);
+          export default router;
+
+          // app.js
+          app.use("/api/products", productsRouter);
+
+          // Обработчик ошибок — 4 аргумента, подключается последним
+          app.use((err, req, res, next) => {
+            console.error(err);
+            res.status(err.status ?? 500).json({ error: err.expose ? err.message : "Внутренняя ошибка" });
+          });
+          ```
+
+          В Express 5 ошибки из `async`-обработчиков автоматически попадают в обработчик ошибок; в Express 4 нужно оборачивать или вызывать `next(err)`.
+        practice:
+          - type: fill
+            q: Включите разбор JSON-тела запросов
+            code: |
+              app.use(express.___());
+            answers: ["json"]
+          - type: fill
+            q: Получите параметр :id из пути /api/orders/:id
+            code: |
+              const id = req.___.id;
+            answers: ["params"]
+          - type: bug
+            q: Почему запрос «зависает» и не получает ответа?
+            code: |
+              app.use((req, res, next) => {
+                console.log(req.method, req.url);
+              });
+              app.get("/", (req, res) => res.send("ok"));
+            bugLine: 2
+            fix: добавить вызов next() после логирования
+            explain: Middleware не завершил ответ и не передал управление дальше — запрос висит.
+          - type: choice
+            q: Сколько аргументов у обработчика ошибок в Express?
+            options: ["2", "3", "4", "1"]
+            answer: 2
+          - type: output
+            q: Что выведет код (упрощённая цепочка middleware)?
+            code: |
+              const chain = [(ctx, next) => { ctx.log.push("a"); next(); ctx.log.push("a2"); }, (ctx, next) => { ctx.log.push("b"); next(); }, (ctx) => ctx.log.push("handler")];
+              const ctx = { log: [] };
+              const run = (i) => chain[i] && chain[i](ctx, () => run(i + 1));
+              run(0);
+              console.log(ctx.log.join(" "));
+            answer: a b handler a2
+        homework:
+          task: |
+            Напишите на Express сервер «Заметки» (хранение в JSON-файле через fs/promises): `GET /api/notes` (поиск `?q=`), `GET /api/notes/:id`, `POST`, `PUT /:id`, `DELETE /:id`; middleware логирования со временем ответа, `helmet`, `cors` для `http://localhost:5173`, раздачу статики из `public/` с простой HTML-страницей, роутер в отдельном файле, централизованный обработчик ошибок и 404 для неизвестных путей API.
+          checklist:
+            - Правильные HTTP-коды
+            - Роуты вынесены в Router
+            - Есть обработчик ошибок
+            - Данные сохраняются в файл
+          solution: |
+            // notes.router.js
+            import { Router } from "express";
+            import { readFile, writeFile } from "node:fs/promises";
+            const FILE = "notes.json";
+            const load = async () => JSON.parse(await readFile(FILE, "utf8").catch(() => "[]"));
+            const save = (notes) => writeFile(FILE, JSON.stringify(notes, null, 2));
+            const httpError = (status, message) => Object.assign(new Error(message), { status, expose: true });
+
+            const router = Router();
+            router.get("/", async (req, res) => {
+              const q = String(req.query.q ?? "").toLowerCase();
+              res.json((await load()).filter((n) => n.text.toLowerCase().includes(q)));
+            });
+            router.get("/:id", async (req, res) => {
+              const note = (await load()).find((n) => n.id === req.params.id);
+              if (!note) throw httpError(404, "Заметка не найдена");
+              res.json(note);
+            });
+            router.post("/", async (req, res) => {
+              if (!req.body?.text) throw httpError(400, "Поле text обязательно");
+              const notes = await load();
+              const note = { id: crypto.randomUUID(), text: req.body.text, createdAt: new Date().toISOString() };
+              await save([...notes, note]);
+              res.status(201).json(note);
+            });
+            router.put("/:id", async (req, res) => {
+              const notes = await load();
+              const i = notes.findIndex((n) => n.id === req.params.id);
+              if (i < 0) throw httpError(404, "Заметка не найдена");
+              notes[i] = { ...notes[i], text: req.body.text };
+              await save(notes);
+              res.json(notes[i]);
+            });
+            router.delete("/:id", async (req, res) => {
+              const notes = await load();
+              if (!notes.some((n) => n.id === req.params.id)) throw httpError(404, "Заметка не найдена");
+              await save(notes.filter((n) => n.id !== req.params.id));
+              res.status(204).end();
+            });
+            export default router;
+
+            // app.js (Express 5)
+            import express from "express";
+            import helmet from "helmet";
+            import cors from "cors";
+            import notes from "./notes.router.js";
+            const app = express();
+            app.use(helmet());
+            app.use(cors({ origin: "http://localhost:5173" }));
+            app.use(express.json());
+            app.use((req, res, next) => {
+              const t = Date.now();
+              res.on("finish", () => console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - t}ms`));
+              next();
+            });
+            app.use(express.static("public"));
+            app.use("/api/notes", notes);
+            app.use("/api", (req, res) => res.status(404).json({ error: "Маршрут не найден" }));
+            app.use((err, req, res, next) => {
+              if (!err.expose) console.error(err);
+              res.status(err.status ?? 500).json({ error: err.expose ? err.message : "Внутренняя ошибка" });
+            });
+            app.listen(3000, () => console.log("http://localhost:3000"));
+      - id: js-09-03
+        title: REST API и валидация
+        minutes: 40
+        xp: 45
+        theory: |
+          ## Проектирование REST API
+
+          - Ресурсы — существительные во множественном числе: `/api/products`, `/api/products/42/reviews`.
+          - Действие — HTTP-метод: GET (чтение), POST (создание), PUT/PATCH (изменение), DELETE.
+          - Коды ответа: 200, 201 (+ заголовок `Location`), 204, 400 (невалидно), 401, 403, 404, 409 (конфликт), 422, 429 (лимит), 500.
+          - Фильтры, сортировка, пагинация — в query: `GET /api/products?category=tea&sort=-price&page=2&limit=20`.
+          - Единый формат ошибок: `{ "error": { "code": "VALIDATION", "message": "...", "details": [...] } }`.
+          - Версионирование: `/api/v1/...`.
+
+          ## Валидация входных данных
+
+          **Никогда не доверяйте** данным клиента. Валидируйте тело, параметры и query на сервере. Популярно — **Zod**:
+
+          ```javascript
+          import { z } from "zod";
+
+          const CreateProduct = z.object({
+            title: z.string().trim().min(2).max(100),
+            price: z.number().positive(),
+            category: z.enum(["tea", "coffee", "sweets"]),
+            tags: z.array(z.string()).max(10).default([]),
+          });
+
+          const ListQuery = z.object({
+            page: z.coerce.number().int().min(1).default(1),       // строки из query → числа
+            limit: z.coerce.number().int().min(1).max(100).default(20),
+            sort: z.enum(["price", "-price", "title"]).optional(),
+          });
+
+          const validate = (schema, source = "body") => (req, res, next) => {
+            const result = schema.safeParse(req[source]);
+            if (!result.success) {
+              return res.status(400).json({
+                error: { code: "VALIDATION", details: result.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) },
+              });
+            }
+            req.valid = { ...req.valid, [source]: result.data };    // очищенные данные
+            next();
+          };
+
+          app.post("/api/products", validate(CreateProduct), async (req, res) => {
+            const product = await service.create(req.valid.body);   // только проверенные поля
+            res.status(201).location(`/api/products/${product.id}`).json(product);
+          });
+          ```
+
+          Zod по умолчанию **отбрасывает** лишние поля — клиент не сможет подсунуть `isAdmin: true`.
+
+          ## Слои приложения
+
+          ```
+          routes (HTTP: валидация, коды) → services (бизнес-логика) → repositories (БД)
+          ```
+
+          Контроллер не знает про SQL, сервис не знает про `req/res` — это упрощает тесты и замену частей.
+
+          ## Пагинация в ответе
+
+          ```json
+          { "data": [...], "meta": { "page": 2, "limit": 20, "total": 134, "pages": 7 } }
+          ```
+
+          ## Документация
+
+          OpenAPI (Swagger) описывает API в YAML/JSON: эндпоинты, схемы, коды. Генерируется из схем Zod (`zod-to-openapi`) и показывается через Swagger UI. Тестирование API — `supertest`:
+
+          ```javascript
+          const res = await request(app).post("/api/products").send({ title: "" });
+          expect(res.status).toBe(400);
+          ```
+        practice:
+          - type: choice
+            q: Какой URL лучше соответствует REST для получения отзывов товара 42?
+            options: ["/api/getReviews?product=42", "/api/products/42/reviews", "/api/review_list/42", "/api/products/reviews/get/42"]
+            answer: 1
+          - type: fill
+            q: Преобразуйте строку из query в число в схеме Zod
+            code: |
+              page: z.___.number().int().min(1)
+            answers: ["coerce"]
+          - type: output
+            q: Что выведет код (логика как у validate)?
+            code: |
+              const schema = { title: (v) => typeof v === "string" && v.length >= 2 };
+              const body = { title: "A", isAdmin: true };
+              const errors = Object.keys(schema).filter((k) => !schema[k](body[k]));
+              const clean = Object.fromEntries(Object.keys(schema).map((k) => [k, body[k]]));
+              console.log(errors.join(","), "isAdmin" in clean);
+            answer: title false
+          - type: choice
+            q: Пользователь пытается создать товар с уже существующим артикулом. Какой код ответа?
+            options: ["200", "400", "409", "500"]
+            answer: 2
+          - type: order
+            q: Расставьте слои обработки POST-запроса
+            lines:
+              - Роутер сопоставляет метод и путь
+              - Middleware валидирует тело схемой
+              - Сервис выполняет бизнес-логику
+              - Репозиторий сохраняет данные
+              - Ответ 201 с Location и созданным объектом
+        homework:
+          task: |
+            Переделайте API «Заметки» в полноценный REST API «Каталог товаров» со слоями routes → services → repositories (пока in-memory): Zod-схемы для создания, обновления (PATCH, частичная схема `.partial()`), query (пагинация, сортировка, фильтр по категории и диапазону цен); единый формат ошибок; заголовок Location; ответ списка с `meta`. Напишите 6+ тестов на supertest + vitest.
+          checklist:
+            - Все входные данные валидируются
+            - Лишние поля отбрасываются
+            - Слои разделены
+            - Есть тесты API
+          solution: |
+            // schemas.js
+            import { z } from "zod";
+            export const ProductCreate = z.object({
+              title: z.string().trim().min(2).max(100),
+              price: z.number().positive(),
+              category: z.enum(["tea", "coffee", "sweets"]),
+            });
+            export const ProductPatch = ProductCreate.partial();
+            export const ProductQuery = z.object({
+              page: z.coerce.number().int().min(1).default(1),
+              limit: z.coerce.number().int().min(1).max(100).default(10),
+              sort: z.enum(["price", "-price", "title"]).default("title"),
+              category: z.enum(["tea", "coffee", "sweets"]).optional(),
+              minPrice: z.coerce.number().optional(),
+              maxPrice: z.coerce.number().optional(),
+            });
+
+            // repository.js
+            const items = new Map();
+            export const repo = {
+              all: () => [...items.values()],
+              get: (id) => items.get(id),
+              save: (p) => (items.set(p.id, p), p),
+              delete: (id) => items.delete(id),
+            };
+
+            // service.js
+            import { repo } from "./repository.js";
+            export const service = {
+              list({ page, limit, sort, category, minPrice = 0, maxPrice = Infinity }) {
+                const key = sort.replace("-", ""), dir = sort.startsWith("-") ? -1 : 1;
+                const filtered = repo.all()
+                  .filter((p) => (!category || p.category === category) && p.price >= minPrice && p.price <= maxPrice)
+                  .sort((a, b) => (a[key] > b[key] ? dir : -dir));
+                return { data: filtered.slice((page - 1) * limit, page * limit), meta: { page, limit, total: filtered.length, pages: Math.ceil(filtered.length / limit) } };
+              },
+              create: (dto) => repo.save({ id: crypto.randomUUID(), ...dto }),
+              patch(id, dto) { const p = repo.get(id); return p && repo.save({ ...p, ...dto }); },
+            };
+
+            // routes.js
+            import { Router } from "express";
+            const validate = (schema, src = "body") => (req, res, next) => {
+              const r = schema.safeParse(req[src]);
+              if (!r.success) return res.status(400).json({ error: { code: "VALIDATION", details: r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) } });
+              req.valid = { ...req.valid, [src]: r.data };
+              next();
+            };
+            export const router = Router();
+            router.get("/", validate(ProductQuery, "query"), (req, res) => res.json(service.list(req.valid.query)));
+            router.post("/", validate(ProductCreate), (req, res) => {
+              const p = service.create(req.valid.body);
+              res.status(201).location(`/api/products/${p.id}`).json(p);
+            });
+            router.patch("/:id", validate(ProductPatch), (req, res) => {
+              const p = service.patch(req.params.id, req.valid.body);
+              p ? res.json(p) : res.status(404).json({ error: { code: "NOT_FOUND", message: "Товар не найден" } });
+            });
+
+            // api.test.js
+            import request from "supertest";
+            import { app } from "./app.js";
+            import { it, expect } from "vitest";
+            it("создаёт товар", async () => {
+              const r = await request(app).post("/api/products").send({ title: "Пуэр", price: 900, category: "tea", isAdmin: true });
+              expect(r.status).toBe(201);
+              expect(r.headers.location).toMatch(/\/api\/products\//);
+              expect(r.body.isAdmin).toBeUndefined();
+            });
+            it("400 при невалидной цене", async () => {
+              const r = await request(app).post("/api/products").send({ title: "Чай", price: -1, category: "tea" });
+              expect(r.status).toBe(400);
+              expect(r.body.error.details[0].path).toBe("price");
+            });
+      - id: js-09-04
+        title: Базы данных — PostgreSQL и Prisma
+        minutes: 45
+        xp: 50
+        theory: |
+          **PostgreSQL** — надёжная open-source реляционная СУБД, стандарт для бэкенда. Быстрый запуск через Docker:
+
+          ```bash
+          docker run -d --name pg -p 5432:5432 -e POSTGRES_PASSWORD=pg -e POSTGRES_DB=shop postgres:16
+          ```
+
+          Работать с БД из Node.js можно на «чистом» SQL (`pg`, `postgres.js`), через query builder (**Knex**, **Kysely**) или ORM (**Prisma**, **Drizzle**, TypeORM).
+
+          ## Чистый SQL с pg
+
+          ```javascript
+          import pg from "pg";
+          const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+          const { rows } = await pool.query(
+            "SELECT id, title, price FROM products WHERE price < $1 ORDER BY price",
+            [1000]                    // параметры отдельно — защита от SQL-инъекций
+          );
+          ```
+
+          ## Prisma
+
+          ```bash
+          npm i -D prisma && npm i @prisma/client
+          npx prisma init           # создаст prisma/schema.prisma и .env с DATABASE_URL
+          ```
+
+          ```prisma
+          // prisma/schema.prisma
+          model User {
+            id        Int      @id @default(autoincrement())
+            email     String   @unique
+            name      String
+            orders    Order[]
+            createdAt DateTime @default(now())
+          }
+
+          model Order {
+            id     Int     @id @default(autoincrement())
+            total  Decimal @db.Decimal(10, 2)
+            status String  @default("NEW")
+            user   User    @relation(fields: [userId], references: [id])
+            userId Int
+            @@index([userId])
+          }
+          ```
+
+          ```bash
+          npx prisma migrate dev --name init   # создать и применить миграцию + сгенерировать клиент
+          npx prisma studio                    # GUI для просмотра данных
+          ```
+
+          ## Запросы — полностью типизированные
+
+          ```javascript
+          import { PrismaClient } from "@prisma/client";
+          const prisma = new PrismaClient();
+
+          const user = await prisma.user.create({ data: { email: "anna@mail.ru", name: "Анна" } });
+          const users = await prisma.user.findMany({
+            where: { name: { contains: "ан", mode: "insensitive" } },
+            include: { orders: true },             // связанные заказы одним запросом — без N+1
+            orderBy: { createdAt: "desc" },
+            skip: 20, take: 10,
+          });
+          await prisma.order.update({ where: { id: 5 }, data: { status: "PAID" } });
+          const stats = await prisma.order.groupBy({ by: ["status"], _sum: { total: true }, _count: true });
+          ```
+
+          ## Транзакции
+
+          ```javascript
+          await prisma.$transaction(async (tx) => {
+            const from = await tx.account.update({ where: { id: 1 }, data: { balance: { decrement: 100 } } });
+            if (from.balance < 0) throw new Error("Недостаточно средств");   // откат всей транзакции
+            await tx.account.update({ where: { id: 2 }, data: { balance: { increment: 100 } } });
+          });
+          ```
+
+          ## Практики
+
+          - Миграции хранятся в git и применяются в CI/CD командой `prisma migrate deploy`.
+          - Индексы — на полях в `WHERE`, `JOIN`, `ORDER BY` (`@@index`).
+          - Один `PrismaClient` на приложение (пул соединений внутри).
+          - Деньги — `Decimal`, а не `Float`.
+          - Смотрите реальные SQL-запросы: `new PrismaClient({ log: ["query"] })`.
+        practice:
+          - type: choice
+            q: Почему в pg параметры передаются отдельно ($1, $2), а не вставляются в строку SQL?
+            options: ["Так быстрее печатать", "Защита от SQL-инъекций", "Иначе не работает PostgreSQL", "Для типизации"]
+            answer: 1
+          - type: fill
+            q: Загрузите пользователей вместе с заказами
+            code: |
+              const users = await prisma.user.findMany({ ___: { orders: true } });
+            answers: ["include"]
+          - type: choice
+            q: Какая команда применяет миграции на продакшене?
+            options: ["prisma migrate dev", "prisma migrate deploy", "prisma db push", "prisma studio"]
+            answer: 1
+          - type: bug
+            q: Какая строка вызовет проблему N+1?
+            code: |
+              const users = await prisma.user.findMany();
+              for (const u of users) {
+                u.orders = await prisma.order.findMany({ where: { userId: u.id } });
+              }
+            bugLine: 3
+            fix: "prisma.user.findMany({ include: { orders: true } })"
+            explain: Отдельный запрос на каждого пользователя — N+1. Нужно загрузить связи одним запросом.
+          - type: choice
+            q: Какой тип использовать для денежных сумм?
+            options: ["Float", "Decimal", "String", "Int в рублях с копейками через точку"]
+            answer: 1
+        homework:
+          task: |
+            Переведите «Каталог товаров» на PostgreSQL + Prisma: модели `Category`, `Product` (Decimal цена, связь с категорией), `Review` (рейтинг 1–5, связь с товаром), миграции, seed-скрипт (`prisma/seed.js`) с тестовыми данными. Репозиторий на Prisma: список с фильтрами и пагинацией (`count` + `findMany` в `$transaction`), товар с отзывами и средним рейтингом (`aggregate`), создание отзыва. Запуск через docker-compose (postgres + app).
+          checklist:
+            - Миграции в репозитории
+            - Нет N+1
+            - Пагинация с общим количеством
+            - Есть seed
+          solution: |
+            // prisma/schema.prisma
+            // model Category { id Int @id @default(autoincrement()) name String @unique products Product[] }
+            // model Product {
+            //   id Int @id @default(autoincrement())
+            //   title String
+            //   price Decimal @db.Decimal(10, 2)
+            //   category Category @relation(fields: [categoryId], references: [id])
+            //   categoryId Int
+            //   reviews Review[]
+            //   @@index([categoryId])
+            // }
+            // model Review { id Int @id @default(autoincrement()) rating Int text String product Product @relation(fields: [productId], references: [id]) productId Int }
+
+            // repository.js
+            import { PrismaClient } from "@prisma/client";
+            export const prisma = new PrismaClient();
+
+            export async function listProducts({ page = 1, limit = 10, category, minPrice, maxPrice }) {
+              const where = {
+                ...(category && { category: { name: category } }),
+                price: { gte: minPrice ?? 0, ...(maxPrice && { lte: maxPrice }) },
+              };
+              const [total, data] = await prisma.$transaction([
+                prisma.product.count({ where }),
+                prisma.product.findMany({ where, include: { category: true }, skip: (page - 1) * limit, take: limit, orderBy: { title: "asc" } }),
+              ]);
+              return { data, meta: { page, limit, total, pages: Math.ceil(total / limit) } };
+            }
+            export async function getProduct(id) {
+              const [product, rating] = await Promise.all([
+                prisma.product.findUnique({ where: { id }, include: { reviews: true, category: true } }),
+                prisma.review.aggregate({ where: { productId: id }, _avg: { rating: true }, _count: true }),
+              ]);
+              return product && { ...product, rating: rating._avg.rating, reviewsCount: rating._count };
+            }
+            export const addReview = (productId, { rating, text }) => prisma.review.create({ data: { productId, rating, text } });
+
+            // prisma/seed.js
+            const tea = await prisma.category.create({ data: { name: "tea" } });
+            await prisma.product.createMany({ data: [
+              { title: "Пуэр", price: 900, categoryId: tea.id },
+              { title: "Улун", price: 650, categoryId: tea.id },
+            ] });
+
+            // docker-compose.yml
+            // services:
+            //   db: { image: postgres:16, environment: { POSTGRES_PASSWORD: pg, POSTGRES_DB: shop }, ports: ["5432:5432"] }
+            //   app: { build: ., environment: { DATABASE_URL: "postgresql://postgres:pg@db:5432/shop" }, ports: ["3000:3000"], depends_on: [db],
+            //          command: sh -c "npx prisma migrate deploy && node app.js" }
+      - id: js-09-05
+        title: Аутентификация JWT
+        minutes: 45
+        xp: 50
+        theory: |
+          ## Хранение паролей
+
+          Пароли хранят только в виде **хеша с солью** медленным алгоритмом: **bcrypt** или **argon2**.
+
+          ```javascript
+          import bcrypt from "bcrypt";
+          const hash = await bcrypt.hash(password, 12);           // при регистрации
+          const ok = await bcrypt.compare(password, user.passwordHash);   // при входе
+          ```
+
+          ## JWT
+
+          JSON Web Token: `header.payload.signature`. Сервер подписывает данные секретом, а потом проверяет подпись — без похода в БД.
+
+          ```javascript
+          import jwt from "jsonwebtoken";
+          const SECRET = process.env.JWT_SECRET;   // длинная случайная строка, не в коде!
+
+          app.post("/api/auth/login", validate(LoginSchema), async (req, res) => {
+            const { email, password } = req.valid.body;
+            const user = await prisma.user.findUnique({ where: { email } });
+            if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+              return res.status(401).json({ error: "Неверный email или пароль" });   // не уточняем, что именно
+            }
+            const accessToken = jwt.sign({ sub: user.id, role: user.role }, SECRET, { expiresIn: "15m" });
+            res.json({ accessToken });
+          });
+
+          function auth(requiredRole) {
+            return (req, res, next) => {
+              const header = req.headers.authorization ?? "";
+              const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+              if (!token) return res.status(401).json({ error: "Нужна авторизация" });
+              try {
+                req.user = jwt.verify(token, SECRET);           // бросит при неверной подписи или истёкшем сроке
+              } catch {
+                return res.status(401).json({ error: "Токен недействителен" });
+              }
+              if (requiredRole && req.user.role !== requiredRole) return res.status(403).json({ error: "Недостаточно прав" });
+              next();
+            };
+          }
+
+          app.get("/api/me", auth(), (req, res) => res.json({ id: req.user.sub }));
+          app.delete("/api/users/:id", auth("admin"), deleteUser);
+          ```
+
+          ## Access + refresh
+
+          Короткий **access token** (5–15 мин) передаётся в заголовке `Authorization: Bearer`. Долгий **refresh token** (дни) хранится в cookie `HttpOnly; Secure; SameSite=Strict` — JS его не прочитает, XSS не украдёт. Эндпоинт `/api/auth/refresh` выдаёт новую пару; refresh-токены хранят в БД, чтобы можно было отозвать (выход, смена пароля) и делать ротацию.
+
+          ```javascript
+          res.cookie("refresh", refreshToken, { httpOnly: true, secure: true, sameSite: "strict", path: "/api/auth", maxAge: 30 * 864e5 });
+          ```
+
+          ## Безопасность
+
+          - Payload JWT **не шифруется** — не кладите туда пароли и персональные данные.
+          - Ограничьте попытки входа (`express-rate-limit`).
+          - Всегда HTTPS.
+          - Проверяйте права **на сервере** для каждого ресурса: пользователь может менять только свои заказы (`where: { id, userId: req.user.sub }`).
+          - Альтернативы самописной аутентификации: сессии в Redis, готовые решения (Auth.js, Lucia, Keycloak, Clerk), OAuth-вход через Google/GitHub/Яндекс.
+        practice:
+          - type: choice
+            q: Как правильно хранить пароль пользователя?
+            options: ["Как есть", "В Base64", "Хеш bcrypt/argon2 с солью", "SHA-1 без соли"]
+            answer: 2
+          - type: fill
+            q: Проверьте JWT-токен
+            code: |
+              const payload = jwt.___(token, process.env.JWT_SECRET);
+            answers: ["verify"]
+          - type: choice
+            q: Пользователь с ролью user обращается к /api/admin. Токен валиден. Какой код ответа?
+            options: ["401", "403", "404", "200"]
+            answer: 1
+          - type: bug
+            q: Какая строка создаёт уязвимость?
+            code: |
+              app.get("/api/orders/:id", auth(), async (req, res) => {
+                const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+                if (!order) return res.sendStatus(404);
+                res.json(order);
+              });
+            bugLine: 2
+            fix: "prisma.order.findFirst({ where: { id: Number(req.params.id), userId: req.user.sub } })"
+            explain: Любой вошедший пользователь может прочитать чужой заказ, перебирая id (IDOR) — нужна проверка владельца.
+          - type: choice
+            q: Где безопаснее хранить refresh-токен в браузере?
+            options: ["localStorage", "HttpOnly Secure cookie", "В URL", "В глобальной переменной"]
+            answer: 1
+        homework:
+          task: |
+            Добавьте в «Каталог» пользователей: модель `User` (email, passwordHash, role USER/ADMIN), `RefreshToken` (хеш токена, срок, userId). Эндпоинты: register (Zod, bcrypt), login (access 15 мин + refresh в HttpOnly cookie), refresh (ротация: старый токен удаляется), logout, `GET /me`. Создание товаров — только ADMIN, отзывы — только вошедшим, редактировать отзыв может только автор. Rate limit на login (5 попыток в минуту). Напишите тесты на 401/403.
+          checklist:
+            - Пароли и refresh-токены хранятся в виде хешей
+            - Refresh в HttpOnly cookie с ротацией
+            - Проверка владельца ресурса
+            - Ограничение попыток входа
+          solution: |
+            import bcrypt from "bcrypt";
+            import jwt from "jsonwebtoken";
+            import crypto from "node:crypto";
+            import rateLimit from "express-rate-limit";
+            import { Router } from "express";
+            import { prisma } from "./repository.js";
+
+            const SECRET = process.env.JWT_SECRET;
+            const sha = (s) => crypto.createHash("sha256").update(s).digest("hex");
+            const issueAccess = (u) => jwt.sign({ sub: u.id, role: u.role }, SECRET, { expiresIn: "15m" });
+            async function issueRefresh(res, userId) {
+              const token = crypto.randomBytes(48).toString("hex");
+              await prisma.refreshToken.create({ data: { tokenHash: sha(token), userId, expiresAt: new Date(Date.now() + 30 * 864e5) } });
+              res.cookie("refresh", token, { httpOnly: true, secure: true, sameSite: "strict", path: "/api/auth", maxAge: 30 * 864e5 });
+            }
+
+            export const authRouter = Router();
+            authRouter.post("/register", validate(Credentials), async (req, res) => {
+              const { email, password } = req.valid.body;
+              if (await prisma.user.findUnique({ where: { email } })) return res.status(409).json({ error: "Email занят" });
+              const user = await prisma.user.create({ data: { email, passwordHash: await bcrypt.hash(password, 12) } });
+              res.status(201).json({ id: user.id, email });
+            });
+            authRouter.post("/login", rateLimit({ windowMs: 60_000, limit: 5 }), validate(Credentials), async (req, res) => {
+              const { email, password } = req.valid.body;
+              const user = await prisma.user.findUnique({ where: { email } });
+              if (!user || !(await bcrypt.compare(password, user.passwordHash))) return res.status(401).json({ error: "Неверный email или пароль" });
+              await issueRefresh(res, user.id);
+              res.json({ accessToken: issueAccess(user) });
+            });
+            authRouter.post("/refresh", async (req, res) => {
+              const token = req.cookies.refresh;
+              const stored = token && (await prisma.refreshToken.findUnique({ where: { tokenHash: sha(token) }, include: { user: true } }));
+              if (!stored || stored.expiresAt < new Date()) return res.status(401).json({ error: "Сессия истекла" });
+              await prisma.refreshToken.delete({ where: { id: stored.id } });     // ротация
+              await issueRefresh(res, stored.userId);
+              res.json({ accessToken: issueAccess(stored.user) });
+            });
+            authRouter.post("/logout", async (req, res) => {
+              if (req.cookies.refresh) await prisma.refreshToken.deleteMany({ where: { tokenHash: sha(req.cookies.refresh) } });
+              res.clearCookie("refresh", { path: "/api/auth" }).sendStatus(204);
+            });
+
+            // products: router.post("/", auth("ADMIN"), validate(ProductCreate), create)
+            // reviews: router.patch("/:id", auth(), async (req, res) => {
+            //   const r = await prisma.review.updateMany({ where: { id: +req.params.id, authorId: req.user.sub }, data: req.valid.body });
+            //   r.count ? res.sendStatus(204) : res.status(404).json({ error: "Отзыв не найден" });
+            // });

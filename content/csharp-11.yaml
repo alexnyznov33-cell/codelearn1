@@ -1,0 +1,551 @@
+id: csharp
+modules:
+  - id: cs-m11
+    title: Инженерные практики
+    level: Middle
+    lessons:
+      - id: cs-11-01
+        title: Git и code review
+        minutes: 30
+        xp: 35
+        theory: |
+          ## Базовый цикл
+
+          ```bash
+          git clone https://github.com/me/shop.git
+          git switch -c feature/order-discounts     # новая ветка
+          # ...правки...
+          git status
+          git add -p                                # добавить по кусочкам (осознанно)
+          git commit -m "feat(orders): скидка для VIP-клиентов"
+          git push -u origin feature/order-discounts
+          # → Pull Request на GitHub/GitLab
+          ```
+
+          ## Синхронизация с main
+
+          ```bash
+          git fetch origin
+          git rebase origin/main          # линейная история; при конфликте: правка → git add → git rebase --continue
+          git push --force-with-lease     # безопасный force после rebase своей ветки
+          ```
+
+          Никогда не делайте rebase/force-push общих веток (main).
+
+          ## Полезные команды
+
+          | Команда | Зачем |
+          |---|---|
+          | `git log --oneline --graph` | история |
+          | `git diff --staged` | что войдёт в коммит |
+          | `git stash` / `stash pop` | отложить изменения |
+          | `git commit --amend` | исправить последний коммит |
+          | `git restore file` | отменить правки в файле |
+          | `git revert <sha>` | отменить коммит новым коммитом (безопасно для main) |
+          | `git reset --soft HEAD~1` | откатить коммит, оставив изменения |
+          | `git bisect` | бинарный поиск коммита с багом |
+          | `git cherry-pick <sha>` | перенести коммит |
+
+          ## Conventional Commits
+
+          `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`, `perf:`. Пишите **зачем**, а не только что. Маленькие атомарные коммиты.
+
+          ## .gitignore для .NET
+
+          `dotnet new gitignore` — исключит `bin/`, `obj/`, `.vs/`, `*.user`. Секреты (`appsettings.Development.json` с паролями) не коммитить.
+
+          ## Code review
+
+          **Автору:** PR до 300–400 строк, понятное описание (что, зачем, как проверить), self-review перед отправкой, зелёный CI.
+
+          **Ревьюеру:** проверять корректность и граничные случаи, читаемость и имена, тесты, безопасность (SQL-инъекции, секреты, валидация), производительность (N+1, аллокации в циклах), соответствие архитектуре. Тон — уважительный, предлагайте, а не приказывайте; отделяйте обязательное от «nit:».
+
+          Автоматизируйте стиль: `.editorconfig`, `dotnet format`, анализаторы (`<AnalysisLevel>latest-recommended</AnalysisLevel>`), чтобы ревью было о смысле, а не о пробелах.
+
+          ## Стратегии ветвления
+
+          **GitHub Flow / trunk-based**: короткие feature-ветки от main, PR, merge, деплой. **Git Flow** (develop, release, hotfix) — для продуктов с редкими релизами.
+        practice:
+          - type: fill
+            q: Создайте и переключитесь на новую ветку
+            code: |
+              git ___ -c feature/login
+            answers: ["switch"]
+          - type: choice
+            q: Как безопасно отменить коммит, уже попавший в main?
+            options: ["git reset --hard", "git revert <sha>", "git push --force", "Удалить репозиторий"]
+            answer: 1
+          - type: choice
+            q: Какое сообщение коммита лучше?
+            options: ["fix", "правки", "fix(cart): не учитывалась скидка при пустой корзине", "asdf"]
+            answer: 2
+          - type: fill
+            q: Безопасный force-push после rebase своей ветки
+            code: |
+              git push --force-___
+            answers: ["with-lease"]
+          - type: choice
+            q: Что НЕ стоит обсуждать на code review, если есть dotnet format и анализаторы?
+            options: ["Отступы и пробелы", "SQL-инъекции", "Отсутствие тестов", "N+1 запросы"]
+            answer: 0
+        homework:
+          task: |
+            Создайте репозиторий для своего API: `.gitignore`, `.editorconfig`, README. Сделайте 3 feature-ветки с PR (Conventional Commits), в одной намеренно создайте конфликт с main и разрешите его через rebase. Попросите знакомого (или сами через сутки) сделать ревью по чек-листу и исправьте замечания отдельными коммитами.
+          checklist:
+            - В репозитории нет bin/obj и секретов
+            - История линейная, сообщения по Conventional Commits
+            - В PR есть описание и «как проверить»
+          solution: |
+            dotnet new gitignore
+            dotnet new editorconfig
+            git init && git add . && git commit -m "chore: initial project structure"
+            git switch -c feature/notes-search
+            # ... код ...
+            git commit -m "feat(notes): поиск по тексту ?q="
+            git fetch origin && git rebase origin/main
+            # конфликт → правка файла → git add Program.cs → git rebase --continue
+            git push --force-with-lease
+
+            Шаблон PR:
+            ## Что сделано
+            Поиск заметок по подстроке без учёта регистра.
+            ## Зачем
+            Задача #12 — пользователи не находят старые заметки.
+            ## Как проверить
+            GET /api/notes?q=купить → только заметки со словом «купить».
+            ## Чек-лист
+            - [x] тесты  - [x] dotnet format  - [x] нет секретов
+      - id: cs-11-02
+        title: Docker для .NET
+        minutes: 30
+        xp: 40
+        theory: |
+          **Docker** упаковывает приложение со всеми зависимостями в **образ**; запущенный образ — **контейнер**. «Работает у меня» = работает везде.
+
+          ## Dockerfile (multi-stage)
+
+          ```dockerfile
+          # 1. сборка — большой образ с SDK
+          FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+          WORKDIR /src
+          COPY ["src/Shop.Api/Shop.Api.csproj", "src/Shop.Api/"]
+          COPY ["src/Shop.Domain/Shop.Domain.csproj", "src/Shop.Domain/"]
+          RUN dotnet restore "src/Shop.Api/Shop.Api.csproj"     # слой кешируется, пока не изменились csproj
+          COPY . .
+          RUN dotnet publish "src/Shop.Api/Shop.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+          # 2. запуск — маленький образ только с runtime
+          FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+          WORKDIR /app
+          COPY --from=build /app/publish .
+          USER app                                  # не root
+          EXPOSE 8080
+          ENTRYPOINT ["dotnet", "Shop.Api.dll"]
+          ```
+
+          С .NET 8 контейнер слушает порт **8080** по умолчанию.
+
+          ```bash
+          docker build -t shop-api:1.0 .
+          docker run -d -p 5000:8080 -e ConnectionStrings__Default="Host=db;..." --name api shop-api:1.0
+          docker logs -f api
+          docker ps / docker stop api / docker rm api
+          ```
+
+          Без Dockerfile: `dotnet publish /t:PublishContainer` — SDK соберёт образ сам.
+
+          ## .dockerignore
+
+          ```
+          **/bin
+          **/obj
+          .git
+          .vs
+          ```
+
+          ## docker-compose: API + БД + Seq
+
+          ```yaml
+          services:
+            api:
+              build: .
+              ports: ["5000:8080"]
+              environment:
+                - ConnectionStrings__Default=Host=db;Database=shop;Username=postgres;Password=secret
+                - ASPNETCORE_ENVIRONMENT=Development
+              depends_on:
+                db: { condition: service_healthy }
+            db:
+              image: postgres:16
+              environment: [POSTGRES_PASSWORD=secret, POSTGRES_DB=shop]
+              volumes: [pgdata:/var/lib/postgresql/data]
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U postgres"]
+                interval: 5s
+            seq:
+              image: datalust/seq
+              environment: [ACCEPT_EULA=Y]
+              ports: ["5341:80"]
+          volumes:
+            pgdata:
+          ```
+
+          ```bash
+          docker compose up -d --build
+          docker compose down          # -v удалит и данные
+          ```
+
+          Внутри compose сервисы видят друг друга по имени (`Host=db`).
+
+          ## Health checks
+
+          ```csharp
+          builder.Services.AddHealthChecks().AddNpgSql(cs);
+          app.MapHealthChecks("/health");
+          ```
+
+          > 💡 Образы: `aspnet:8.0-alpine` или `chiseled` (`8.0-jammy-chiseled`) — меньше размер и поверхность атаки.
+        practice:
+          - type: choice
+            q: Зачем multi-stage сборка?
+            options: ["Чтобы образ собирался дольше", "Финальный образ без SDK — меньше и безопаснее", "Чтобы запускать несколько контейнеров", "Это обязательный синтаксис"]
+            answer: 1
+          - type: fill
+            q: Скопируйте результат из этапа сборки
+            code: |
+              COPY ___=build /app/publish .
+            answers: ["--from"]
+          - type: choice
+            q: Как API в docker-compose обращается к сервису db?
+            options: ["localhost", "По имени сервиса: Host=db", "127.0.0.1", "Через IP хоста"]
+            answer: 1
+          - type: choice
+            q: Почему csproj копируют и делают restore до копирования всего кода?
+            options: ["Так быстрее работает приложение", "Для кеширования слоя с пакетами", "Чтобы не было ошибок", "Требование .NET"]
+            answer: 1
+          - type: fill
+            q: Пробросьте порт 8080 контейнера на 5000 хоста
+            code: |
+              docker run -p ___:8080 shop-api
+            answers: ["5000"]
+        homework:
+          task: |
+            Контейнеризируйте свой Web API: multi-stage Dockerfile, .dockerignore, запуск не от root, docker-compose с PostgreSQL (volume, healthcheck) и Seq, миграции EF применяются отдельным сервисом-«мигратором» (или bundle). Добавьте `/health`. Измерьте размер итогового образа и сравните с вариантом на sdk-образе.
+          checklist:
+            - docker compose up поднимает всё одной командой
+            - Данные БД переживают перезапуск
+            - Строка подключения задаётся через переменные окружения
+          solution: |
+            # docker-compose.yml (фрагмент)
+            services:
+              migrator:
+                build: { context: ., target: build }
+                command: ["dotnet", "ef", "database", "update", "--project", "src/Shop.Infrastructure", "--startup-project", "src/Shop.Api"]
+                environment: [ConnectionStrings__Default=Host=db;Database=shop;Username=postgres;Password=secret]
+                depends_on: { db: { condition: service_healthy } }
+              api:
+                build: .
+                ports: ["5000:8080"]
+                environment: [ConnectionStrings__Default=Host=db;Database=shop;Username=postgres;Password=secret]
+                depends_on:
+                  migrator: { condition: service_completed_successfully }
+              db:
+                image: postgres:16
+                environment: [POSTGRES_PASSWORD=secret, POSTGRES_DB=shop]
+                volumes: [pgdata:/var/lib/postgresql/data]
+                healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres"], interval: 5s, retries: 10 }
+            volumes: { pgdata: {} }
+
+            docker compose up -d --build
+            curl http://localhost:5000/health
+            docker images shop-api   # ~220 МБ против ~900 МБ на sdk
+      - id: cs-11-03
+        title: CI/CD
+        minutes: 30
+        xp: 40
+        theory: |
+          **CI (Continuous Integration)** — на каждый push/PR автоматически собрать проект и прогнать тесты. **CD (Continuous Delivery/Deployment)** — автоматически выкатывать прошедшую сборку на стенды и в прод.
+
+          ## GitHub Actions
+
+          Файл `.github/workflows/ci.yml`:
+
+          ```yaml
+          name: CI
+          on:
+            push: { branches: [main] }
+            pull_request:
+
+          jobs:
+            build:
+              runs-on: ubuntu-latest
+              services:
+                postgres:
+                  image: postgres:16
+                  env: { POSTGRES_PASSWORD: test }
+                  ports: ["5432:5432"]
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-dotnet@v4
+                  with: { dotnet-version: 8.0.x }
+                - run: dotnet restore
+                - run: dotnet format --verify-no-changes       # стиль
+                - run: dotnet build --no-restore -c Release -warnaserror
+                - run: dotnet test --no-build -c Release --collect:"XPlat Code Coverage"
+                  env:
+                    ConnectionStrings__Default: Host=localhost;Username=postgres;Password=test
+
+            docker:
+              needs: build
+              if: github.ref == 'refs/heads/main'
+              runs-on: ubuntu-latest
+              permissions: { packages: write, contents: read }
+              steps:
+                - uses: actions/checkout@v4
+                - uses: docker/login-action@v3
+                  with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+                - uses: docker/build-push-action@v6
+                  with:
+                    push: true
+                    tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          ```
+
+          ## Что обычно в пайплайне
+
+          1. Restore → build → **тесты** (unit + интеграционные с Testcontainers/services).
+          2. Анализаторы, форматирование, проверка уязвимых пакетов (`dotnet list package --vulnerable`), SonarCloud.
+          3. Сборка Docker-образа, тег = git sha / версия.
+          4. Публикация в registry (GHCR, Docker Hub, Yandex CR).
+          5. Деплой: staging автоматически, prod — по approval (environments).
+          6. Миграции БД — отдельным шагом перед выкаткой.
+
+          ## Практики
+
+          - **Защита main**: merge только через PR с зелёным CI и ревью (branch protection).
+          - Секреты — в `Settings → Secrets`, обращение `${{ secrets.NAME }}`; никогда в YAML.
+          - Кешируйте NuGet (`actions/cache` или `setup-dotnet` с `cache: true`).
+          - Сборка должна быть **воспроизводимой**: зафиксируйте SDK в `global.json`.
+          - Быстрый фидбек: CI на PR < 10 минут.
+          - Стратегии выкатки: rolling, blue-green, canary; быстрый откат на предыдущий образ.
+
+          Альтернативы: GitLab CI (`.gitlab-ci.yml`), Azure DevOps, TeamCity, Jenkins.
+        practice:
+          - type: choice
+            q: Что делает CI?
+            options: ["Пишет код за разработчика", "Автоматически собирает и тестирует каждое изменение", "Только деплоит в прод", "Заменяет code review"]
+            answer: 1
+          - type: fill
+            q: Запускайте workflow на pull request
+            code: |
+              on:
+                ___:
+            answers: ["pull_request"]
+          - type: choice
+            q: Где хранить пароль от registry для GitHub Actions?
+            options: ["В ci.yml", "В Secrets репозитория", "В README", "В appsettings.json"]
+            answer: 1
+          - type: fill
+            q: Проверьте форматирование без изменения файлов
+            code: |
+              dotnet format --verify-___-changes
+            answers: ["no"]
+          - type: choice
+            q: Как сделать, чтобы job docker выполнялся только после успешного build?
+            options: ["needs: build", "after: build", "depends: build", "Порядок в файле"]
+            answer: 0
+        homework:
+          task: |
+            Настройте GitHub Actions для своего API: (1) CI на PR — format, build с warnaserror, unit + интеграционные тесты с Postgres-сервисом, отчёт покрытия как artifact; (2) на push в main — сборка Docker-образа и публикация в GHCR с тегами sha и latest; (3) branch protection для main. Добавьте бейдж статуса CI в README.
+          checklist:
+            - PR нельзя смержить с красным CI
+            - Образ появился в GHCR
+            - Секреты не в коде
+          solution: |
+            name: CI
+            on:
+              pull_request:
+              push: { branches: [main] }
+            jobs:
+              test:
+                runs-on: ubuntu-latest
+                services:
+                  postgres: { image: "postgres:16", env: { POSTGRES_PASSWORD: test }, ports: ["5432:5432"] }
+                steps:
+                  - uses: actions/checkout@v4
+                  - uses: actions/setup-dotnet@v4
+                    with: { dotnet-version: 8.0.x }
+                  - run: dotnet format --verify-no-changes
+                  - run: dotnet build -c Release -warnaserror
+                  - run: dotnet test -c Release --no-build --collect:"XPlat Code Coverage" --results-directory cov
+                  - uses: actions/upload-artifact@v4
+                    with: { name: coverage, path: cov }
+              image:
+                needs: test
+                if: github.event_name == 'push'
+                runs-on: ubuntu-latest
+                permissions: { packages: write, contents: read }
+                steps:
+                  - uses: actions/checkout@v4
+                  - uses: docker/login-action@v3
+                    with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+                  - uses: docker/build-push-action@v6
+                    with: { push: true, tags: "ghcr.io/${{ github.repository }}:${{ github.sha }},ghcr.io/${{ github.repository }}:latest" }
+
+            README: ![CI](https://github.com/<user>/<repo>/actions/workflows/ci.yml/badge.svg)
+      - id: cs-11-04
+        title: "Итоговый проект: Web API с EF Core и тестами"
+        minutes: 60
+        xp: 100
+        theory: |
+          Пора собрать всё вместе. Итоговый проект — то, что вы покажете на собеседовании как доказательство уровня **Middle**.
+
+          ## Задание: «TaskTracker API»
+
+          Сервис управления задачами для команд.
+
+          **Функциональность**
+          - Регистрация/логин (JWT access + refresh), роли `User` и `Admin`.
+          - Проекты: CRUD, участники проекта (many-to-many), только участники видят проект.
+          - Задачи: заголовок, описание, статус (`Todo → InProgress → Review → Done`, переходы проверяются в домене), приоритет, исполнитель, дедлайн, теги.
+          - Комментарии к задачам.
+          - Фильтрация (`status`, `assignee`, `tag`, `q`), сортировка и пагинация.
+          - Фоновая задача (BackgroundService + Channel): уведомление о просроченных задачах раз в N минут.
+          - Отчёт по проекту на Dapper: количество задач по статусам и исполнителям.
+
+          **Технические требования**
+          - .NET 8, ASP.NET Core (Minimal API или контроллеры), EF Core + PostgreSQL, миграции.
+          - Слои: Domain / Application / Infrastructure / Api.
+          - Валидация (FluentValidation), глобальный обработчик ошибок → ProblemDetails.
+          - Serilog со структурированными логами и CorrelationId.
+          - Swagger с поддержкой JWT.
+          - Тесты: unit (домен, обработчики с Moq) + интеграционные (`WebApplicationFactory` + Testcontainers PostgreSQL). Покрытие домена ≥ 80%.
+          - Docker Compose (api + postgres + seq), CI в GitHub Actions.
+          - README: описание, архитектура, как запустить, примеры запросов.
+
+          ## Интеграционный тест
+
+          ```csharp
+          public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+          {
+              private readonly PostgreSqlContainer db = new PostgreSqlBuilder().Build();
+
+              protected override void ConfigureWebHost(IWebHostBuilder b) =>
+                  b.ConfigureTestServices(s =>
+                  {
+                      s.RemoveAll<DbContextOptions<AppDb>>();
+                      s.AddDbContext<AppDb>(o => o.UseNpgsql(db.GetConnectionString()));
+                  });
+
+              public async Task InitializeAsync()
+              {
+                  await db.StartAsync();
+                  using var scope = Services.CreateScope();
+                  await scope.ServiceProvider.GetRequiredService<AppDb>().Database.MigrateAsync();
+              }
+              public new Task DisposeAsync() => db.DisposeAsync().AsTask();
+          }
+
+          public class TasksApiTests(ApiFactory f) : IClassFixture<ApiFactory>
+          {
+              [Fact]
+              public async Task CreateTask_Unauthorized_Returns401()
+              {
+                  var client = f.CreateClient();
+                  var r = await client.PostAsJsonAsync("/api/projects/1/tasks", new { title = "x" });
+                  Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+              }
+          }
+          ```
+
+          В `Program.cs` добавьте `public partial class Program;` — чтобы фабрика видела класс.
+
+          ## План на 2–3 недели
+
+          1. Домен и тесты домена (статусы, инварианты).
+          2. EF Core, миграции, репозитории.
+          3. Эндпоинты + валидация + ошибки.
+          4. Аутентификация и права.
+          5. Фоновая задача, отчёт на Dapper.
+          6. Интеграционные тесты, Docker, CI, README.
+
+          ## Критерии «готово»
+
+          `git clone` → `docker compose up` → Swagger открывается → можно зарегистрироваться и пройти основной сценарий; CI зелёный; код читается без автора.
+
+          > 🎉 Поздравляем! Пройдя курс и сделав этот проект, вы владеете стеком, который ожидают от Middle .NET-разработчика.
+        practice:
+          - type: choice
+            q: Что нужно добавить в Program.cs для WebApplicationFactory<Program> при top-level statements?
+            options: ["public partial class Program;", "static void Main", "[assembly: Test]", "Ничего"]
+            answer: 0
+          - type: choice
+            q: Где проверять допустимость перехода статуса задачи Todo → Done?
+            options: ["В контроллере", "В доменной сущности Task", "В SQL-триггере", "На клиенте"]
+            answer: 1
+          - type: choice
+            q: Чем Testcontainers лучше InMemory-провайдера EF Core для интеграционных тестов?
+            options: ["Быстрее", "Настоящая СУБД — те же SQL, ограничения и транзакции, что в проде", "Не нужен Docker", "Ничем"]
+            answer: 1
+          - type: order
+            q: Расставьте этапы работы над проектом
+            lines:
+              - Доменная модель и её тесты
+              - EF Core и миграции
+              - Эндпоинты, валидация, ошибки
+              - Аутентификация и права
+              - Docker, CI и README
+        homework:
+          task: |
+            Реализуйте «TaskTracker API» по требованиям урока и опубликуйте на GitHub. Минимальный набор для сдачи: аутентификация, проекты, задачи со статусами и фильтрацией, миграции, глобальная обработка ошибок, 15+ unit-тестов, 5+ интеграционных, docker-compose, CI, README.
+          hints:
+            - Начните с доменной модели и тестов — это самая ценная часть
+            - Используйте Testcontainers.PostgreSql для интеграционных тестов
+            - Seed-данные для демонстрации добавьте через отдельную команду/эндпоинт в Development
+          checklist:
+            - Проект запускается одной командой docker compose up
+            - CI зелёный
+            - Нет секретов в репозитории
+            - README с архитектурой и примерами
+          solution: |
+            // Ключевой фрагмент домена
+            public enum TaskStatus { Todo, InProgress, Review, Done }
+
+            public class WorkItem
+            {
+                private static readonly Dictionary<TaskStatus, TaskStatus[]> Allowed = new()
+                {
+                    [TaskStatus.Todo] = [TaskStatus.InProgress],
+                    [TaskStatus.InProgress] = [TaskStatus.Review, TaskStatus.Todo],
+                    [TaskStatus.Review] = [TaskStatus.Done, TaskStatus.InProgress],
+                    [TaskStatus.Done] = []
+                };
+
+                public int Id { get; private set; }
+                public string Title { get; private set; }
+                public TaskStatus Status { get; private set; } = TaskStatus.Todo;
+                public int? AssigneeId { get; private set; }
+                public DateTime? Due { get; private set; }
+
+                public WorkItem(string title)
+                {
+                    if (string.IsNullOrWhiteSpace(title)) throw new DomainException("Пустой заголовок");
+                    Title = title.Trim();
+                }
+
+                public void MoveTo(TaskStatus next)
+                {
+                    if (!Allowed[Status].Contains(next))
+                        throw new DomainException($"Нельзя перейти из {Status} в {next}");
+                    if (next == TaskStatus.InProgress && AssigneeId is null)
+                        throw new DomainException("Назначьте исполнителя");
+                    Status = next;
+                }
+
+                public void Assign(int userId) => AssigneeId = userId;
+                public bool IsOverdue(DateTime now) => Due < now && Status != TaskStatus.Done;
+            }
+
+            // Структура репозитория:
+            // src/TaskTracker.Domain | .Application | .Infrastructure | .Api
+            // tests/TaskTracker.Domain.Tests | .Application.Tests | .Api.IntegrationTests
+            // docker-compose.yml, .github/workflows/ci.yml, README.md

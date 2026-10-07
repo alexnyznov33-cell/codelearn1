@@ -1,0 +1,1000 @@
+id: javascript
+modules:
+  - id: js-m8
+    title: React
+    level: Middle
+    lessons:
+      - id: js-08-01
+        title: Компоненты и JSX
+        minutes: 40
+        xp: 45
+        theory: |
+          **React** — библиотека для построения интерфейсов из **компонентов**. Вы описываете, *как должен выглядеть* UI для текущих данных, а React сам обновляет DOM.
+
+          ```bash
+          npm create vite@latest shop -- --template react-ts
+          cd shop && npm i && npm run dev
+          ```
+
+          ## Компонент — функция, возвращающая JSX
+
+          ```jsx
+          function ProductCard({ title, price, inStock }) {
+            return (
+              <article className="card">
+                <h3>{title}</h3>
+                <p>{price.toLocaleString("ru-RU")} ₽</p>
+                {inStock ? <button>В корзину</button> : <span className="muted">Нет в наличии</span>}
+              </article>
+            );
+          }
+
+          export default function App() {
+            return (
+              <main>
+                <h1>Каталог</h1>
+                <ProductCard title="Чайник" price={2490} inStock />
+                <ProductCard title="Кружка" price={390} inStock={false} />
+              </main>
+            );
+          }
+          ```
+
+          ## Правила JSX
+
+          - JSX — синтаксический сахар: `<h1 className="x">Hi</h1>` превращается в `jsx("h1", { className: "x", children: "Hi" })`.
+          - Компоненты называются с **заглавной** буквы (`<ProductCard />`), HTML-теги — со строчной.
+          - Возвращается **один корневой** элемент; без лишней обёртки — фрагмент `<>...</>`.
+          - `className` вместо `class`, `htmlFor` вместо `for`, атрибуты в camelCase: `onClick`, `tabIndex`.
+          - Все теги закрываются: `<img />`, `<input />`.
+          - В `{ }` — любое **выражение** JS: переменные, вызовы, тернарный оператор. `if` и `for` — нельзя (это инструкции).
+          - `style` принимает объект: `style={{ color: "red", fontSize: 14 }}`.
+
+          ## Условный рендеринг
+
+          ```jsx
+          {isLoading && <Spinner />}
+          {error ? <Error text={error} /> : <List items={items} />}
+          ```
+
+          Осторожно с `&&` и числами: `{count && <Badge />}` при `count = 0` выведет «0». Пишите `{count > 0 && <Badge />}`.
+
+          ## Безопасность
+
+          React **экранирует** всё, что вставляется через `{ }` — XSS через текст невозможен. Опасный путь — `dangerouslySetInnerHTML`, используйте только с очищенным HTML (DOMPurify).
+
+          ## Композиция и children
+
+          ```jsx
+          function Card({ title, children }) {
+            return <section className="card"><h2>{title}</h2>{children}</section>;
+          }
+          <Card title="Профиль"><p>Анна, 25 лет</p></Card>
+          ```
+
+          Строим UI как дерево маленьких компонентов, каждый отвечает за одну вещь.
+        practice:
+          - type: choice
+            q: Какой атрибут используется в JSX вместо class?
+            options: ["class", "className", "cssClass", "styleClass"]
+            answer: 1
+          - type: bug
+            q: Что выведется на экран при count = 0?
+            code: |
+              function Cart({ count }) {
+                return <div>{count && <span>Товаров: {count}</span>}</div>;
+              }
+            bugLine: 2
+            fix: "{count > 0 && <span>Товаров: {count}</span>}"
+            explain: 0 && ... возвращает 0, и React отрисует «0». Нужна булева проверка.
+          - type: fill
+            q: Верните несколько элементов без лишнего div
+            code: |
+              return (
+                ___
+                  <h1>Заголовок</h1>
+                  <p>Текст</p>
+                ___
+              );
+            answers: ["<>", "</>"]
+          - type: choice
+            q: Почему компонент нужно называть с заглавной буквы?
+            options: ["Это стиль", "Иначе JSX воспримет его как HTML-тег", "Для TypeScript", "Требование Vite"]
+            answer: 1
+          - type: fill
+            q: Передайте inline-стиль
+            code: |
+              <p style=___{ color: "red" }___>Ошибка</p>
+            answers: ["{", "}"]
+        homework:
+          task: |
+            Создайте React + TypeScript проект на Vite и сверстайте страницу «Профиль разработчика» из компонентов: `Header` (имя, должность, аватар), `SkillList` (массив навыков с уровнем — бейджи разного цвета), `ProjectCard` (название, описание, ссылка, теги) и `Layout` с `children`. Данные — в отдельном файле `data.ts`. Если проектов нет — показывать «Скоро здесь появятся проекты».
+          checklist:
+            - Компоненты маленькие и переиспользуемые
+            - Пропсы типизированы
+            - Есть условный рендеринг и children
+          solution: |
+            // data.ts
+            export type Skill = { name: string; level: 1 | 2 | 3 };
+            export type Project = { title: string; description: string; url: string; tags: string[] };
+            export const profile = { name: "Анна Петрова", role: "Frontend-разработчик", avatar: "/avatar.png" };
+            export const skills: Skill[] = [{ name: "React", level: 3 }, { name: "TypeScript", level: 2 }, { name: "Node.js", level: 1 }];
+            export const projects: Project[] = [{ title: "To-Do", description: "Список задач", url: "https://github.com/anna/todo", tags: ["react", "ts"] }];
+
+            // App.tsx
+            import type { ReactNode } from "react";
+            import { profile, skills, projects, type Skill, type Project } from "./data";
+
+            function Layout({ children }: { children: ReactNode }) {
+              return <div className="layout">{children}</div>;
+            }
+            function Header({ name, role, avatar }: typeof profile) {
+              return (
+                <header className="header">
+                  <img src={avatar} alt={name} width={96} />
+                  <div><h1>{name}</h1><p>{role}</p></div>
+                </header>
+              );
+            }
+            const levelClass = { 1: "badge-junior", 2: "badge-middle", 3: "badge-senior" } as const;
+            function SkillList({ items }: { items: Skill[] }) {
+              return <ul className="skills">{items.map((s) => <li key={s.name} className={levelClass[s.level]}>{s.name}</li>)}</ul>;
+            }
+            function ProjectCard({ title, description, url, tags }: Project) {
+              return (
+                <article className="card">
+                  <h3><a href={url} target="_blank" rel="noreferrer">{title}</a></h3>
+                  <p>{description}</p>
+                  <p>{tags.map((t) => `#${t}`).join(" ")}</p>
+                </article>
+              );
+            }
+            export default function App() {
+              return (
+                <Layout>
+                  <Header {...profile} />
+                  <SkillList items={skills} />
+                  {projects.length > 0
+                    ? projects.map((p) => <ProjectCard key={p.title} {...p} />)
+                    : <p>Скоро здесь появятся проекты</p>}
+                </Layout>
+              );
+            }
+      - id: js-08-02
+        title: Состояние и пропсы
+        minutes: 45
+        xp: 50
+        theory: |
+          **Пропсы (props)** — входные данные компонента от родителя, **только для чтения**. **Состояние (state)** — данные, которые компонент хранит и меняет сам. Изменение состояния вызывает **повторный рендер**.
+
+          ```jsx
+          import { useState } from "react";
+
+          function Counter({ step = 1 }) {
+            const [count, setCount] = useState(0);       // [значение, функция изменения]
+            return (
+              <div>
+                <p>Счёт: {count}</p>
+                <button onClick={() => setCount(count + step)}>+{step}</button>
+                <button onClick={() => setCount(0)}>Сброс</button>
+              </div>
+            );
+          }
+          ```
+
+          ## Важные правила
+
+          1. **Не мутируйте** состояние — создавайте новое значение. React сравнивает ссылки: `items.push(x); setItems(items)` не вызовет рендер.
+
+             ```jsx
+             setItems([...items, newItem]);                              // добавить
+             setItems(items.filter((i) => i.id !== id));                 // удалить
+             setItems(items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)));  // изменить
+             setUser({ ...user, name: "Анна" });
+             ```
+
+          2. Обновление **асинхронное и пакетное**: внутри одного обработчика `count` не меняется. Если новое значение зависит от старого — функциональная форма:
+
+             ```jsx
+             setCount((c) => c + 1);
+             setCount((c) => c + 1);   // +2, а с setCount(count + 1) дважды было бы +1
+             ```
+
+          3. Хуки вызываются **только на верхнем уровне** компонента — не в условиях и циклах.
+
+          ## Поток данных сверху вниз
+
+          Данные идут от родителя к детям через пропсы, события — снизу вверх через **колбэки**:
+
+          ```jsx
+          function TodoItem({ todo, onToggle }) {
+            return <li onClick={() => onToggle(todo.id)}>{todo.done ? "✅" : "⬜"} {todo.text}</li>;
+          }
+          function TodoList() {
+            const [todos, setTodos] = useState([{ id: 1, text: "Учить React", done: false }]);
+            const toggle = (id) => setTodos((ts) => ts.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+            return <ul>{todos.map((t) => <TodoItem key={t.id} todo={t} onToggle={toggle} />)}</ul>;
+          }
+          ```
+
+          ## Подъём состояния
+
+          Если два компонента должны использовать одни данные — храните состояние в их **ближайшем общем родителе** и передавайте вниз.
+
+          ## Производные данные
+
+          Не храните в state то, что можно вычислить: `const left = todos.filter((t) => !t.done).length` — прямо при рендере.
+
+          Сложная логика обновления — `useReducer(reducer, initialState)`: действия `dispatch({ type: "add", text })` и чистая функция-редьюсер.
+        practice:
+          - type: bug
+            q: Почему список не перерисовывается?
+            code: |
+              const [items, setItems] = useState([]);
+              function add(text) {
+                items.push({ id: Date.now(), text });
+                setItems(items);
+              }
+            bugLine: 3
+            fix: "setItems([...items, { id: Date.now(), text }]);"
+            explain: Мутация того же массива — ссылка не изменилась, React не видит изменений.
+          - type: choice
+            q: count = 0. Обработчик вызывает setCount(count + 1) три раза подряд. Каким станет count?
+            options: ["3", "1", "0", "Ошибка"]
+            answer: 1
+          - type: fill
+            q: Увеличьте счётчик на основе предыдущего значения
+            code: |
+              setCount((___) => prev + 1);
+            answers: ["prev"]
+          - type: choice
+            q: Два соседних компонента должны показывать один и тот же выбранный товар. Где хранить состояние?
+            options: ["В каждом свой useState", "В ближайшем общем родителе", "В глобальной переменной", "В localStorage"]
+            answer: 1
+          - type: output
+            q: Что выведет код (логика обновления как в React)?
+            code: |
+              const todos = [{ id: 1, done: false }, { id: 2, done: false }];
+              const next = todos.map((t) => (t.id === 2 ? { ...t, done: !t.done } : t));
+              console.log(next === todos, next[0] === todos[0], next[1].done);
+            answer: false true true
+        homework:
+          task: |
+            Сделайте «Корзину» на React: список товаров (из массива) с кнопкой «В корзину», компонент `Cart` с позициями, кнопками +/− количества, удалением, итоговой суммой и скидкой 10% от 5000 ₽. Состояние корзины хранится в `App` (подъём состояния), изменения через `useReducer` с действиями add/inc/dec/remove/clear. Итог и количество вычисляются при рендере, а не хранятся.
+          checklist:
+            - Состояние не мутируется
+            - Используется useReducer
+            - Производные данные не дублируются в state
+          solution: |
+            import { useReducer } from "react";
+            type Product = { id: number; title: string; price: number };
+            type Line = Product & { qty: number };
+            type Action = { type: "add"; product: Product } | { type: "inc" | "dec" | "remove"; id: number } | { type: "clear" };
+
+            const products: Product[] = [{ id: 1, title: "Чай", price: 300 }, { id: 2, title: "Кофемолка", price: 4900 }];
+
+            function cartReducer(state: Line[], a: Action): Line[] {
+              switch (a.type) {
+                case "add":
+                  return state.some((l) => l.id === a.product.id)
+                    ? state.map((l) => (l.id === a.product.id ? { ...l, qty: l.qty + 1 } : l))
+                    : [...state, { ...a.product, qty: 1 }];
+                case "inc": return state.map((l) => (l.id === a.id ? { ...l, qty: l.qty + 1 } : l));
+                case "dec": return state.map((l) => (l.id === a.id ? { ...l, qty: l.qty - 1 } : l)).filter((l) => l.qty > 0);
+                case "remove": return state.filter((l) => l.id !== a.id);
+                case "clear": return [];
+              }
+            }
+
+            function Cart({ lines, dispatch }: { lines: Line[]; dispatch: (a: Action) => void }) {
+              const sum = lines.reduce((s, l) => s + l.price * l.qty, 0);
+              const total = sum >= 5000 ? Math.round(sum * 0.9) : sum;
+              if (!lines.length) return <p>Корзина пуста</p>;
+              return (
+                <div>
+                  {lines.map((l) => (
+                    <div key={l.id}>
+                      {l.title} × {l.qty}
+                      <button onClick={() => dispatch({ type: "dec", id: l.id })}>−</button>
+                      <button onClick={() => dispatch({ type: "inc", id: l.id })}>+</button>
+                      <button onClick={() => dispatch({ type: "remove", id: l.id })}>✕</button>
+                    </div>
+                  ))}
+                  <p>Итого: {total} ₽ {sum >= 5000 && "(скидка 10%)"}</p>
+                  <button onClick={() => dispatch({ type: "clear" })}>Очистить</button>
+                </div>
+              );
+            }
+
+            export default function App() {
+              const [lines, dispatch] = useReducer(cartReducer, []);
+              return (
+                <>
+                  {products.map((p) => (
+                    <button key={p.id} onClick={() => dispatch({ type: "add", product: p })}>{p.title} — {p.price} ₽</button>
+                  ))}
+                  <Cart lines={lines} dispatch={dispatch} />
+                </>
+              );
+            }
+      - id: js-08-03
+        title: Хуки useEffect, useMemo, useRef
+        minutes: 45
+        xp: 50
+        theory: |
+          ## useEffect — синхронизация с внешним миром
+
+          Эффект выполняется **после** отрисовки. Используется для подписок, таймеров, запросов, работы с DOM-API.
+
+          ```jsx
+          useEffect(() => {
+            document.title = `Корзина (${count})`;
+          }, [count]);                         // перезапуск, только когда изменился count
+
+          useEffect(() => {
+            const id = setInterval(() => setSeconds((s) => s + 1), 1000);
+            return () => clearInterval(id);    // очистка: при размонтировании и перед следующим запуском
+          }, []);                              // [] — один раз после монтирования
+          ```
+
+          Массив зависимостей: без него — после **каждого** рендера; `[]` — один раз; `[a, b]` — при изменении a или b. Указывайте **все** используемые значения (правило линтера `react-hooks/exhaustive-deps`).
+
+          ## Загрузка данных с отменой
+
+          ```jsx
+          useEffect(() => {
+            const controller = new AbortController();
+            setLoading(true);
+            fetch(`/api/users?q=${query}`, { signal: controller.signal })
+              .then((r) => r.json())
+              .then(setUsers)
+              .catch((e) => e.name !== "AbortError" && setError(e.message))
+              .finally(() => setLoading(false));
+            return () => controller.abort();   // при новом query старый запрос отменится
+          }, [query]);
+          ```
+
+          В режиме разработки `StrictMode` запускает эффекты **дважды**, чтобы выявить забытую очистку. В реальных проектах для запросов используют TanStack Query (урок 6).
+
+          ## Вам может не понадобиться эффект
+
+          Не используйте `useEffect` для вычислений из пропсов/состояния — считайте при рендере. Реакцию на клик пишите в обработчике, а не в эффекте.
+
+          ## useMemo и useCallback
+
+          ```jsx
+          const filtered = useMemo(
+            () => products.filter((p) => p.title.includes(query)).sort(byPrice),
+            [products, query]          // пересчёт только при изменении
+          );
+          const handleSelect = useCallback((id) => setSelected(id), []);  // стабильная ссылка на функцию
+          ```
+
+          Нужны для **дорогих** вычислений и для передачи стабильных ссылок в компоненты, обёрнутые в `memo`. Не оборачивайте всё подряд — это тоже стоит ресурсов. (React Compiler в React 19 умеет мемоизировать автоматически.)
+
+          ## useRef
+
+          ```jsx
+          const inputRef = useRef(null);
+          useEffect(() => inputRef.current.focus(), []);
+          <input ref={inputRef} />
+
+          const renders = useRef(0);
+          renders.current++;           // изменяемое значение, НЕ вызывает рендер
+          ```
+
+          Применение: доступ к DOM-элементу, хранение id таймера, предыдущего значения, любых данных «между рендерами» без перерисовки.
+
+          ## Свои хуки
+
+          Логику с хуками выносят в функции `useXxx`:
+
+          ```jsx
+          function useLocalStorage(key, initial) {
+            const [value, setValue] = useState(() => JSON.parse(localStorage.getItem(key)) ?? initial);
+            useEffect(() => localStorage.setItem(key, JSON.stringify(value)), [key, value]);
+            return [value, setValue];
+          }
+          ```
+        practice:
+          - type: choice
+            q: Когда выполнится эффект с пустым массивом зависимостей []?
+            options: ["После каждого рендера", "Один раз после монтирования", "Никогда", "Перед рендером"]
+            answer: 1
+          - type: bug
+            q: Что не так с этим эффектом?
+            code: |
+              useEffect(() => {
+                const id = setInterval(() => setTime(new Date()), 1000);
+              }, []);
+            bugLine: 2
+            fix: "добавить return () => clearInterval(id);"
+            explain: Без функции очистки интервал продолжит работать после размонтирования компонента — утечка.
+          - type: choice
+            q: Чем useRef отличается от useState?
+            options: ["Ничем", "Изменение ref.current не вызывает повторный рендер", "useRef только для чисел", "useRef сбрасывается при каждом рендере"]
+            answer: 1
+          - type: fill
+            q: Пересчитывайте отфильтрованный список только при изменении items или query
+            code: |
+              const visible = ___(() => items.filter((i) => i.name.includes(query)), [items, query]);
+            answers: ["useMemo"]
+          - type: choice
+            q: Нужен ли useEffect, чтобы посчитать fullName из firstName и lastName?
+            options: ["Да, обязательно", "Нет, вычислить прямо при рендере", "Нужен useRef", "Нужен useCallback"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте компонент «Поиск пользователей GitHub»: поле ввода с автофокусом (`useRef`), свой хук `useDebounce(value, ms)`, свой хук `useFetch(url)` с состояниями loading/error/data и отменой запроса через AbortController, сортировку результатов через `useMemo`, сохранение последнего запроса в localStorage хуком `useLocalStorage`. Покажите счётчик рендеров через `useRef`.
+          checklist:
+            - Эффекты имеют очистку
+            - Свои хуки вынесены отдельно
+            - Нет лишних эффектов для производных данных
+          solution: |
+            import { useEffect, useMemo, useRef, useState } from "react";
+
+            function useDebounce<T>(value: T, ms = 400) {
+              const [v, setV] = useState(value);
+              useEffect(() => {
+                const t = setTimeout(() => setV(value), ms);
+                return () => clearTimeout(t);
+              }, [value, ms]);
+              return v;
+            }
+            function useFetch<T>(url: string | null) {
+              const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: false });
+              useEffect(() => {
+                if (!url) return;
+                const c = new AbortController();
+                setState({ loading: true });
+                fetch(url, { signal: c.signal })
+                  .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+                  .then((data) => setState({ data, loading: false }))
+                  .catch((e) => { if (e.name !== "AbortError") setState({ error: e.message, loading: false }); });
+                return () => c.abort();
+              }, [url]);
+              return state;
+            }
+            function useLocalStorage(key: string, initial: string) {
+              const [v, setV] = useState(() => localStorage.getItem(key) ?? initial);
+              useEffect(() => localStorage.setItem(key, v), [key, v]);
+              return [v, setV] as const;
+            }
+
+            type GhUser = { id: number; login: string; avatar_url: string };
+            export default function UserSearch() {
+              const [query, setQuery] = useLocalStorage("last-query", "");
+              const q = useDebounce(query, 400);
+              const inputRef = useRef<HTMLInputElement>(null);
+              const renders = useRef(0);
+              renders.current++;
+              useEffect(() => inputRef.current?.focus(), []);
+              const { data, error, loading } = useFetch<{ items: GhUser[] }>(q ? `https://api.github.com/search/users?q=${encodeURIComponent(q)}` : null);
+              const sorted = useMemo(() => [...(data?.items ?? [])].sort((a, b) => a.login.localeCompare(b.login)), [data]);
+              return (
+                <div>
+                  <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Логин" />
+                  {loading && <p>Загрузка…</p>}
+                  {error && <p className="error">{error}</p>}
+                  <ul>{sorted.map((u) => <li key={u.id}><img src={u.avatar_url} width={24} alt="" /> {u.login}</li>)}</ul>
+                  <small>Рендеров: {renders.current}</small>
+                </div>
+              );
+            }
+      - id: js-08-04
+        title: Формы и списки
+        minutes: 40
+        xp: 45
+        theory: |
+          ## Списки и key
+
+          ```jsx
+          <ul>
+            {users.map((u) => <UserRow key={u.id} user={u} />)}
+          </ul>
+          ```
+
+          `key` помогает React понять, какой элемент добавлен, удалён или переставлен. Ключ должен быть **уникальным среди соседей и стабильным**: id из данных. Индекс массива в качестве ключа ломает состояние элементов (фокус, введённый текст) при сортировке, вставке и удалении.
+
+          ## Управляемые поля
+
+          Значение поля хранится в состоянии, React — «единственный источник правды»:
+
+          ```jsx
+          function SignupForm({ onSubmit }) {
+            const [form, setForm] = useState({ email: "", plan: "free", agree: false });
+            const [errors, setErrors] = useState({});
+
+            const change = (e) => {
+              const { name, value, type, checked } = e.target;
+              setForm((f) => ({ ...f, [name]: type === "checkbox" ? checked : value }));
+            };
+
+            const submit = (e) => {
+              e.preventDefault();
+              const errs = {};
+              if (!/^\S+@\S+\.\S+$/.test(form.email)) errs.email = "Неверный email";
+              if (!form.agree) errs.agree = "Нужно согласие";
+              setErrors(errs);
+              if (Object.keys(errs).length === 0) onSubmit(form);
+            };
+
+            return (
+              <form onSubmit={submit} noValidate>
+                <input name="email" value={form.email} onChange={change} aria-invalid={!!errors.email} />
+                {errors.email && <p role="alert">{errors.email}</p>}
+                <select name="plan" value={form.plan} onChange={change}>
+                  <option value="free">Free</option>
+                  <option value="pro">Pro</option>
+                </select>
+                <label><input type="checkbox" name="agree" checked={form.agree} onChange={change} /> Согласен</label>
+                <button>Отправить</button>
+              </form>
+            );
+          }
+          ```
+
+          `value` без `onChange` делает поле «замороженным» — React выдаст предупреждение.
+
+          ## Неуправляемые поля
+
+          Значение хранит DOM, читаем при отправке: `<input name="q" defaultValue="" />` + `new FormData(e.currentTarget)`. Проще и быстрее для больших форм.
+
+          ## Библиотеки форм
+
+          В реальных проектах — **React Hook Form** + **Zod**:
+
+          ```jsx
+          const schema = z.object({ email: z.string().email("Неверный email"), age: z.coerce.number().min(18) });
+          const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema) });
+          <form onSubmit={handleSubmit(save)}>
+            <input {...register("email")} />
+            {errors.email && <p>{errors.email.message}</p>}
+          </form>
+          ```
+
+          ## Большие списки
+
+          Тысячи строк — **виртуализация** (TanStack Virtual, react-window): рендерятся только видимые элементы. Фильтрация и сортировка — через `useMemo`, ввод поиска — `useDeferredValue`, чтобы не тормозил.
+        practice:
+          - type: choice
+            q: Что лучше всего использовать как key в списке задач?
+            options: ["Индекс массива", "Math.random()", "Уникальный id задачи", "Текст задачи"]
+            answer: 2
+          - type: bug
+            q: Почему поле нельзя редактировать?
+            code: |
+              function Search() {
+                const [q, setQ] = useState("");
+                return <input value={q} />;
+              }
+            bugLine: 3
+            fix: "<input value={q} onChange={(e) => setQ(e.target.value)} />"
+            explain: Управляемое поле без onChange всегда показывает значение из состояния, а оно не меняется.
+          - type: fill
+            q: Привяжите чекбокс к состоянию
+            code: |
+              <input type="checkbox" ___={agree} onChange={(e) => setAgree(e.target.checked)} />
+            answers: ["checked"]
+          - type: output
+            q: Что выведет код (обработчик полей формы)?
+            code: |
+              let form = { email: "", agree: false };
+              const change = ({ name, value, type, checked }) => {
+                form = { ...form, [name]: type === "checkbox" ? checked : value };
+              };
+              change({ name: "email", value: "a@b.ru", type: "text" });
+              change({ name: "agree", value: "on", type: "checkbox", checked: true });
+              console.log(form.email, form.agree);
+            answer: a@b.ru true
+          - type: choice
+            q: Как отрисовать список из 50 000 строк без тормозов?
+            options: ["Обернуть в useMemo", "Виртуализация — рендерить только видимые строки", "Использовать индексы как key", "Разбить на 50 useState"]
+            answer: 1
+        homework:
+          task: |
+            Сделайте «Менеджер контактов»: таблица контактов (имя, телефон, email, группа) с поиском, фильтром по группе и сортировкой по клику на заголовок; форма добавления/редактирования на React Hook Form + Zod (телефон в формате +7XXXXXXXXXX, email, обязательное имя), удаление с подтверждением. Используйте правильные key, `useMemo` для фильтрации/сортировки, сохранение в localStorage.
+          checklist:
+            - Стабильные key из id
+            - Валидация через схему
+            - Фильтрация и сортировка мемоизированы
+          solution: |
+            import { useMemo, useState } from "react";
+            import { useForm } from "react-hook-form";
+            import { z } from "zod";
+            import { zodResolver } from "@hookform/resolvers/zod";
+
+            const ContactSchema = z.object({
+              name: z.string().min(1, "Обязательно"),
+              phone: z.string().regex(/^\+7\d{10}$/, "Формат +7XXXXXXXXXX"),
+              email: z.string().email("Неверный email"),
+              group: z.enum(["семья", "работа", "друзья"]),
+            });
+            type ContactInput = z.infer<typeof ContactSchema>;
+            type Contact = ContactInput & { id: string };
+
+            function ContactForm({ initial, onSave }: { initial?: Contact; onSave: (c: ContactInput) => void }) {
+              const { register, handleSubmit, reset, formState: { errors } } = useForm<ContactInput>({
+                resolver: zodResolver(ContactSchema),
+                defaultValues: initial ?? { group: "друзья" },
+              });
+              return (
+                <form onSubmit={handleSubmit((d) => { onSave(d); reset(); })}>
+                  <input placeholder="Имя" {...register("name")} /> {errors.name?.message}
+                  <input placeholder="+7..." {...register("phone")} /> {errors.phone?.message}
+                  <input placeholder="Email" {...register("email")} /> {errors.email?.message}
+                  <select {...register("group")}><option>семья</option><option>работа</option><option>друзья</option></select>
+                  <button>Сохранить</button>
+                </form>
+              );
+            }
+
+            export default function Contacts() {
+              const [contacts, setContacts] = useState<Contact[]>(() => JSON.parse(localStorage.getItem("contacts") ?? "[]"));
+              const [q, setQ] = useState("");
+              const [group, setGroup] = useState("все");
+              const [sortKey, setSortKey] = useState<keyof ContactInput>("name");
+              const save = (next: Contact[]) => { setContacts(next); localStorage.setItem("contacts", JSON.stringify(next)); };
+              const visible = useMemo(() => contacts
+                .filter((c) => (group === "все" || c.group === group) && c.name.toLowerCase().includes(q.toLowerCase()))
+                .sort((a, b) => a[sortKey].localeCompare(b[sortKey], "ru")), [contacts, q, group, sortKey]);
+              return (
+                <>
+                  <ContactForm onSave={(c) => save([...contacts, { ...c, id: crypto.randomUUID() }])} />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск" />
+                  <select value={group} onChange={(e) => setGroup(e.target.value)}><option>все</option><option>семья</option><option>работа</option><option>друзья</option></select>
+                  <table>
+                    <thead><tr>{(["name", "phone", "email", "group"] as const).map((k) => <th key={k} onClick={() => setSortKey(k)}>{k}</th>)}<th /></tr></thead>
+                    <tbody>
+                      {visible.map((c) => (
+                        <tr key={c.id}>
+                          <td>{c.name}</td><td>{c.phone}</td><td>{c.email}</td><td>{c.group}</td>
+                          <td><button onClick={() => confirm("Удалить?") && save(contacts.filter((x) => x.id !== c.id))}>✕</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              );
+            }
+      - id: js-08-05
+        title: Роутинг
+        minutes: 35
+        xp: 45
+        theory: |
+          **SPA** (Single Page Application) меняет «страницы» без перезагрузки: роутер следит за URL и показывает нужный компонент. Стандарт — **React Router** (v6/v7).
+
+          ```bash
+          npm i react-router-dom
+          ```
+
+          ```jsx
+          import { createBrowserRouter, RouterProvider, Outlet, Link, NavLink } from "react-router-dom";
+
+          function Layout() {
+            return (
+              <>
+                <nav>
+                  <NavLink to="/" end>Главная</NavLink>
+                  <NavLink to="/products">Каталог</NavLink>        {/* получает класс active */}
+                  <NavLink to="/cart">Корзина</NavLink>
+                </nav>
+                <main><Outlet /></main>                           {/* сюда рендерится дочерний маршрут */}
+              </>
+            );
+          }
+
+          const router = createBrowserRouter([
+            {
+              path: "/",
+              element: <Layout />,
+              errorElement: <NotFound />,
+              children: [
+                { index: true, element: <Home /> },
+                { path: "products", element: <Products /> },
+                { path: "products/:id", element: <ProductPage /> },
+                { path: "cart", element: <RequireAuth><Cart /></RequireAuth> },
+                { path: "*", element: <NotFound /> },
+              ],
+            },
+          ]);
+
+          createRoot(document.getElementById("root")).render(<RouterProvider router={router} />);
+          ```
+
+          ## Параметры и навигация
+
+          ```jsx
+          import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+
+          function ProductPage() {
+            const { id } = useParams();                       // /products/42 → "42"
+            const navigate = useNavigate();
+            return <button onClick={() => navigate("/cart")}>Купить товар {id}</button>;
+          }
+
+          function Products() {
+            const [params, setParams] = useSearchParams();    // ?sort=price&page=2
+            const sort = params.get("sort") ?? "title";
+            return <button onClick={() => setParams({ sort: "price" })}>По цене</button>;
+          }
+          ```
+
+          Используйте `<Link>` вместо `<a href>` — обычная ссылка перезагрузит приложение и сбросит состояние. Состояние фильтров храните в **query-параметрах** — ссылкой можно поделиться.
+
+          ## Защищённые маршруты
+
+          ```jsx
+          function RequireAuth({ children }) {
+            const { user } = useAuth();
+            const location = useLocation();
+            if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+            return children;
+          }
+          ```
+
+          Это только UX — **настоящая защита данных на сервере**.
+
+          ## Ленивая загрузка страниц
+
+          ```jsx
+          const Admin = lazy(() => import("./pages/Admin"));
+          <Suspense fallback={<Spinner />}><Admin /></Suspense>
+          ```
+
+          Хостинг SPA: сервер должен отдавать `index.html` на любой путь (иначе `/products/42` при обновлении даст 404). Мета-фреймворки **Next.js** и **Remix/React Router 7** добавляют файловый роутинг, серверный рендеринг (SSR) и загрузку данных на уровне маршрутов.
+        practice:
+          - type: fill
+            q: Получите параметр id из маршрута /users/:id
+            code: |
+              const { id } = ___();
+            answers: ["useParams"]
+          - type: choice
+            q: Почему в SPA используют Link вместо обычного a href?
+            options: ["Link красивее", "a href перезагрузит страницу и сбросит состояние приложения", "a не работает в React", "Для SEO"]
+            answer: 1
+          - type: fill
+            q: Куда рендерятся дочерние маршруты в макете
+            code: |
+              function Layout() {
+                return <><Header /><___ /></>;
+              }
+            answers: ["Outlet"]
+          - type: choice
+            q: Где лучше хранить текущие фильтры каталога (сортировка, страница)?
+            options: ["В useRef", "В query-параметрах URL", "В глобальной переменной", "В cookie"]
+            answer: 1
+          - type: choice
+            q: Пользователь обновил страницу /products/42 на хостинге и получил 404. В чём причина?
+            options: ["Ошибка React Router", "Сервер не настроен отдавать index.html для всех путей SPA", "Не хватает key", "Нужен HashRouter всегда"]
+            answer: 1
+        homework:
+          task: |
+            Добавьте роутинг в магазин: страницы «Главная», «Каталог» (фильтр и сортировка в query-параметрах), «Товар» (`/products/:id`, 404 для несуществующего id), «Корзина» (только для вошедших), «Вход» (после входа — возврат на страницу, с которой пришли), общий `Layout` с `NavLink` и счётчиком корзины, ленивая загрузка страницы «Админка». Настройте `_redirects`/`vercel.json` для хостинга SPA.
+          checklist:
+            - Вложенные маршруты с Outlet
+            - Параметры пути и query
+            - Защищённый маршрут с возвратом
+            - Ленивая загрузка
+          solution: |
+            import { lazy, Suspense, createContext, useContext, useState, type ReactNode } from "react";
+            import { createBrowserRouter, RouterProvider, Outlet, NavLink, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+
+            const products = [{ id: 1, title: "Чай", price: 300 }, { id: 2, title: "Кофе", price: 500 }];
+            const AuthCtx = createContext<{ user: string | null; login: (n: string) => void }>({ user: null, login: () => {} });
+            const useAuth = () => useContext(AuthCtx);
+            const Admin = lazy(() => import("./pages/Admin"));
+
+            function Layout() {
+              return (<><nav><NavLink to="/" end>Главная</NavLink> <NavLink to="/products">Каталог</NavLink> <NavLink to="/cart">Корзина</NavLink></nav><Outlet /></>);
+            }
+            function Catalog() {
+              const [params, setParams] = useSearchParams();
+              const sort = params.get("sort") ?? "title";
+              const list = [...products].sort((a, b) => (sort === "price" ? a.price - b.price : a.title.localeCompare(b.title)));
+              return (<><button onClick={() => setParams({ sort: "price" })}>По цене</button>{list.map((p) => <p key={p.id}><NavLink to={`/products/${p.id}`}>{p.title}</NavLink></p>)}</>);
+            }
+            function Product() {
+              const { id } = useParams();
+              const p = products.find((x) => x.id === Number(id));
+              return p ? <h1>{p.title} — {p.price} ₽</h1> : <h1>Товар не найден</h1>;
+            }
+            function RequireAuth({ children }: { children: ReactNode }) {
+              const { user } = useAuth();
+              const location = useLocation();
+              return user ? <>{children}</> : <Navigate to="/login" state={{ from: location.pathname }} replace />;
+            }
+            function Login() {
+              const { login } = useAuth();
+              const navigate = useNavigate();
+              const from = (useLocation().state as { from?: string } | null)?.from ?? "/";
+              return <button onClick={() => { login("Анна"); navigate(from, { replace: true }); }}>Войти</button>;
+            }
+            const router = createBrowserRouter([{
+              path: "/", element: <Layout />, children: [
+                { index: true, element: <h1>Добро пожаловать</h1> },
+                { path: "products", element: <Catalog /> },
+                { path: "products/:id", element: <Product /> },
+                { path: "cart", element: <RequireAuth><h1>Корзина</h1></RequireAuth> },
+                { path: "login", element: <Login /> },
+                { path: "admin", element: <Suspense fallback={<p>Загрузка…</p>}><Admin /></Suspense> },
+                { path: "*", element: <h1>404</h1> },
+              ],
+            }]);
+            export default function App() {
+              const [user, setUser] = useState<string | null>(null);
+              return <AuthCtx.Provider value={{ user, login: setUser }}><RouterProvider router={router} /></AuthCtx.Provider>;
+            }
+            // public/_redirects (Netlify): /*  /index.html  200
+      - id: js-08-06
+        title: Управление состоянием и запросы к API
+        minutes: 45
+        xp: 50
+        theory: |
+          Состояние в React-приложении бывает разным, и для каждого вида есть свой инструмент:
+
+          | Вид | Пример | Инструмент |
+          |---|---|---|
+          | Локальное UI | открыт ли модал | `useState` |
+          | Общее клиентское | тема, корзина, пользователь | Context, **Zustand**, Redux Toolkit |
+          | Серверное | список товаров с API | **TanStack Query**, RTK Query, SWR |
+          | В URL | фильтры, страница | React Router |
+          | Формы | значения и ошибки | React Hook Form |
+
+          ## Context — без «пробрасывания» пропсов
+
+          ```jsx
+          const ThemeContext = createContext("light");
+          function App() {
+            const [theme, setTheme] = useState("light");
+            return (
+              <ThemeContext.Provider value={{ theme, setTheme }}>
+                <Page />
+              </ThemeContext.Provider>
+            );
+          }
+          function ThemeToggle() {
+            const { theme, setTheme } = useContext(ThemeContext);
+            return <button onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme}</button>;
+          }
+          ```
+
+          При изменении значения перерисовываются **все** потребители — для часто меняющихся данных лучше Zustand.
+
+          ## Zustand
+
+          ```jsx
+          import { create } from "zustand";
+          const useCart = create((set) => ({
+            items: [],
+            add: (p) => set((s) => ({ items: [...s.items, p] })),
+            clear: () => set({ items: [] }),
+          }));
+          const count = useCart((s) => s.items.length);   // подписка только на нужный кусок
+          ```
+
+          ## TanStack Query — серверное состояние
+
+          Кеширование, повторные запросы, фоновое обновление, дедупликация, состояния загрузки — из коробки:
+
+          ```jsx
+          const { data, isPending, error } = useQuery({
+            queryKey: ["products", { page, sort }],          // ключ кеша
+            queryFn: () => api(`/products?page=${page}&sort=${sort}`),
+            staleTime: 60_000,                               // минуту данные считаются свежими
+          });
+
+          const queryClient = useQueryClient();
+          const addProduct = useMutation({
+            mutationFn: (p) => api("/products", { method: "POST", body: p }),
+            onSuccess: () => queryClient.invalidateQueries({ queryKey: ["products"] }),  // обновить списки
+          });
+          addProduct.mutate({ title: "Чайник" });
+          ```
+
+          **Оптимистичные обновления**: в `onMutate` сразу меняем кеш, при ошибке откатываем.
+
+          ## Главные принципы
+
+          - Не копируйте серверные данные в `useState`/глобальный стор — пусть ими управляет кеш запросов.
+          - Держите состояние как можно **ближе** к месту использования; глобальным делайте только действительно общее.
+          - Нормализуйте сложные данные (объекты по id), не дублируйте.
+          - Redux Toolkit оправдан в больших командах с жёсткими требованиями к предсказуемости и devtools.
+        practice:
+          - type: choice
+            q: Где лучше хранить список товаров, загруженный с сервера?
+            options: ["useState + useEffect в каждом компоненте", "Кеш TanStack Query (серверное состояние)", "Context", "localStorage"]
+            answer: 1
+          - type: fill
+            q: Прочитайте значение контекста
+            code: |
+              const { user } = ___(AuthContext);
+            answers: ["useContext"]
+          - type: choice
+            q: Что делает invalidateQueries после успешной мутации?
+            options: ["Удаляет данные навсегда", "Помечает кеш устаревшим и перезапрашивает связанные данные", "Отменяет мутацию", "Очищает localStorage"]
+            answer: 1
+          - type: choice
+            q: Почему Context не лучший выбор для быстро меняющегося состояния (например, позиции мыши)?
+            options: ["Context нельзя менять", "При каждом изменении перерисовываются все потребители", "Context работает только с классами", "Он асинхронный"]
+            answer: 1
+          - type: output
+            q: Что выведет код (мини-стор как в Zustand)?
+            code: |
+              function create(init) {
+                let state = init((p) => { state = { ...state, ...(typeof p === "function" ? p(state) : p) }; });
+                return () => state;
+              }
+              const get = create((set) => ({ n: 0, inc: () => set((s) => ({ n: s.n + 1 })) }));
+              get().inc(); get().inc();
+              console.log(get().n);
+            answer: "2"
+        homework:
+          task: |
+            Доведите магазин до «боевой» архитектуры: каталог и карточка товара грузятся через TanStack Query (API — `https://dummyjson.com/products`), с пагинацией по query-параметрам и prefetch следующей страницы; корзина — Zustand с сохранением в localStorage (`persist` middleware); тема — Context; добавление отзыва — `useMutation` с оптимистичным обновлением и откатом при ошибке. Включите React Query Devtools.
+          checklist:
+            - Серверные данные не дублируются в useState
+            - Корзина переживает перезагрузку
+            - Мутация обновляет кеш
+          solution: |
+            import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+            import { create } from "zustand";
+            import { persist } from "zustand/middleware";
+            import { useSearchParams } from "react-router-dom";
+
+            type Product = { id: number; title: string; price: number };
+            const api = async <T,>(url: string, init?: RequestInit): Promise<T> => {
+              const r = await fetch("https://dummyjson.com" + url, { headers: { "Content-Type": "application/json" }, ...init });
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              return r.json();
+            };
+
+            export const useCart = create<{ items: Product[]; add: (p: Product) => void; clear: () => void }>()(
+              persist((set) => ({
+                items: [],
+                add: (p) => set((s) => ({ items: [...s.items, p] })),
+                clear: () => set({ items: [] }),
+              }), { name: "cart" })
+            );
+
+            const PAGE = 10;
+            function Catalog() {
+              const [params, setParams] = useSearchParams();
+              const page = Number(params.get("page") ?? 0);
+              const qc = useQueryClient();
+              const fetchPage = (p: number) => api<{ products: Product[]; total: number }>(`/products?limit=${PAGE}&skip=${p * PAGE}`);
+              const { data, isPending, error } = useQuery({ queryKey: ["products", page], queryFn: () => fetchPage(page), placeholderData: keepPreviousData });
+              qc.prefetchQuery({ queryKey: ["products", page + 1], queryFn: () => fetchPage(page + 1) });
+              const add = useCart((s) => s.add);
+              if (isPending) return <p>Загрузка…</p>;
+              if (error) return <p>{error.message}</p>;
+              return (
+                <>
+                  {data.products.map((p) => <p key={p.id}>{p.title} — ${p.price} <button onClick={() => add(p)}>+</button></p>)}
+                  <button disabled={page === 0} onClick={() => setParams({ page: String(page - 1) })}>←</button>
+                  <button onClick={() => setParams({ page: String(page + 1) })}>→</button>
+                </>
+              );
+            }
+
+            type Review = { id: number; body: string };
+            function Reviews({ productId }: { productId: number }) {
+              const qc = useQueryClient();
+              const key = ["reviews", productId];
+              const { data = [] } = useQuery({ queryKey: key, queryFn: () => api<{ comments: Review[] }>(`/comments/post/${productId}`).then((r) => r.comments) });
+              const addReview = useMutation({
+                mutationFn: (body: string) => api("/comments/add", { method: "POST", body: JSON.stringify({ body, postId: productId, userId: 1 }) }),
+                onMutate: async (body) => {
+                  await qc.cancelQueries({ queryKey: key });
+                  const prev = qc.getQueryData<Review[]>(key);
+                  qc.setQueryData<Review[]>(key, (old = []) => [...old, { id: Date.now(), body }]);
+                  return { prev };
+                },
+                onError: (_e, _v, ctx) => qc.setQueryData(key, ctx?.prev),
+                onSettled: () => qc.invalidateQueries({ queryKey: key }),
+              });
+              return (<><ul>{data.map((r) => <li key={r.id}>{r.body}</li>)}</ul><button onClick={() => addReview.mutate("Отличный товар!")}>Добавить отзыв</button></>);
+            }
+
+            const client = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } });
+            export const Root = () => <QueryClientProvider client={client}><Catalog /><Reviews productId={1} /></QueryClientProvider>;
